@@ -18,6 +18,8 @@ import {
   Maximize2
 } from "lucide-react";
 import "./App.css";
+import { LiquidShaderBg } from "./components/LiquidShaderBg";
+import { Titlebar } from "./components/Titlebar";
 
 interface GpuDevice {
   id: number;
@@ -348,8 +350,9 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col glass text-slate-100 font-sans selection:bg-blue-600/30">
-      {/* --- HEADER --- */}
+    <div className="min-h-screen flex flex-col glass text-slate-100 font-sans selection:bg-blue-600/30 pt-12">
+      <LiquidShaderBg isProcessing={jobStatus === "processing"} />
+      <Titlebar statusText={jobStatus === "processing" ? "Upscaling GPU Inference..." : "Vulkan Engine Ready"} />
       <header className="sticky top-0 z-40 w-full glass border-b border-white/5 py-4 px-6 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
