@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { motion, AnimatePresence } from "framer-motion";
-import { XCircle, CheckCircle, Download, ArrowsClockwise } from "@phosphor-icons/react";
+import { XCircle, CheckCircle, Download, ArrowsClockwise, Image as ImageIcon, Video as VideoIcon, UploadSimple } from "@phosphor-icons/react";
 
 import "./App.css";
 import { LiquidShaderBg } from "./components/LiquidShaderBg";
@@ -171,7 +171,7 @@ export default function App() {
         addToast("success", "Upscaling complete!", "Your enhanced media is ready for preview.");
       } else if (status === "failed") {
         setActiveJobId(null);
-        setJobStatus("idle"); // Fall back to file-selected view so UI doesn't go blank
+        setJobStatus("idle");
         playErrorSound(isMuted);
         const errStr = error || "Processing failed during sidecar execution.";
         addToast(
@@ -184,12 +184,11 @@ export default function App() {
         );
       } else if (status === "cancelled") {
         setActiveJobId(null);
-        setJobStatus("idle"); // Fall back to file-selected view so UI doesn't go blank
+        setJobStatus("idle");
         addToast("info", "Upscale Cancelled", "Temporary processing files have been cleaned up.");
       }
     });
 
-    // 5. Listen to Tauri model download progress events
     const unlistenDownload = listen<DownloadProgressEvent>("download-progress", (event) => {
       const { model_id, file_type, percentage, downloaded, total } = event.payload;
       setDownloadingModelId(model_id);
@@ -208,20 +207,16 @@ export default function App() {
   // --- KEYBOARD SHORTCUTS ---
   const handleKeyboard = useCallback(
     (e: KeyboardEvent) => {
-      // Ctrl+O — Open file
       if ((e.ctrlKey || e.metaKey) && e.key === "o") {
         e.preventDefault();
         handleOpenFileDialog();
       }
-      // Enter or Space — Start upscale (only when file selected and idle)
       if ((e.key === "Enter" || e.key === " ") && filePath && jobStatus === "idle" && selectedModel) {
-        // Don't trigger if user is typing in an input/select
         const tag = (e.target as HTMLElement)?.tagName;
         if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
         e.preventDefault();
         handleStartUpscale();
       }
-      // Escape — Cancel upscale or clear file
       if (e.key === "Escape") {
         if (jobStatus === "processing" || jobStatus === "queued") {
           handleCancelUpscale();
@@ -308,7 +303,6 @@ export default function App() {
   const handleStartUpscale = async () => {
     if (!filePath || !selectedModel) return;
 
-    // Generate output path
     const dotIdx = filePath.lastIndexOf(".");
     const ext = dotIdx !== -1 ? filePath.substring(dotIdx) : ".png";
     const base = dotIdx !== -1 ? filePath.substring(0, dotIdx) : filePath;
@@ -419,11 +413,14 @@ export default function App() {
   };
 
   return (
-    <div className="relative h-screen w-screen flex flex-col text-[#F1FEC8] font-sans overflow-hidden bg-[#16141D] select-none" style={{ isolation: 'isolate' }}>
-      {/* 60FPS Ambient Shader Background Canvas — z-[-1] to stay behind all content */}
+    <div
+      className="relative h-screen w-screen flex flex-col text-[#F1FEC8] font-sans overflow-hidden bg-[#121018] select-none"
+      style={{ isolation: "isolate" }}
+    >
+      {/* 60FPS Luminous Ambient Shader Canvas */}
       <LiquidShaderBg isProcessing={jobStatus === "processing"} />
 
-      {/* Custom Titlebar Header */}
+      {/* Custom Header Titlebar */}
       <Titlebar
         statusText={jobStatus === "processing" ? "GPU Inference Active" : "Vulkan Engine Ready"}
         isMuted={isMuted}
@@ -440,99 +437,148 @@ export default function App() {
       {/* Floating Toast Notification Stack */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
-      {/* --- MAIN CENTERED LIQUID GLASS WORKSPACE CONTAINER --- */}
-      <main className="relative z-10 flex-1 overflow-y-auto pt-16 pb-8 px-4 flex flex-col justify-center items-center">
-        <div className="w-full max-w-xl mx-auto space-y-6">
-          {/* Optional GitHub Model Update Badge */}
-          {updateAvailable && jobStatus === "idle" && !filePath && (
-            <div className="flex justify-center">
-              <UpdateBadge
-                latestVersion={latestVersion}
-                onDownload={() => {
-                  setShowModelManager(true);
-                  handleFetchManifest();
-                }}
-                isDownloading={downloadingModelId !== null}
-                downloadPercentage={downloadPercentage}
+      {/* --- PRO TWO-COLUMN SPLIT DESKTOP WORKSPACE LAYOUT --- */}
+      <main className="relative z-10 flex-1 flex overflow-hidden pt-13">
+        {/* LEFT SIDEBAR: CONTROL & CONFIGURATION PANEL (380px Fixed Width) */}
+        <aside className="w-[380px] shrink-0 border-r border-white/10 bg-[#16141D]/75 backdrop-blur-2xl p-5 flex flex-col justify-between overflow-y-auto space-y-4 shadow-2xl">
+          <div className="space-y-4">
+            {/* Optional Model Update Badge */}
+            {updateAvailable && jobStatus === "idle" && (
+              <div className="flex justify-center">
+                <UpdateBadge
+                  latestVersion={latestVersion}
+                  onDownload={() => {
+                    setShowModelManager(true);
+                    handleFetchManifest();
+                  }}
+                  isDownloading={downloadingModelId !== null}
+                  downloadPercentage={downloadPercentage}
+                />
+              </div>
+            )}
+
+            {/* Media Source Card / Small Select DropZone */}
+            {filePath ? (
+              <FilePreview
+                filePath={filePath}
+                fileName={fileName}
+                fileSize={fileSize}
+                isVideo={isVideo}
+                scale={scale}
+                onRemove={handleClearFile}
               />
-            </div>
-          )}
+            ) : (
+              <div
+                onClick={handleOpenFileDialog}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragOver(true);
+                }}
+                onDragLeave={() => setIsDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragOver(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    handleFileDropObject(e.dataTransfer.files[0]);
+                  }
+                }}
+                className={`p-6 rounded-3xl border border-dashed transition-all cursor-pointer text-center relative overflow-hidden backdrop-blur-xl ${
+                  isDragOver
+                    ? "border-[#F1FEC8] bg-[#36255C]/60 scale-[1.02]"
+                    : "border-[#D2C3F6]/30 hover:border-[#D2C3F6]/60 bg-[#23212C]/60 hover:bg-[#23212C]/90"
+                }`}
+              >
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#36255C] to-[#5E3C98] border border-[#D2C3F6]/30 flex items-center justify-center mx-auto mb-3 shadow-lg">
+                  <UploadSimple size={28} className="text-[#F1FEC8] animate-bounce" />
+                </div>
+                <h4 className="text-xs font-extrabold text-[#F1FEC8]">Select Source File</h4>
+                <p className="text-[10px] text-[#D2C3F6]/70 mt-1 font-medium">Click to browse or drag photo/video here</p>
+              </div>
+            )}
 
-          {/* Animated State Machine Views */}
+            {/* AI Model & Parameter Settings */}
+            <SettingsPanel
+              category={category}
+              onSelectCategory={setCategory}
+              installedModels={installedModels}
+              selectedModel={selectedModel}
+              onSelectModel={setSelectedModel}
+              scale={scale}
+              onSelectScale={setScale}
+            />
+
+            {/* Advanced Hardware & VRAM Accordion */}
+            <AdvancedSettings
+              gpus={gpus}
+              selectedGpu={selectedGpu}
+              onSelectGpu={setSelectedGpu}
+              tileSize={tileSize}
+              onSelectTileSize={setTileSize}
+              customOutputPath={customOutputPath}
+              onSelectOutputPath={handleSelectCustomFolder}
+            />
+          </div>
+
+          {/* Volumetric Glowing Action Button */}
+          <div className="pt-2">
+            <UpscaleButton
+              disabled={!filePath || !selectedModel}
+              isProcessing={jobStatus === "processing" || jobStatus === "queued"}
+              onClick={handleStartUpscale}
+            />
+          </div>
+        </aside>
+
+        {/* RIGHT STAGE: INTERACTIVE MEDIA SHOWCASE & COMPARISON SANDBOX */}
+        <section className="flex-1 bg-[#121018]/50 backdrop-blur-xl p-6 flex flex-col justify-center items-center overflow-y-auto relative">
           <AnimatePresence mode="wait">
-            {/* STATE 1: EMPTY WORKSPACE — DROPZONE */}
-            {!filePath && jobStatus === "idle" && (
+            {/* STAGE 1: IDLE SHOWCASE & ATROPOS HERO CARD */}
+            {jobStatus === "idle" && (
               <motion.div
-                key="empty"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
+                key="idle-stage"
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
                 transition={{ duration: 0.2 }}
+                className="w-full max-w-2xl"
               >
-                <DropZone
-                  onFileSelect={handleFileDropObject}
-                  onBrowseClick={handleOpenFileDialog}
-                  isDragOver={isDragOver}
-                  setIsDragOver={setIsDragOver}
-                />
+                {!filePath ? (
+                  <DropZone
+                    onFileSelect={handleFileDropObject}
+                    onBrowseClick={handleOpenFileDialog}
+                    isDragOver={isDragOver}
+                    setIsDragOver={setIsDragOver}
+                  />
+                ) : (
+                  <div className="rounded-3xl liquid-glass border border-[#D2C3F6]/25 p-8 flex flex-col items-center justify-center text-center space-y-4 shadow-2xl backdrop-blur-2xl">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#36255C] to-[#5E3C98] border border-[#F1FEC8]/30 flex items-center justify-center text-[#F1FEC8] shadow-xl">
+                      {isVideo ? <VideoIcon size={36} weight="duotone" /> : <ImageIcon size={36} weight="duotone" />}
+                    </div>
+                    <div>
+                      <h3 className="text-base font-extrabold text-[#F1FEC8]">{fileName}</h3>
+                      <p className="text-xs text-[#D2C3F6]/80 mt-1 font-mono">
+                        Ready to enhance with <span className="text-[#F1FEC8] font-bold">{selectedModel}</span> ({scale}x scale)
+                      </p>
+                    </div>
+                    <div className="pt-2">
+                      <span className="text-[10px] font-mono font-bold px-3 py-1.5 rounded-full bg-[#36255C]/80 border border-[#D2C3F6]/30 text-[#F1FEC8] shadow">
+                        Press "Upscale Media" to launch Vulkan GPU inference
+                      </span>
+                    </div>
+                  </div>
+                )}
               </motion.div>
             )}
 
-            {/* STATE 2: FILE SELECTED — PREVIEW & PARAMETERS */}
-            {filePath && jobStatus === "idle" && (
-              <motion.div
-                key="selected"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.2 }}
-                className="space-y-4"
-              >
-                <FilePreview
-                  filePath={filePath}
-                  fileName={fileName}
-                  fileSize={fileSize}
-                  isVideo={isVideo}
-                  scale={scale}
-                  onRemove={handleClearFile}
-                />
-
-                <SettingsPanel
-                  category={category}
-                  onSelectCategory={setCategory}
-                  installedModels={installedModels}
-                  selectedModel={selectedModel}
-                  onSelectModel={setSelectedModel}
-                  scale={scale}
-                  onSelectScale={setScale}
-                />
-
-                <AdvancedSettings
-                  gpus={gpus}
-                  selectedGpu={selectedGpu}
-                  onSelectGpu={setSelectedGpu}
-                  tileSize={tileSize}
-                  onSelectTileSize={setTileSize}
-                  customOutputPath={customOutputPath}
-                  onSelectOutputPath={handleSelectCustomFolder}
-                />
-
-                <UpscaleButton
-                  disabled={!filePath || !selectedModel}
-                  isProcessing={false}
-                  onClick={handleStartUpscale}
-                />
-              </motion.div>
-            )}
-
-            {/* STATE 3: PROCESSING / QUEUED OVERLAY */}
+            {/* STAGE 2: PROCESSING & LIVE SCAN HUD */}
             {(jobStatus === "processing" || jobStatus === "queued") && (
               <motion.div
-                key="processing"
+                key="processing-stage"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.2 }}
+                className="w-full max-w-xl"
               >
                 <ProgressOverlay
                   percentage={progressVal}
@@ -545,15 +591,15 @@ export default function App() {
               </motion.div>
             )}
 
-            {/* STATE 4: COMPLETED RESULTS & COMPARISON SLIDER */}
+            {/* STAGE 3: COMPLETED RESULTS & COMPARISON SLIDER */}
             {jobStatus === "completed" && (
               <motion.div
-                key="completed"
+                key="completed-stage"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.2 }}
-                className="space-y-6"
+                className="w-full max-w-3xl space-y-6"
               >
                 <CompletionCard
                   outputPath={upscaledPath || pendingOutputPath.current}
@@ -569,22 +615,23 @@ export default function App() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+        </section>
       </main>
 
       {/* --- MODEL MANAGER / CATALOG MODAL --- */}
       {showModelManager && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-6 select-none">
-          <div className="w-full max-w-lg liquid-glass border border-[#D2C3F6]/20 rounded-3xl overflow-hidden flex flex-col max-h-[80vh] shadow-2xl">
+          <div className="w-full max-w-lg liquid-glass border border-[#D2C3F6]/30 rounded-3xl overflow-hidden flex flex-col max-h-[80vh] shadow-2xl">
             {/* Modal Header */}
-            <div className="p-4 border-b border-[#D2C3F6]/10 flex items-center justify-between">
+            <div className="p-4 border-b border-[#D2C3F6]/15 flex items-center justify-between">
               <div>
                 <h3 className="text-xs font-bold text-[#F1FEC8] uppercase tracking-wider">Model Catalog</h3>
                 <p className="text-[10px] text-[#D2C3F6]/70">Download, update, and manage Real-ESRGAN weights</p>
               </div>
               <button
+                type="button"
                 onClick={() => setShowModelManager(false)}
-                className="text-[#D2C3F6]/60 hover:text-[#F1FEC8] transition-colors"
+                className="text-[#D2C3F6]/60 hover:text-[#F1FEC8] transition-colors cursor-pointer"
               >
                 <XCircle size={20} />
               </button>
@@ -634,15 +681,16 @@ export default function App() {
                         </div>
 
                         {isInstalled ? (
-                          <span className="flex items-center gap-1 text-[10px] text-green-400 font-semibold bg-green-500/10 border border-green-500/20 px-2.5 py-1 rounded-xl">
+                          <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-semibold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-xl">
                             <CheckCircle size={14} />
                             <span>Installed</span>
                           </span>
                         ) : (
                           <button
+                            type="button"
                             disabled={downloadingModelId !== null}
                             onClick={() => handleDownloadModel(m)}
-                            className="flex items-center gap-1 text-[10px] bg-gradient-to-r from-[#F1FEC8] to-[#D2C3F6] text-[#16141D] font-bold px-3 py-1.5 rounded-xl shadow transition-all hover:scale-105"
+                            className="flex items-center gap-1 text-[10px] bg-gradient-to-r from-[#F1FEC8] to-[#D2C3F6] text-[#16141D] font-bold px-3 py-1.5 rounded-xl shadow transition-all hover:scale-105 cursor-pointer"
                           >
                             {isDownloading ? (
                               <ArrowsClockwise size={12} className="animate-spin" />
