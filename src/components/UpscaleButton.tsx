@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { motion, useMotionValue, useSpring } from 'framer-motion';
-import { Play } from '@phosphor-icons/react';
+import { Play, Sparkle } from '@phosphor-icons/react';
 
 interface UpscaleButtonProps {
   disabled: boolean;
@@ -33,10 +33,9 @@ export const UpscaleButton: React.FC<UpscaleButtonProps> = ({
     const distanceX = e.clientX - centerX;
     const distanceY = e.clientY - centerY;
 
-    // Pull within 30px magnetic radius
-    if (Math.abs(distanceX) < 80 && Math.abs(distanceY) < 80) {
-      x.set(distanceX * 0.25);
-      y.set(distanceY * 0.25);
+    if (Math.abs(distanceX) < 100 && Math.abs(distanceY) < 100) {
+      x.set(distanceX * 0.2);
+      y.set(distanceY * 0.2);
     }
   };
 
@@ -48,19 +47,34 @@ export const UpscaleButton: React.FC<UpscaleButtonProps> = ({
   return (
     <motion.button
       ref={buttonRef}
-      style={{ x: dx, y: dy }}
+      style={{
+        x: dx,
+        y: dy,
+        boxShadow: disabled
+          ? 'none'
+          : '0 12px 35px -5px rgba(168, 85, 247, 0.45), 0 0 25px rgba(241, 254, 200, 0.3)',
+      }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       disabled={disabled || isProcessing}
       onClick={onClick}
-      className={`w-full relative py-4 px-6 rounded-2xl font-bold text-sm tracking-wide select-none transition-all duration-200 flex items-center justify-center gap-2 shadow-xl ${
+      className={`w-full relative py-4 px-6 rounded-3xl font-extrabold text-sm tracking-wider select-none transition-all duration-300 flex items-center justify-center gap-2.5 overflow-hidden ${
         disabled
-          ? 'bg-[#23212C] text-[#D2C3F6]/30 border border-white/5 cursor-not-allowed'
-          : 'bg-gradient-to-r from-[#F1FEC8] via-[#E2FBB1] to-[#D2C3F6] text-[#16141D] border border-white/40 hover:scale-[1.02] active:scale-[0.98] shadow-[#F1FEC8]/20 animate-shimmer cursor-pointer'
+          ? 'bg-[#23212C]/60 text-[#D2C3F6]/30 border border-white/5 cursor-not-allowed'
+          : 'bg-gradient-to-r from-[#F1FEC8] via-[#D2C3F6] to-[#A855F7] text-[#16141D] border border-white/50 hover:scale-[1.02] active:scale-[0.98] animate-shimmer cursor-pointer'
       }`}
     >
-      <Play size={18} weight="fill" className={disabled ? 'text-[#D2C3F6]/30' : 'text-[#16141D]'} />
-      <span>{isProcessing ? 'Processing Upscale...' : 'Upscale Media'}</span>
+      {/* Specular Edge Glow Overlay */}
+      {!disabled && (
+        <div className="absolute inset-0 bg-gradient-to-b from-white/30 to-transparent pointer-events-none" />
+      )}
+
+      {isProcessing ? (
+        <Sparkle size={20} weight="fill" className="text-[#16141D] animate-spin" />
+      ) : (
+        <Play size={20} weight="fill" className={disabled ? 'text-[#D2C3F6]/30' : 'text-[#16141D] drop-shadow'} />
+      )}
+      <span className="drop-shadow-sm">{isProcessing ? 'Processing Upscale...' : 'Upscale Media'}</span>
     </motion.button>
   );
 };
