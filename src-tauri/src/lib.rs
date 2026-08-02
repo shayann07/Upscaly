@@ -3,8 +3,10 @@ mod sidecar_manager;
 mod model_manager;
 mod job_queue;
 mod video_pipeline;
+mod settings;
 
 pub use error::AppError;
+use settings::{AppSettings, load_settings, save_settings};
 
 use sidecar_manager::{GpuDevice, get_gpu_list, kill_all_processes};
 use model_manager::{ModelItem, SignedManifest, ManifestData, verify_signature, get_models_dir, calculate_sha256, get_available_disk_space};
@@ -138,6 +140,16 @@ async fn cancel_active_job(job_id: String) -> Result<(), String> {
     cancel_job(&job_id)
 }
 
+#[tauri::command]
+async fn get_app_settings(app_handle: tauri::AppHandle) -> Result<AppSettings, String> {
+    Ok(load_settings(&app_handle))
+}
+
+#[tauri::command]
+async fn update_app_settings(app_handle: tauri::AppHandle, settings: AppSettings) -> Result<(), String> {
+    save_settings(&app_handle, &settings)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -149,7 +161,9 @@ pub fn run() {
             check_for_model_updates,
             download_model_files,
             enqueue_job,
-            cancel_active_job
+            cancel_active_job,
+            get_app_settings,
+            update_app_settings
         ])
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::Destroyed = event {
