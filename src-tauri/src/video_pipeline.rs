@@ -8,11 +8,24 @@ use crate::sidecar_manager::resolve_sidecar_path;
 use crate::model_manager::get_models_dir;
 use crate::job_queue::{Job, JobProgress};
 
+/// RAII Guard for temporary job directories to guarantee cleanup on success, failure, or cancellation.
+pub struct TempFolderGuard(pub PathBuf);
+
+impl Drop for TempFolderGuard {
+    fn drop(&mut self) {
+        if self.0.exists() {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+}
+
 /// Orchestrates the entire video upscaling pipeline.
 pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     // 1. Create temporary directories
     let cache_dir = app.path().app_cache_dir().unwrap_or_else(|_| PathBuf::from("."));
     let job_temp_dir = cache_dir.join(format!("upscaler_job_{}", job.id));
+    let _guard = TempFolderGuard(job_temp_dir.clone());
+
     let frames_in_dir = job_temp_dir.join("frames_in");
     let frames_out_dir = job_temp_dir.join("frames_out");
 
