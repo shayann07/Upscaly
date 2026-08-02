@@ -1,175 +1,152 @@
-import React, { useState } from 'react';
-import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Sparkle, Minus, Square, X, SpeakerHigh, SpeakerSimpleSlash, Cpu, DownloadSimple } from '@phosphor-icons/react';
-import { CustomSelect } from './CustomSelect';
-
-interface GpuDevice {
-  id: number;
-  name: string;
-}
+import { useEffect, useState } from "react";
+import { Window } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
+import { ListPlus, Gear, Info, Monitor, Cpu, Sparkle } from "@phosphor-icons/react";
+import { CustomSelect } from "./CustomSelect";
 
 interface TitlebarProps {
-  statusText?: string;
-  isMuted?: boolean;
-  onToggleMute?: () => void;
-  gpus?: GpuDevice[];
-  selectedGpu?: number;
-  onSelectGpu?: (id: number) => void;
-  onOpenModelCatalog?: () => void;
+  onShowModelCatalog: () => void;
+  onShowSettings: () => void;
+  onShowAbout: () => void;
 }
 
-export const Titlebar: React.FC<TitlebarProps> = ({
-  statusText = 'Vulkan Engine Ready',
-  isMuted = false,
-  onToggleMute,
-  gpus = [],
-  selectedGpu = 0,
-  onSelectGpu,
-  onOpenModelCatalog,
-}) => {
-  const [isMaximized, setIsMaximized] = useState(false);
+export function Titlebar({
+  onShowModelCatalog,
+  onShowSettings,
+  onShowAbout,
+}: TitlebarProps) {
+  const [appWindow, setAppWindow] = useState<Window | null>(null);
+  const [deviceMap, setDeviceMap] = useState<Record<number, string>>({});
+  const [devices, setDevices] = useState<{ value: number; label: string }[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState<number>(-1); // -1 = CPU
 
-  const appWindow = getCurrentWindow();
+  useEffect(() => {
+    import("@tauri-apps/api/window").then((module) => {
+      setAppWindow(module.getCurrentWindow());
+    });
 
-  const handleMinimize = async () => {
-    try {
-      await appWindow.minimize();
-    } catch (err) {
-      console.error('Minimize failed:', err);
-    }
-  };
-
-  const handleMaximize = async () => {
-    try {
-      const maxed = await appWindow.isMaximized();
-      if (maxed) {
-        await appWindow.unmaximize();
-        setIsMaximized(false);
-      } else {
-        await appWindow.maximize();
-        setIsMaximized(true);
+    const fetchDevices = async () => {
+      try {
+        const result: Record<number, string> = await invoke("get_gpus");
+        setDeviceMap(result);
+        
+        const opts = [{ value: -1, label: "CPU (Fallback)" }];
+        Object.entries(result).forEach(([id, name]) => {
+          opts.push({ value: parseInt(id, 10), label: name });
+        });
+        setDevices(opts);
+        
+        if (Object.keys(result).length > 0) {
+          const firstGpuId = parseInt(Object.keys(result)[0], 10);
+          setSelectedDevice(firstGpuId);
+          await invoke("set_device", { deviceId: firstGpuId });
+        } else {
+          setSelectedDevice(-1);
+          await invoke("set_device", { deviceId: -1 });
+        }
+      } catch (err) {
+        console.error("Failed to fetch GPUs:", err);
+        setDevices([{ value: -1, label: "CPU (Fallback)" }]);
+        setSelectedDevice(-1);
       }
-    } catch (err) {
-      console.error('Maximize failed:', err);
-    }
-  };
+    };
+    fetchDevices();
+  }, []);
 
-  const handleClose = async () => {
+  const handleDeviceChange = async (val: string | number) => {
+    const id = typeof val === "string" ? parseInt(val, 10) : val;
+    setSelectedDevice(id);
     try {
-      await appWindow.close();
+      await invoke("set_device", { deviceId: id });
     } catch (err) {
-      console.error('Close failed:', err);
+      console.error("Failed to set device:", err);
     }
   };
 
-  const gpuOptions = gpus.map((g) => ({
-    value: g.id,
-    label: `GPU ${g.id}: ${g.name.length > 22 ? g.name.substring(0, 22) + '...' : g.name}`,
-    sublabel: g.name,
-  }));
+  const selectedDeviceName = selectedDevice === -1 ? "CPU" : deviceMap[selectedDevice] || "GPU";
+  const isCpu = selectedDevice === -1;
 
   return (
-    <header
+    <div
       data-tauri-drag-region
-      className="fixed top-0 left-0 right-0 h-13 z-50 flex items-center justify-between px-4 select-none border-b border-white/10 bg-[#16141D]/80 backdrop-blur-2xl shadow-xl"
+      className="h-[48px] bg-[#0A0612]/60 backdrop-blur-2xl border-b border-white/5 flex items-center justify-between px-4 select-none shrink-0"
     >
-      {/* App Logo & Title */}
-      <div className="flex items-center gap-2.5 pointer-events-none">
-        <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#36255C] via-[#4A3078] to-[#D2C3F6] border border-[#F1FEC8]/30 flex items-center justify-center shadow-lg shadow-[#36255C]/60">
-          <Sparkle weight="fill" className="w-4.5 h-4.5 text-[#F1FEC8] animate-pulse" />
-        </div>
-        <span className="font-extrabold text-sm tracking-wider text-[#F1FEC8] drop-shadow-md">
+      {/* Left: Window Controls */}
+      <div className="flex items-center gap-[10px] w-1/3">
+        <button
+          onClick={() => appWindow?.close()}
+          className="w-3 h-3 rounded-full bg-[#ED6A5E] hover:scale-110 active:scale-95 transition-all shadow-[0_0_8px_rgba(237,106,94,0.3)] hover:shadow-[0_0_12px_rgba(237,106,94,0.6)] relative overflow-hidden group"
+        >
+          <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-0 group-hover:opacity-100 rounded-full" />
+        </button>
+        <button
+          onClick={() => appWindow?.minimize()}
+          className="w-3 h-3 rounded-full bg-[#F4BF4F] hover:scale-110 active:scale-95 transition-all shadow-[0_0_8px_rgba(244,191,79,0.3)] hover:shadow-[0_0_12px_rgba(244,191,79,0.6)] relative overflow-hidden group"
+        >
+           <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-0 group-hover:opacity-100 rounded-full" />
+        </button>
+        <button
+          onClick={() => appWindow?.toggleMaximize()}
+          className="w-3 h-3 rounded-full bg-[#61C554] hover:scale-110 active:scale-95 transition-all shadow-[0_0_8px_rgba(97,197,84,0.3)] hover:shadow-[0_0_12px_rgba(97,197,84,0.6)] relative overflow-hidden group"
+        >
+           <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-0 group-hover:opacity-100 rounded-full" />
+        </button>
+      </div>
+
+      {/* Center: Title & Dynamic Hardware Status */}
+      <div
+        data-tauri-drag-region
+        className="flex items-center justify-center gap-3 w-1/3 pointer-events-none"
+      >
+        <span className="font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-white/70 tracking-wide text-sm flex items-center gap-2">
+          <Sparkle weight="fill" className="text-purple-400" />
           Upscaly
         </span>
-        <span className="text-[9px] font-bold uppercase font-mono tracking-widest px-2 py-0.5 rounded-full bg-[#36255C]/80 text-[#D2C3F6] border border-[#D2C3F6]/30 shadow-inner">
-          v1.0
-        </span>
-      </div>
-
-      {/* Center Status Badge & Custom GPU Select & Controls */}
-      <div className="flex items-center gap-3">
-        {/* Status Pill */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-[#23212C]/90 border border-[#D2C3F6]/20 text-xs font-semibold text-[#D2C3F6] pointer-events-none shadow-md">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34D399]" />
-          <span>{statusText}</span>
-        </div>
-
-        {/* Custom GPU Select Dropdown */}
-        {gpus.length > 0 && onSelectGpu && (
-          <div className="hidden md:block w-64">
-            <CustomSelect
-              options={gpuOptions}
-              value={selectedGpu}
-              onChange={(val) => onSelectGpu(Number(val))}
-              icon={<Cpu size={15} className="text-[#F1FEC8]" />}
-            />
+        
+        {devices.length > 0 && (
+          <div className="pointer-events-auto">
+             <CustomSelect 
+               options={devices}
+               value={selectedDevice}
+               onChange={handleDeviceChange}
+               placeholder="Select Device"
+               width="180px"
+               renderTrigger={() => (
+                 <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] font-medium text-white/70 hover:bg-white/10 hover:text-white transition-colors shadow-sm cursor-pointer group">
+                   {isCpu ? <Cpu size={12} className="text-blue-400 group-hover:text-blue-300 transition-colors" /> : <Monitor size={12} className="text-emerald-400 group-hover:text-emerald-300 transition-colors" />}
+                   <span className="truncate max-w-[120px]">{selectedDeviceName}</span>
+                 </div>
+               )}
+             />
           </div>
         )}
-
-        {/* Model Catalog Button */}
-        {onOpenModelCatalog && (
-          <button
-            type="button"
-            onClick={onOpenModelCatalog}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#36255C] to-[#4A3078] hover:from-[#4A3078] hover:to-[#5E3C98] border border-[#D2C3F6]/30 text-xs font-bold text-[#F1FEC8] shadow-lg shadow-[#36255C]/40 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-          >
-            <DownloadSimple size={14} weight="bold" />
-            <span>Model Catalog</span>
-          </button>
-        )}
       </div>
 
-      {/* Right Window Controls & Mute */}
-      <div className="flex items-center gap-3">
-        {/* Sound Mute Button */}
-        {onToggleMute && (
-          <button
-            type="button"
-            onClick={onToggleMute}
-            className="p-2 rounded-xl text-[#D2C3F6]/70 hover:text-[#F1FEC8] hover:bg-[#36255C]/60 border border-transparent hover:border-[#D2C3F6]/20 transition-all cursor-pointer shadow-sm active:scale-90"
-            title={isMuted ? 'Unmute Sound FX' : 'Mute Sound FX'}
-          >
-            {isMuted ? (
-              <SpeakerSimpleSlash size={16} />
-            ) : (
-              <SpeakerHigh size={16} />
-            )}
-          </button>
-        )}
-
-        {/* High-Performance Window Control Buttons */}
-        <div className="flex items-center gap-1 pl-3 border-l border-white/10">
-          {/* Minimize Button */}
-          <button
-            type="button"
-            onClick={handleMinimize}
-            className="w-8 h-8 rounded-xl bg-[#23212C]/60 hover:bg-[#36255C] border border-[#D2C3F6]/15 hover:border-[#D2C3F6]/40 flex items-center justify-center text-[#D2C3F6] hover:text-[#F1FEC8] transition-all cursor-pointer shadow-md active:scale-90"
-            title="Minimize Window"
-          >
-            <Minus size={13} weight="bold" />
-          </button>
-
-          {/* Maximize / Restore Button */}
-          <button
-            type="button"
-            onClick={handleMaximize}
-            className="w-8 h-8 rounded-xl bg-[#23212C]/60 hover:bg-[#36255C] border border-[#D2C3F6]/15 hover:border-[#D2C3F6]/40 flex items-center justify-center text-[#D2C3F6] hover:text-[#F1FEC8] transition-all cursor-pointer shadow-md active:scale-90"
-            title={isMaximized ? 'Restore Window' : 'Maximize Window'}
-          >
-            <Square size={12} weight="bold" />
-          </button>
-
-          {/* Close Button */}
-          <button
-            type="button"
-            onClick={handleClose}
-            className="w-8 h-8 rounded-xl bg-[#23212C]/60 hover:bg-rose-600/90 border border-[#D2C3F6]/15 hover:border-rose-400 flex items-center justify-center text-[#D2C3F6] hover:text-white transition-all cursor-pointer shadow-md active:scale-90"
-            title="Close Application"
-          >
-            <X size={13} weight="bold" />
-          </button>
-        </div>
+      {/* Right: Actions */}
+      <div className="flex items-center justify-end gap-2 w-1/3">
+        <button
+          onClick={onShowModelCatalog}
+          className="h-7 px-3 rounded-lg flex items-center gap-2 text-xs font-medium bg-purple-500/10 text-purple-200 border border-purple-500/20 hover:bg-purple-500/20 hover:border-purple-500/30 transition-all hover:shadow-[0_0_12px_rgba(168,85,247,0.15)]"
+          title="Model Catalog"
+        >
+          <ListPlus size={14} weight="bold" />
+          Models
+        </button>
+        <button
+          onClick={onShowSettings}
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+          title="Settings"
+        >
+          <Gear size={16} />
+        </button>
+        <button
+          onClick={onShowAbout}
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+          title="About Upscaly"
+        >
+          <Info size={16} />
+        </button>
       </div>
-    </header>
+    </div>
   );
-};
+}

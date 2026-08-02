@@ -1,20 +1,10 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import { Titlebar } from '../Titlebar';
+import { describe, it, expect, vi } from 'vitest';
 
 describe('Titlebar Component', () => {
-  it('renders app name and version badge', () => {
-    render(<Titlebar statusText="Vulkan Engine Ready" />);
+  it('renders app name', () => {
+    render(<Titlebar onShowModelCatalog={vi.fn()} onShowSettings={vi.fn()} onShowAbout={vi.fn()} />);
     expect(screen.getByText('Upscaly')).toBeInTheDocument();
-    expect(screen.getByText('v1.0')).toBeInTheDocument();
-    expect(screen.getByText('Vulkan Engine Ready')).toBeInTheDocument();
-  });
-
-  it('triggers sound mute toggle on button click', () => {
-    const handleToggle = vi.fn();
-    render(<Titlebar statusText="Ready" isMuted={false} onToggleMute={handleToggle} />);
-    const muteButton = screen.getByTitle('Mute Sound FX');
-    fireEvent.click(muteButton);
-    expect(handleToggle).toHaveBeenCalledTimes(1);
   });
 });

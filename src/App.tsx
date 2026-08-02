@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { motion, AnimatePresence } from "framer-motion";
-import { XCircle, CheckCircle, Download, ArrowsClockwise, Image as ImageIcon, Video as VideoIcon, UploadSimple } from "@phosphor-icons/react";
+import { XCircle, CheckCircle, Download, ArrowsClockwise, Image as ImageIcon, Video as VideoIcon, UploadSimple, ListPlus } from "@phosphor-icons/react";
 
 import "./App.css";
 import { LiquidShaderBg } from "./components/LiquidShaderBg";
@@ -69,7 +69,7 @@ export default function App() {
   const [customOutputPath, setCustomOutputPath] = useState<string>("");
 
   // Sound Settings
-  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isMuted] = useState<boolean>(false);
 
   // File Details
   const [filePath, setFilePath] = useState<string>("");
@@ -422,16 +422,12 @@ export default function App() {
 
       {/* Custom Header Titlebar */}
       <Titlebar
-        statusText={jobStatus === "processing" ? "GPU Inference Active" : "Vulkan Engine Ready"}
-        isMuted={isMuted}
-        onToggleMute={() => setIsMuted(!isMuted)}
-        gpus={gpus}
-        selectedGpu={selectedGpu}
-        onSelectGpu={(id) => setSelectedGpu(id)}
-        onOpenModelCatalog={() => {
+        onShowModelCatalog={() => {
           setShowModelManager(true);
           handleFetchManifest();
         }}
+        onShowSettings={() => {}}
+        onShowAbout={() => {}}
       />
 
       {/* Floating Toast Notification Stack */}
@@ -620,47 +616,59 @@ export default function App() {
 
       {/* --- MODEL MANAGER / CATALOG MODAL --- */}
       {showModelManager && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-6 select-none">
-          <div className="w-full max-w-lg liquid-glass border border-[#D2C3F6]/30 rounded-3xl overflow-hidden flex flex-col max-h-[80vh] shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center p-6 select-none">
+          <div className="w-full max-w-xl bg-[#16141D]/60 border border-white/10 rounded-3xl overflow-hidden flex flex-col max-h-[80vh] shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-3xl relative">
+            
+            {/* Modal Ambient Glow */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[80%] h-32 bg-purple-500/20 rounded-[100%] blur-3xl pointer-events-none" />
+
             {/* Modal Header */}
-            <div className="p-4 border-b border-[#D2C3F6]/15 flex items-center justify-between">
+            <div className="p-5 border-b border-white/5 flex items-center justify-between relative z-10 bg-black/20">
               <div>
-                <h3 className="text-xs font-bold text-[#F1FEC8] uppercase tracking-wider">Model Catalog</h3>
-                <p className="text-[10px] text-[#D2C3F6]/70">Download, update, and manage Real-ESRGAN weights</p>
+                <h3 className="text-sm font-extrabold text-white uppercase tracking-widest flex items-center gap-2">
+                  <ListPlus size={18} className="text-emerald-400" />
+                  Model Catalog
+                </h3>
+                <p className="text-[10px] text-white/50 font-medium mt-1">Download, update, and manage AI model weights</p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowModelManager(false)}
-                className="text-[#D2C3F6]/60 hover:text-[#F1FEC8] transition-colors cursor-pointer"
+                className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 text-white/50 hover:text-white hover:bg-rose-500/20 hover:border-rose-500/30 border border-transparent transition-all cursor-pointer active:scale-95"
               >
-                <XCircle size={20} />
+                <XCircle size={20} weight="fill" />
               </button>
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 overflow-y-auto space-y-4 flex-1">
+            <div className="p-5 overflow-y-auto space-y-4 flex-1 relative z-10">
               {downloadingModelId && (
-                <div className="liquid-glass-card rounded-2xl p-4 space-y-2">
-                  <div className="flex items-center justify-between text-xs font-semibold">
-                    <span className="text-[#F1FEC8] animate-pulse">Downloading weights...</span>
-                    <span className="font-mono text-[#F1FEC8]">{downloadPercentage.toFixed(1)}%</span>
+                <div className="bg-black/40 border border-purple-500/30 rounded-2xl p-5 space-y-3 shadow-[0_0_15px_rgba(168,85,247,0.1)]">
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <span className="text-purple-300 animate-pulse flex items-center gap-2">
+                      <ArrowsClockwise size={14} className="animate-spin" />
+                      Downloading weights...
+                    </span>
+                    <span className="font-mono text-white">{downloadPercentage.toFixed(1)}%</span>
                   </div>
-                  <div className="w-full h-1.5 bg-[#16141D] rounded-full overflow-hidden border border-[#D2C3F6]/20">
+                  <div className="w-full h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
                     <div
-                      className="h-full bg-gradient-to-r from-[#36255C] to-[#F1FEC8] transition-all duration-150"
+                      className="h-full bg-gradient-to-r from-purple-600 to-emerald-400 transition-all duration-150 relative"
                       style={{ width: `${downloadPercentage}%` }}
-                    />
+                    >
+                      <div className="absolute inset-0 bg-white/20 w-full animate-shimmer" />
+                    </div>
                   </div>
-                  <p className="text-[9px] text-[#D2C3F6]/70 font-mono truncate">{downloadFileProgress}</p>
+                  <p className="text-[10px] text-white/50 font-mono truncate">{downloadFileProgress}</p>
                 </div>
               )}
 
               {/* Models List */}
               <div className="space-y-3">
                 {cloudModels.length === 0 ? (
-                  <div className="text-center py-6 text-[#D2C3F6]/60 space-y-2">
-                    <ArrowsClockwise size={24} className="animate-spin mx-auto text-[#D2C3F6]/40" />
-                    <p className="text-xs">Fetching model manifest...</p>
+                  <div className="text-center py-12 text-white/30 space-y-3">
+                    <ArrowsClockwise size={28} className="animate-spin mx-auto text-white/20" />
+                    <p className="text-xs font-medium tracking-wide">Fetching model manifest...</p>
                   </div>
                 ) : (
                   cloudModels.map((m) => {
@@ -671,18 +679,20 @@ export default function App() {
                     return (
                       <div
                         key={m.id}
-                        className="flex items-center justify-between p-3.5 bg-[#23212C]/60 rounded-2xl border border-[#D2C3F6]/10"
+                        className="flex items-center justify-between p-4 bg-black/40 rounded-2xl border border-white/5 hover:border-white/10 transition-colors group"
                       >
                         <div>
-                          <p className="text-xs font-bold text-[#F1FEC8]">{m.name}</p>
-                          <p className="text-[9px] text-[#D2C3F6]/70 mt-1 font-mono">
-                            Version: {m.version} &bull; Size: {totalSizeMB} MB
+                          <p className="text-sm font-bold text-white group-hover:text-emerald-50 transition-colors flex items-center gap-2">
+                            {m.name}
+                          </p>
+                          <p className="text-[10px] text-white/40 mt-1 font-mono uppercase tracking-wider">
+                            v{m.version} &bull; {totalSizeMB} MB
                           </p>
                         </div>
 
                         {isInstalled ? (
-                          <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-semibold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-xl">
-                            <CheckCircle size={14} />
+                          <span className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-bold uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl shadow-sm">
+                            <CheckCircle size={14} weight="fill" />
                             <span>Installed</span>
                           </span>
                         ) : (
@@ -690,12 +700,16 @@ export default function App() {
                             type="button"
                             disabled={downloadingModelId !== null}
                             onClick={() => handleDownloadModel(m)}
-                            className="flex items-center gap-1 text-[10px] bg-gradient-to-r from-[#F1FEC8] to-[#D2C3F6] text-[#16141D] font-bold px-3 py-1.5 rounded-xl shadow transition-all hover:scale-105 cursor-pointer"
+                            className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-4 py-2 rounded-xl shadow transition-all duration-300 ${
+                              isDownloading 
+                                ? 'bg-black/40 text-white/40 border border-white/5 cursor-not-allowed'
+                                : 'bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-white/20 hover:shadow-[0_0_15px_rgba(255,255,255,0.1)] active:scale-95 cursor-pointer'
+                            }`}
                           >
                             {isDownloading ? (
-                              <ArrowsClockwise size={12} className="animate-spin" />
+                              <ArrowsClockwise size={14} className="animate-spin" />
                             ) : (
-                              <Download size={12} weight="bold" />
+                              <Download size={14} weight="bold" className={isDownloading ? '' : 'text-emerald-400'} />
                             )}
                             <span>{isDownloading ? "Downloading" : "Install"}</span>
                           </button>

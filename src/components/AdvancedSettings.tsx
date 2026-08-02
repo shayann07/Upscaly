@@ -37,21 +37,23 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
       }));
 
   return (
-    <div className="rounded-3xl liquid-glass border border-[#D2C3F6]/20 overflow-hidden select-none shadow-xl backdrop-blur-2xl">
+    <div className="bg-[#16141D]/40 rounded-3xl border border-white/5 overflow-hidden select-none shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-3xl transition-all duration-300">
       {/* Header Accordion Toggle */}
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-5 py-4 flex items-center justify-between text-xs font-bold text-[#F1FEC8] hover:bg-[#36255C]/40 transition-all cursor-pointer group"
+        className="w-full px-5 py-4 flex items-center justify-between text-xs font-bold text-white/70 hover:text-white hover:bg-white/5 transition-colors cursor-pointer group"
       >
         <div className="flex items-center gap-2.5">
-          <SlidersHorizontal size={18} className="text-[#D2C3F6] group-hover:text-[#F1FEC8] transition-colors" />
+          <div className="p-1.5 rounded-lg bg-white/5 border border-white/10 group-hover:bg-white/10 transition-colors">
+            <SlidersHorizontal size={14} className="text-emerald-400 group-hover:text-emerald-300 transition-colors" />
+          </div>
           <span>Advanced Hardware Settings</span>
         </div>
         <CaretDown
           size={16}
-          className={`text-[#D2C3F6] transition-transform duration-300 ${
-            isOpen ? 'rotate-180 text-[#F1FEC8]' : ''
+          className={`text-white/40 transition-transform duration-300 ${
+            isOpen ? 'rotate-180 text-white' : ''
           }`}
         />
       </button>
@@ -64,71 +66,76 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.25, ease: 'easeInOut' }}
-            className="overflow-hidden border-t border-[#D2C3F6]/15 p-5 space-y-4 bg-[#16141D]/70"
+            className="overflow-hidden border-t border-white/5 bg-black/20"
           >
-            {/* Custom GPU Selector */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-[#D2C3F6]/80 flex items-center gap-1.5 uppercase tracking-wider">
-                <Cpu size={14} />
-                <span>Target GPU Acceleration</span>
-              </label>
-              <CustomSelect
-                options={gpuOptions}
-                value={selectedGpu}
-                onChange={(val) => onSelectGpu(Number(val))}
-                icon={<Cpu size={15} className="text-[#F1FEC8]" />}
-              />
-            </div>
-
-            {/* Tile Size (VRAM Control) */}
-            <div className="space-y-2">
-              <div className="flex justify-between text-[11px] font-bold text-[#D2C3F6]/80 uppercase tracking-wider">
-                <span>VRAM Tile Size</span>
-                <span className="font-mono text-[#F1FEC8] normal-case">
-                  {tileSize === 0 ? 'Auto (Recommended)' : `${tileSize}px Tiles`}
-                </span>
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                {[0, 128, 256, 512].map((size) => {
-                  const isSelected = tileSize === size;
-                  return (
-                    <button
-                      key={size}
-                      type="button"
-                      onClick={() => onSelectTileSize(size)}
-                      className={`py-2 text-xs font-mono font-bold rounded-xl border transition-all cursor-pointer ${
-                        isSelected
-                          ? 'bg-gradient-to-r from-[#36255C] to-[#5E3C98] text-[#F1FEC8] border-[#F1FEC8]/50 shadow-md scale-[1.02]'
-                          : 'bg-[#23212C]/60 text-[#D2C3F6]/50 border-[#D2C3F6]/15 hover:text-[#F1FEC8] hover:bg-[#23212C]/90'
-                      }`}
-                    >
-                      {size === 0 ? 'Auto' : `${size}`}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Custom Output Folder */}
-            <div className="space-y-2 pt-2 border-t border-[#D2C3F6]/15">
-              <label className="text-[11px] font-bold text-[#D2C3F6]/80 flex items-center gap-1.5 uppercase tracking-wider">
-                <Folder size={14} />
-                <span>Output Destination</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={customOutputPath || 'Same directory as input file'}
-                  className="flex-1 bg-[#23212C]/80 border border-[#D2C3F6]/20 text-[11px] font-mono text-[#D2C3F6]/90 rounded-xl p-2.5 focus:outline-none"
+            <div className="p-6 space-y-6">
+              {/* Custom GPU Selector */}
+              <div className="space-y-3">
+                <label className="text-[10px] font-bold text-white/50 flex items-center gap-1.5 uppercase tracking-widest">
+                  <Cpu size={14} />
+                  <span>Target GPU Acceleration</span>
+                </label>
+                <CustomSelect
+                  options={gpuOptions}
+                  value={selectedGpu}
+                  onChange={(val) => onSelectGpu(Number(val))}
+                  icon={<Cpu size={15} className="text-emerald-400" />}
+                  width="100%"
                 />
-                <button
-                  type="button"
-                  onClick={onSelectOutputPath}
-                  className="px-4 py-2.5 text-xs font-bold rounded-xl bg-gradient-to-r from-[#36255C] to-[#4A3078] hover:from-[#4A3078] hover:to-[#5E3C98] text-[#F1FEC8] border border-[#D2C3F6]/30 shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                >
-                  Choose
-                </button>
+              </div>
+
+              {/* Tile Size (VRAM Control) */}
+              <div className="space-y-3">
+                <div className="flex justify-between text-[10px] font-bold text-white/50 uppercase tracking-widest">
+                  <span>VRAM Tile Size</span>
+                  <span className="font-mono text-emerald-400 normal-case">
+                    {tileSize === 0 ? 'Auto (Recommended)' : `${tileSize}px Tiles`}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {[0, 128, 256, 512].map((size) => {
+                    const isSelected = tileSize === size;
+                    return (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => onSelectTileSize(size)}
+                        className={`relative group py-2.5 text-xs font-mono font-bold rounded-xl border transition-all duration-300 cursor-pointer overflow-hidden ${
+                          isSelected
+                            ? 'bg-gradient-to-b from-emerald-500/20 to-emerald-900/40 text-emerald-50 border-emerald-500/50 shadow-[0_0_15px_rgba(52,211,153,0.2)]'
+                            : 'bg-black/40 text-white/40 border-white/5 hover:text-white hover:bg-white/10 hover:border-white/10'
+                        }`}
+                      >
+                         {/* Hover gradient sweep */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out" />
+                        {size === 0 ? 'Auto' : `${size}`}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom Output Folder */}
+              <div className="space-y-3 pt-4 border-t border-white/5">
+                <label className="text-[10px] font-bold text-white/50 flex items-center gap-1.5 uppercase tracking-widest">
+                  <Folder size={14} />
+                  <span>Output Destination</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={customOutputPath || 'Same directory as input file'}
+                    className="flex-1 bg-black/40 border border-white/5 text-[11px] font-mono text-white/60 rounded-xl p-3 focus:outline-none shadow-inner truncate"
+                  />
+                  <button
+                    type="button"
+                    onClick={onSelectOutputPath}
+                    className="h-[42px] px-5 text-xs font-bold rounded-xl bg-white/5 hover:bg-white/10 text-white border border-white/10 shadow-sm transition-all hover:shadow-[0_0_15px_rgba(255,255,255,0.1)] active:scale-95 cursor-pointer shrink-0"
+                  >
+                    Choose
+                  </button>
+                </div>
               </div>
             </div>
           </motion.div>
