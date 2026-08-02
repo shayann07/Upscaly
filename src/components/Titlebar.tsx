@@ -31,23 +31,35 @@ export const Titlebar: React.FC<TitlebarProps> = ({
 
   const appWindow = getCurrentWindow();
 
-  const handleMinimize = () => {
-    appWindow.minimize();
-  };
-
-  const handleMaximize = async () => {
-    const maxed = await appWindow.isMaximized();
-    if (maxed) {
-      appWindow.unmaximize();
-      setIsMaximized(false);
-    } else {
-      appWindow.maximize();
-      setIsMaximized(true);
+  const handleMinimize = async () => {
+    try {
+      await appWindow.minimize();
+    } catch (err) {
+      console.error('Minimize failed:', err);
     }
   };
 
-  const handleClose = () => {
-    appWindow.close();
+  const handleMaximize = async () => {
+    try {
+      const maxed = await appWindow.isMaximized();
+      if (maxed) {
+        await appWindow.unmaximize();
+        setIsMaximized(false);
+      } else {
+        await appWindow.maximize();
+        setIsMaximized(true);
+      }
+    } catch (err) {
+      console.error('Maximize failed:', err);
+    }
+  };
+
+  const handleClose = async () => {
+    try {
+      await appWindow.close();
+    } catch (err) {
+      console.error('Close failed:', err);
+    }
   };
 
   const gpuOptions = gpus.map((g) => ({
@@ -59,7 +71,7 @@ export const Titlebar: React.FC<TitlebarProps> = ({
   return (
     <header
       data-tauri-drag-region
-      className="fixed top-0 left-0 right-0 h-13 z-50 flex items-center justify-between px-4 select-none border-b border-white/10 bg-[#16141D]/75 backdrop-blur-2xl shadow-xl"
+      className="fixed top-0 left-0 right-0 h-13 z-50 flex items-center justify-between px-4 select-none border-b border-white/10 bg-[#16141D]/80 backdrop-blur-2xl shadow-xl"
     >
       {/* App Logo & Title */}
       <div className="flex items-center gap-2.5 pointer-events-none">
@@ -97,6 +109,7 @@ export const Titlebar: React.FC<TitlebarProps> = ({
         {/* Model Catalog Button */}
         {onOpenModelCatalog && (
           <button
+            type="button"
             onClick={onOpenModelCatalog}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#36255C] to-[#4A3078] hover:from-[#4A3078] hover:to-[#5E3C98] border border-[#D2C3F6]/30 text-xs font-bold text-[#F1FEC8] shadow-lg shadow-[#36255C]/40 transition-all hover:scale-105 active:scale-95 cursor-pointer"
           >
@@ -111,6 +124,7 @@ export const Titlebar: React.FC<TitlebarProps> = ({
         {/* Sound Mute Button */}
         {onToggleMute && (
           <button
+            type="button"
             onClick={onToggleMute}
             className="p-2 rounded-xl text-[#D2C3F6]/70 hover:text-[#F1FEC8] hover:bg-[#36255C]/60 border border-transparent hover:border-[#D2C3F6]/20 transition-all cursor-pointer shadow-sm active:scale-90"
             title={isMuted ? 'Unmute Sound FX' : 'Mute Sound FX'}
@@ -123,33 +137,36 @@ export const Titlebar: React.FC<TitlebarProps> = ({
           </button>
         )}
 
-        {/* High-End Mac/Liquid Window Control Buttons */}
-        <div className="flex items-center gap-2 pl-3 border-l border-white/10">
-          {/* Minimize Button (Yellow) */}
+        {/* High-Performance Window Control Buttons */}
+        <div className="flex items-center gap-1 pl-3 border-l border-white/10">
+          {/* Minimize Button */}
           <button
+            type="button"
             onClick={handleMinimize}
-            className="w-3.5 h-3.5 rounded-full bg-gradient-to-tr from-amber-500 to-yellow-300 border border-amber-300/50 flex items-center justify-center text-amber-950 opacity-90 hover:opacity-100 hover:scale-115 active:scale-90 transition-all cursor-pointer shadow-[0_0_8px_rgba(245,158,11,0.4)] group"
-            title="Minimize"
+            className="w-8 h-8 rounded-xl bg-[#23212C]/60 hover:bg-[#36255C] border border-[#D2C3F6]/15 hover:border-[#D2C3F6]/40 flex items-center justify-center text-[#D2C3F6] hover:text-[#F1FEC8] transition-all cursor-pointer shadow-md active:scale-90"
+            title="Minimize Window"
           >
-            <Minus size={9} weight="bold" className="opacity-0 group-hover:opacity-100 transition-opacity" />
+            <Minus size={13} weight="bold" />
           </button>
 
-          {/* Maximize Button (Green) */}
+          {/* Maximize / Restore Button */}
           <button
+            type="button"
             onClick={handleMaximize}
-            className="w-3.5 h-3.5 rounded-full bg-gradient-to-tr from-emerald-500 to-green-300 border border-emerald-300/50 flex items-center justify-center text-emerald-950 opacity-90 hover:opacity-100 hover:scale-115 active:scale-90 transition-all cursor-pointer shadow-[0_0_8px_rgba(16,185,129,0.4)] group"
-            title={isMaximized ? 'Restore' : 'Maximize'}
+            className="w-8 h-8 rounded-xl bg-[#23212C]/60 hover:bg-[#36255C] border border-[#D2C3F6]/15 hover:border-[#D2C3F6]/40 flex items-center justify-center text-[#D2C3F6] hover:text-[#F1FEC8] transition-all cursor-pointer shadow-md active:scale-90"
+            title={isMaximized ? 'Restore Window' : 'Maximize Window'}
           >
-            <Square size={8} weight="bold" className="opacity-0 group-hover:opacity-100 transition-opacity" />
+            <Square size={12} weight="bold" />
           </button>
 
-          {/* Close Button (Red) */}
+          {/* Close Button */}
           <button
+            type="button"
             onClick={handleClose}
-            className="w-3.5 h-3.5 rounded-full bg-gradient-to-tr from-rose-600 to-red-400 border border-rose-300/50 flex items-center justify-center text-rose-950 opacity-90 hover:opacity-100 hover:scale-115 active:scale-90 transition-all cursor-pointer shadow-[0_0_8px_rgba(244,63,94,0.4)] group"
-            title="Close"
+            className="w-8 h-8 rounded-xl bg-[#23212C]/60 hover:bg-rose-600/90 border border-[#D2C3F6]/15 hover:border-rose-400 flex items-center justify-center text-[#D2C3F6] hover:text-white transition-all cursor-pointer shadow-md active:scale-90"
+            title="Close Application"
           >
-            <X size={9} weight="bold" className="opacity-0 group-hover:opacity-100 transition-opacity" />
+            <X size={13} weight="bold" />
           </button>
         </div>
       </div>
