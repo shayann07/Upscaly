@@ -1,7 +1,10 @@
+pub mod error;
 mod sidecar_manager;
 mod model_manager;
 mod job_queue;
 mod video_pipeline;
+
+pub use error::AppError;
 
 use sidecar_manager::{GpuDevice, get_gpu_list, kill_all_processes};
 use model_manager::{ModelItem, SignedManifest, ManifestData, verify_signature, get_models_dir, calculate_sha256, get_available_disk_space};
