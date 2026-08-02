@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -123,14 +123,26 @@ export default function App() {
     invoke<GpuDevice[]>("list_gpus")
       .then((res) => {
         setGpus(res);
-        if (res.length > 0) setSelectedGpu(res[0].id);
+        if (res.length > 0) {
+          setSelectedGpu(res[0].id);
+          addToast("info", `GPU Detected: ${res[0].name}`, "Vulkan acceleration is ready.");
+        }
       })
       .catch((err) => console.error("Failed to load GPUs:", err));
 
     // 2. Fetch local installed models
     refreshInstalledModels();
 
-    // 3. Listen to Tauri job queue progress events
+    // 3. First-launch welcome toast
+    const hasLaunched = localStorage.getItem("upscaly_launched");
+    if (!hasLaunched) {
+      localStorage.setItem("upscaly_launched", "true");
+      setTimeout(() => {
+        addToast("info", "Welcome to Upscaly", "Drag any photo or video here to start enhancing.");
+      }, 800);
+    }
+
+    // 4. Listen to Tauri job queue progress events
     const unlistenJob = listen<JobProgress>("job-status-changed", (event) => {
       const { job_id, percentage, status, error, phase, eta_seconds, fps: jobFps } = event.payload;
 
@@ -157,6 +169,7 @@ export default function App() {
         addToast("success", "Upscaling complete!", "Your enhanced media is ready for preview.");
       } else if (status === "failed") {
         setActiveJobId(null);
+        setJobStatus("idle"); // Fall back to file-selected view so UI doesn't go blank
         playErrorSound(isMuted);
         const errStr = error || "Processing failed during sidecar execution.";
         addToast(
@@ -168,13 +181,13 @@ export default function App() {
             : undefined
         );
       } else if (status === "cancelled") {
-        setStatusMessage("Upscaling Cancelled");
         setActiveJobId(null);
+        setJobStatus("idle"); // Fall back to file-selected view so UI doesn't go blank
         addToast("info", "Upscale Cancelled", "Temporary processing files have been cleaned up.");
       }
     });
 
-    // 4. Listen to Tauri model download progress events
+    // 5. Listen to Tauri model download progress events
     const unlistenDownload = listen<DownloadProgressEvent>("download-progress", (event) => {
       const { model_id, file_type, percentage, downloaded, total } = event.payload;
       setDownloadingModelId(model_id);
@@ -189,6 +202,39 @@ export default function App() {
       unlistenDownload.then((fn) => fn());
     };
   }, [activeJobId, isMuted]);
+
+  // --- KEYBOARD SHORTCUTS ---
+  const handleKeyboard = useCallback(
+    (e: KeyboardEvent) => {
+      // Ctrl+O — Open file
+      if ((e.ctrlKey || e.metaKey) && e.key === "o") {
+        e.preventDefault();
+        handleOpenFileDialog();
+      }
+      // Enter or Space — Start upscale (only when file selected and idle)
+      if ((e.key === "Enter" || e.key === " ") && filePath && jobStatus === "idle" && selectedModel) {
+        // Don't trigger if user is typing in an input/select
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        handleStartUpscale();
+      }
+      // Escape — Cancel upscale or clear file
+      if (e.key === "Escape") {
+        if (jobStatus === "processing" || jobStatus === "queued") {
+          handleCancelUpscale();
+        } else if (filePath) {
+          handleClearFile();
+        }
+      }
+    },
+    [filePath, jobStatus, selectedModel]
+  );
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyboard);
+    return () => window.removeEventListener("keydown", handleKeyboard);
+  }, [handleKeyboard]);
 
   const refreshInstalledModels = () => {
     invoke<string[]>("get_installed_models")
@@ -371,8 +417,8 @@ export default function App() {
   };
 
   return (
-    <div className="relative h-screen w-screen flex flex-col text-[#F1FEC8] font-sans overflow-hidden bg-[#16141D] select-none">
-      {/* 60FPS Ambient Shader Background Canvas */}
+    <div className="relative h-screen w-screen flex flex-col text-[#F1FEC8] font-sans overflow-hidden bg-[#16141D] select-none" style={{ isolation: 'isolate' }}>
+      {/* 60FPS Ambient Shader Background Canvas — z-[-1] to stay behind all content */}
       <LiquidShaderBg isProcessing={jobStatus === "processing"} />
 
       {/* Custom Titlebar Header */}
