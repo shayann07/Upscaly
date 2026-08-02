@@ -119,7 +119,7 @@ export default function App() {
 
   // --- INITIALIZATION ---
   useEffect(() => {
-    // 1. Fetch GPU list
+    // 1. Fetch GPU list once on mount
     invoke<GpuDevice[]>("list_gpus")
       .then((res) => {
         setGpus(res);
@@ -141,8 +141,10 @@ export default function App() {
         addToast("info", "Welcome to Upscaly", "Drag any photo or video here to start enhancing.");
       }, 800);
     }
+  }, []);
 
-    // 4. Listen to Tauri job queue progress events
+  // Job and download event listeners
+  useEffect(() => {
     const unlistenJob = listen<JobProgress>("job-status-changed", (event) => {
       const { job_id, percentage, status, error, phase, eta_seconds, fps: jobFps } = event.payload;
 
