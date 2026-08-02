@@ -87,12 +87,71 @@ pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBu
     Err(format!("Could not find sidecar binary '{}'", filename))
 }
 
-/// Discovers Vulkan-capable GPU devices by running the realesrgan sidecar on a dummy file path with verbose mode enabled.
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::System::JobObjects::{
+    CreateJobObjectW, SetInformationJobObject, AssignProcessToJobObject,
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    JobObjectExtendedLimitInformation,
+};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Foundation::HANDLE;
+#[cfg(target_os = "windows")]
+use std::os::windows::io::AsRawHandle;
+
+/// Attaches a spawned child process to a Windows Job Object configured to kill child processes on parent exit.
+#[cfg(target_os = "windows")]
+pub fn attach_to_job_object(child: &Child) {
+    unsafe {
+        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if job != 0 {
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                &info as *const _ as *const _,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            );
+            AssignProcessToJobObject(job, child.as_raw_handle() as HANDLE);
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn attach_to_job_object(_child: &Child) {}
+
+/// Discovers Vulkan GPU devices with 5-second timeout and disk caching.
 pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
+    let app_dir = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let cache_path = app_dir.join("gpu_cache.json");
+
+    // 1. Try reading disk cache
+    if cache_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&cache_path) {
+            if let Ok(cached_gpus) = serde_json::from_str::<Vec<GpuDevice>>(&content) {
+                if !cached_gpus.is_empty() {
+                    return Ok(cached_gpus);
+                }
+            }
+        }
+    }
+
+    // 2. Perform raw discovery
+    let gpus = probe_gpus_raw(app)?;
+
+    // 3. Write cache to disk
+    let _ = std::fs::create_dir_all(&app_dir);
+    if let Ok(json) = serde_json::to_string_pretty(&gpus) {
+        let _ = std::fs::write(&cache_path, json);
+    }
+
+    Ok(gpus)
+}
+
+fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan")?;
     let models_dir = crate::model_manager::get_models_dir(app);
-    
-    // We execute with a dummy file in verbose mode to probe Vulkan devices.
+
     let output = Command::new(sidecar_path)
         .args(&[
             "-i", "non-existent-image-path.jpg",
@@ -110,11 +169,11 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     if let Ok(output_data) = output {
         let stderr_str = String::from_utf8_lossy(&output_data.stderr);
         let stdout_str = String::from_utf8_lossy(&output_data.stdout);
-        
+
         for line in stderr_str.lines().chain(stdout_str.lines()) {
             if line.starts_with('[') && line.contains("] ") {
                 if let Some(end_idx) = line.find(']') {
-                    let inner = &line[1..end_idx]; // "0 NVIDIA GeForce RTX..."
+                    let inner = &line[1..end_idx];
                     let parts: Vec<&str> = inner.splitn(2, ' ').collect();
                     if parts.len() == 2 {
                         if let Ok(id) = parts[0].parse::<i32>() {
@@ -140,13 +199,13 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     }
 
     gpus.sort_by_key(|g| g.id);
-
     Ok(gpus)
 }
 
 /// Track a newly spawned child process
 #[allow(dead_code)]
 pub fn register_process(child: Child) {
+    attach_to_job_object(&child);
     if let Ok(mut lock) = get_active_processes().lock() {
         lock.push(child);
     }
