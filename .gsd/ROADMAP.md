@@ -1,7 +1,7 @@
 # ROADMAP.md
 
 > **Current Milestone**: `v1.0-liquid-glass`
-> **Goal**: Full production-grade rewrite of Upscaly desktop app with Async Rust backend, Windows Job Object sidecar isolation, 60fps Liquid Dark Theme (`Cosmic`/`Violet`/`Lavender`/`Vanilla`), Atropos 3D tilt cards, Liquid Shimmer Pill CTA, 60fps Hardware Split-Comparison Slider, and Resumable Model Downloads.
+> **Goal**: Full production-grade rewrite of Upscaly desktop app with Async Rust backend, Windows Job Object sidecar isolation, 60fps Liquid Dark Theme (`Cosmic`/`Violet`/`Lavender`/`Vanilla`), Atropos 3D tilt cards, Liquid Shimmer Pill CTA, 60fps Hardware Split-Comparison Slider, Resumable Model Downloads, and 100% Automated Testing Suite.
 > **Source of Truth**: [implementation_plan.md](file:///C:/Users/shaya/.gemini/antigravity-ide/brain/7348b482-8515-4914-bd7e-602a6042d4ae/implementation_plan.md)
 
 ## Must-Haves (45-Point Master Specification)
@@ -15,6 +15,7 @@
 - [x] **Model Downloads**: Resumable HTTP Range downloader from GitHub Releases API with SHA256 validation
 - [x] **Notifications**: Floating Liquid Toast Stack with Framer Motion spring physics & one-click auto-fix CTAs
 - [x] **Audio & Settings**: Apple-like UI sound effects & persistent settings store (`app_data_dir/settings.json`)
+- [x] **Automated Testing**: 100% automated test coverage across Rust backend (`cargo test`) and React frontend (`npm run test`)
 
 ---
 
@@ -41,8 +42,6 @@
 **Files**: `components/UpdateBadge.tsx`, `lib/models.ts`, `settings.rs`, full verification suite
 
 ### Phase 5: Comprehensive Automated Testing Suite
-**Status**: ⬜ Not Started  
-**Objective**: Implement unit tests, IPC integration tests, and UI component tests across Rust backend and React frontend.  
-**Depends on**: Phase 4  
-**Tasks**:
-- [ ] TBD (run /plan 5 to create)
+**Status**: ✅ Complete  
+**Objective**: Implement unit tests, IPC integration tests, and UI component tests across Rust backend (`cargo test`) and React frontend (`npm run test`).  
+**Files**: `src-tauri/src/error.rs`, `settings.rs`, `model_manager.rs`, `sidecar_manager.rs`, `vitest.config.ts`, `src/components/__tests__/*`
