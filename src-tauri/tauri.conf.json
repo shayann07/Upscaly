@@ -15,7 +15,8 @@
         "title": "Antigravity AI Upscaler",
         "width": 1280,
         "height": 800,
-        "center": true
+        "center": true,
+        "decorations": false
       }
     ],
     "security": {
