@@ -26,7 +26,7 @@ body {
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
 
-.liquid-glass-card {
+.liquid-glass-card, .glass-card {
   background: rgba(54, 37, 92, 0.35);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
