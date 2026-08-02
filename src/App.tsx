@@ -350,7 +350,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col glass text-slate-100 font-sans selection:bg-blue-600/30 pt-12">
+    <div className="relative h-screen w-screen flex flex-col text-slate-100 font-sans overflow-hidden bg-[#16141D]">
       <LiquidShaderBg isProcessing={jobStatus === "processing"} />
       <Titlebar
         statusText={jobStatus === "processing" ? "Upscaling GPU Inference..." : "Vulkan Engine Ready"}
@@ -363,13 +363,13 @@ function App() {
         }}
       />
 
-      {/* --- MAIN CORE INTERFACE --- */}
-      <main className="flex-1 flex overflow-hidden">
+      {/* --- MAIN CORE INTERFACE WITH Z-INDEX ELEVATION --- */}
+      <main className="relative z-10 flex-1 flex overflow-hidden pt-12">
         {/* LEFT COMPONENT PANEL */}
-        <section className="w-[380px] border-r border-white/5 bg-slate-950/20 p-6 flex flex-col justify-between overflow-y-auto">
+        <section className="w-[380px] border-r border-[#D2C3F6]/15 bg-[#23212C]/70 backdrop-blur-xl p-6 flex flex-col justify-between overflow-y-auto">
           <div className="space-y-6">
             <div>
-              <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+              <h2 className="text-xs font-semibold text-[#D2C3F6]/80 uppercase tracking-wider mb-3">
                 Source File
               </h2>
               {/* File Info Card */}
@@ -548,7 +548,7 @@ function App() {
         </section>
 
         {/* RIGHT PREVIEW & COMPARISON SLIDER PANEL */}
-        <section className="flex-1 bg-black/20 p-6 flex flex-col space-y-6 overflow-y-auto">
+        <section className="flex-1 bg-[#16141D]/40 backdrop-blur-md p-6 flex flex-col space-y-6 overflow-y-auto">
           {/* Active Job State / Log Monitor */}
           {jobStatus !== "idle" && (
             <div className="glass-card rounded-xl p-4 space-y-3">
