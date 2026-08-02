@@ -26,15 +26,15 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
   };
 
   return (
-    <div className="relative rounded-3xl liquid-glass border border-[#D2C3F6]/25 p-5 space-y-4 select-none shadow-2xl backdrop-blur-2xl overflow-hidden">
+    <div className="relative rounded-3xl bg-[#16141D]/40 border border-white/5 p-5 space-y-4 select-none shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-3xl overflow-hidden group">
       {/* Ambient Inner Sheen */}
-      <div className="absolute -top-10 -right-10 w-32 h-32 bg-[#F1FEC8]/10 rounded-full blur-xl pointer-events-none" />
+      <div className="absolute -top-10 -right-10 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl pointer-events-none transition-opacity opacity-50 group-hover:opacity-100" />
 
       {/* Quick Remove Button */}
       <button
         type="button"
         onClick={onRemove}
-        className="absolute top-4 right-4 p-2 rounded-xl bg-[#23212C]/80 text-[#D2C3F6]/70 hover:text-rose-400 hover:bg-rose-950/60 border border-[#D2C3F6]/20 transition-all z-10 cursor-pointer active:scale-90"
+        className="absolute top-4 right-4 p-2 rounded-xl bg-black/40 text-white/50 hover:text-rose-400 hover:bg-rose-500/20 border border-white/5 hover:border-rose-500/30 transition-all z-10 cursor-pointer active:scale-95 shadow-sm"
         title="Remove File"
       >
         <X size={15} weight="bold" />
@@ -42,25 +42,26 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
 
       {/* Media Info Strip */}
       <div className="flex items-center gap-3.5 relative z-10">
-        <div className="w-13 h-13 rounded-2xl bg-gradient-to-tr from-[#36255C] via-[#4A3078] to-[#5E3C98] border border-[#F1FEC8]/30 flex items-center justify-center text-[#F1FEC8] shadow-lg shadow-[#36255C]/50 shrink-0">
-          {isVideo ? <VideoIcon size={26} weight="duotone" /> : <ImageIcon size={26} weight="duotone" />}
+        <div className="w-14 h-14 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-center text-emerald-400 shadow-inner shrink-0 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/10 to-emerald-500/10" />
+          {isVideo ? <VideoIcon size={26} weight="duotone" className="relative z-10" /> : <ImageIcon size={26} weight="duotone" className="relative z-10" />}
         </div>
-        <div className="flex-1 min-w-0 pr-8">
-          <p className="text-xs font-extrabold text-[#F1FEC8] truncate drop-shadow-sm">{fileName}</p>
-          <p className="text-[10px] text-[#D2C3F6]/80 font-mono mt-0.5 font-semibold">
-            {formatSize(fileSize)} &bull; {isVideo ? 'Video File' : 'Image File'}
+        <div className="flex-1 min-w-0 pr-10">
+          <p className="text-sm font-bold text-white truncate drop-shadow-md">{fileName}</p>
+          <p className="text-[10px] text-white/50 font-mono mt-1 font-semibold uppercase tracking-wider">
+            {formatSize(fileSize)} &bull; {isVideo ? 'Video' : 'Image'}
           </p>
         </div>
       </div>
 
       {/* Target Resolution Calculation Pill */}
-      <div className="flex items-center justify-between px-4 py-2.5 rounded-2xl bg-[#16141D]/80 border border-[#D2C3F6]/15 text-xs relative z-10 shadow-inner">
-        <span className="text-[#D2C3F6]/80 text-[11px] font-bold uppercase tracking-wider">Target Resolution</span>
-        <div className="flex items-center gap-2 font-mono font-bold text-[#F1FEC8]">
-          <span>Source</span>
-          <ArrowRight size={14} className="text-[#D2C3F6]" />
-          <span className="px-3 py-1 rounded-full bg-gradient-to-r from-[#36255C] to-[#4A3078] text-[#F1FEC8] text-[10px] border border-[#D2C3F6]/40 flex items-center gap-1 shadow">
-            <Sparkle size={10} weight="fill" className="text-[#F1FEC8]" />
+      <div className="flex items-center justify-between px-4 py-3 rounded-2xl bg-black/40 border border-white/5 text-xs relative z-10 shadow-inner">
+        <span className="text-white/50 text-[10px] font-bold uppercase tracking-widest">Target Resolution</span>
+        <div className="flex items-center gap-2 font-mono font-bold text-white">
+          <span className="text-white/40 text-[10px]">Source</span>
+          <ArrowRight size={12} className="text-white/30" />
+          <span className="px-3 py-1 rounded-full bg-gradient-to-r from-purple-500/20 to-emerald-500/20 text-white text-[10px] border border-white/10 flex items-center gap-1 shadow-[0_0_10px_rgba(255,255,255,0.05)]">
+            <Sparkle size={10} weight="fill" className="text-emerald-400" />
             {scale}x AI Enhanced
           </span>
         </div>
@@ -68,7 +69,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
 
       {/* Media Thumbnail Container */}
       {!isVideo && (
-        <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-[#D2C3F6]/20 bg-[#121018] shadow-inner relative z-10">
+        <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-white/10 bg-black/60 shadow-inner relative z-10 flex items-center justify-center">
           <img
             src={convertFileSrc(filePath)}
             alt={fileName}

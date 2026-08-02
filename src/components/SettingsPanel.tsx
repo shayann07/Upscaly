@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Cpu, Sparkle } from '@phosphor-icons/react';
+import { Cpu, Sparkle, Image as ImageIcon, Video as VideoIcon, Palette } from '@phosphor-icons/react';
 import { CustomSelect } from './CustomSelect';
 
 interface SettingsPanelProps {
@@ -23,9 +23,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onSelectScale,
 }) => {
   const categories = [
-    { id: 'photos', label: 'Photos' },
-    { id: 'anime', label: 'Anime & Art' },
-    { id: 'video', label: 'Video' },
+    { id: 'photos', label: 'Photos', icon: <ImageIcon size={14} weight="duotone" /> },
+    { id: 'anime', label: 'Anime & Art', icon: <Palette size={14} weight="duotone" /> },
+    { id: 'video', label: 'Video', icon: <VideoIcon size={14} weight="duotone" /> },
   ] as const;
 
   const modelOptions = installedModels.map((m) => ({
@@ -35,14 +35,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   }));
 
   return (
-    <div className="space-y-5 select-none rounded-3xl liquid-glass border border-[#D2C3F6]/20 p-5 shadow-2xl backdrop-blur-2xl">
-      {/* Category Tabs with Framer Motion sliding pill indicator */}
-      <div className="space-y-2">
-        <label className="text-[11px] font-bold uppercase tracking-wider text-[#D2C3F6]/80 flex items-center justify-between">
+    <div className="space-y-6 select-none bg-[#16141D]/40 rounded-3xl border border-white/5 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-3xl relative overflow-hidden">
+      {/* Subtle glowing accent inside the card */}
+      <div className="absolute top-0 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-purple-500/50 to-transparent" />
+
+      {/* Category Tabs */}
+      <div className="space-y-3">
+        <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 flex items-center justify-between">
           <span>Preset Category</span>
-          <span className="text-[10px] text-[#F1FEC8] font-mono capitalize">{category} Mode</span>
+          <span className="text-emerald-400 font-mono capitalize">{category} Mode</span>
         </label>
-        <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-[#16141D]/90 border border-[#D2C3F6]/15 relative">
+        <div className="flex bg-black/40 p-1 rounded-2xl border border-white/5 relative shadow-inner">
           {categories.map((cat) => {
             const isActive = category === cat.id;
             return (
@@ -50,17 +53,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 key={cat.id}
                 type="button"
                 onClick={() => onSelectCategory(cat.id)}
-                className={`relative py-2.5 text-xs font-bold transition-all z-10 cursor-pointer ${
-                  isActive ? 'text-[#F1FEC8] drop-shadow-md' : 'text-[#D2C3F6]/60 hover:text-[#D2C3F6]'
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold transition-all z-10 cursor-pointer rounded-xl ${
+                  isActive ? 'text-white drop-shadow-md' : 'text-white/40 hover:text-white/80'
                 }`}
               >
                 {isActive && (
                   <motion.div
-                    layoutId="active-category-pill"
+                    layoutId="active-category"
+                    className="absolute inset-y-1 rounded-xl bg-gradient-to-b from-purple-500/80 to-purple-700/80 shadow-[0_0_12px_rgba(168,85,247,0.4)] border border-purple-400/30 -z-10"
+                    style={{ width: 'calc(33.333% - 5px)', left: cat.id === 'photos' ? '4px' : cat.id === 'anime' ? 'calc(33.333% + 2px)' : 'calc(66.666%)' }}
                     transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-                    className="absolute inset-0 rounded-xl bg-gradient-to-r from-[#36255C] via-[#4A3078] to-[#5E3C98] border border-[#D2C3F6]/40 shadow-lg shadow-[#36255C]/60 -z-10"
                   />
                 )}
+                {cat.icon}
                 {cat.label}
               </button>
             );
@@ -68,9 +73,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
       </div>
 
-      {/* Model Selection Dropdown (Custom Glass Select) */}
-      <div className="space-y-2">
-        <label className="text-[11px] font-bold uppercase tracking-wider text-[#D2C3F6]/80">
+      {/* Model Selection */}
+      <div className="space-y-3">
+        <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">
           AI Model Weights
         </label>
         <CustomSelect
@@ -78,16 +83,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           value={selectedModel}
           onChange={(val) => onSelectModel(String(val))}
           placeholder={installedModels.length === 0 ? 'No Models Installed' : 'Select AI Model...'}
-          icon={<Cpu size={16} className="text-[#F1FEC8]" />}
+          icon={<Cpu size={16} className="text-purple-400" />}
+          width="100%"
         />
       </div>
 
-      {/* Scale Factor Buttons (2x, 3x, 4x) */}
-      <div className="space-y-2">
-        <label className="text-[11px] font-bold uppercase tracking-wider text-[#D2C3F6]/80">
+      {/* Scale Factor */}
+      <div className="space-y-3">
+        <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">
           Resolution Multiplier
         </label>
-        <div className="grid grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-3 gap-3">
           {[2, 3, 4].map((s) => {
             const isSelected = scale === s;
             return (
@@ -95,14 +101,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 key={s}
                 type="button"
                 onClick={() => onSelectScale(s)}
-                className={`relative py-3 text-xs font-bold rounded-2xl border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                className={`relative group overflow-hidden py-3 text-sm font-bold rounded-2xl border transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 ${
                   isSelected
-                    ? 'bg-gradient-to-r from-[#36255C] via-[#4A3078] to-[#5E3C98] text-[#F1FEC8] border-[#F1FEC8]/50 shadow-xl shadow-[#36255C]/60 scale-[1.02]'
-                    : 'bg-[#23212C]/60 text-[#D2C3F6]/60 border-[#D2C3F6]/15 hover:text-[#F1FEC8] hover:bg-[#23212C]/90 hover:border-[#D2C3F6]/30'
+                    ? 'bg-gradient-to-b from-purple-500/20 to-purple-900/40 text-white border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.3)]'
+                    : 'bg-black/20 text-white/40 border-white/5 hover:text-white hover:bg-white/5 hover:border-white/10'
                 }`}
               >
-                {isSelected && <Sparkle size={12} weight="fill" className="text-[#F1FEC8] animate-spin" />}
-                <span>{s}x Scale</span>
+                {/* Hover gradient sweep */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out" />
+                
+                {isSelected && (
+                  <Sparkle size={14} weight="fill" className="text-purple-300 animate-pulse drop-shadow-[0_0_5px_rgba(216,180,254,0.8)]" />
+                )}
+                <span>{s}x <span className={isSelected ? 'text-purple-200/80 font-medium text-xs' : 'text-white/30 font-medium text-xs'}>Scale</span></span>
               </button>
             );
           })}

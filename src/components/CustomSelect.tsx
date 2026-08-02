@@ -16,6 +16,8 @@ interface CustomSelectProps {
   placeholder?: string;
   icon?: React.ReactNode;
   className?: string;
+  width?: string;
+  renderTrigger?: () => React.ReactNode;
 }
 
 export const CustomSelect: React.FC<CustomSelectProps> = ({
@@ -25,6 +27,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   placeholder = 'Select option...',
   icon,
   className = '',
+  width = '100%',
+  renderTrigger,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -42,8 +46,11 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   }, []);
 
   return (
-    <div ref={containerRef} className={`relative select-none ${className}`}>
+    <div ref={containerRef} className={`relative select-none ${className}`} style={{ width }}>
       {/* Select Trigger Pill Button */}
+      {renderTrigger ? (
+        <div onClick={() => setIsOpen(!isOpen)}>{renderTrigger()}</div>
+      ) : (
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -62,6 +69,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           }`}
         />
       </button>
+      )}
 
       {/* Animated Dropdown Menu */}
       <AnimatePresence>
