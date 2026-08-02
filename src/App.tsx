@@ -352,54 +352,16 @@ function App() {
   return (
     <div className="min-h-screen flex flex-col glass text-slate-100 font-sans selection:bg-blue-600/30 pt-12">
       <LiquidShaderBg isProcessing={jobStatus === "processing"} />
-      <Titlebar statusText={jobStatus === "processing" ? "Upscaling GPU Inference..." : "Vulkan Engine Ready"} />
-      <header className="sticky top-0 z-40 w-full glass border-b border-white/5 py-4 px-6 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Sparkles className="w-5 h-5 text-white animate-pulse" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-              Antigravity AI Upscaler
-            </h1>
-            <p className="text-xs text-slate-400 font-medium">Real-ESRGAN Vulkan Native</p>
-          </div>
-        </div>
-
-        <div className="flex items-center space-x-4">
-          {/* GPU Selector */}
-          <div className="flex items-center bg-black/30 border border-white/5 rounded-lg px-3 py-1.5 space-x-2">
-            <Cpu className="w-4 h-4 text-blue-400" />
-            <select
-              value={selectedGpu}
-              onChange={(e) => setSelectedGpu(Number(e.target.value))}
-              className="bg-transparent text-xs text-slate-200 focus:outline-none cursor-pointer pr-2"
-            >
-              {gpus.length === 0 ? (
-                <option value="0" className="bg-slate-900">Scanning GPUs...</option>
-              ) : (
-                gpus.map((g) => (
-                  <option key={g.id} value={g.id} className="bg-slate-900">
-                    GPU {g.id}: {g.name.length > 25 ? g.name.substring(0, 25) + "..." : g.name}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
-
-          {/* Model Catalog Button */}
-          <button
-            onClick={() => {
-              setShowModelManager(true);
-              handleFetchManifest();
-            }}
-            className="flex items-center space-x-2 text-xs bg-slate-800 hover:bg-slate-700/80 border border-white/10 text-slate-200 px-3 py-2 rounded-lg transition"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Model Catalog</span>
-          </button>
-        </div>
-      </header>
+      <Titlebar
+        statusText={jobStatus === "processing" ? "Upscaling GPU Inference..." : "Vulkan Engine Ready"}
+        gpus={gpus}
+        selectedGpu={selectedGpu}
+        onSelectGpu={(id) => setSelectedGpu(id)}
+        onOpenModelCatalog={() => {
+          setShowModelManager(true);
+          handleFetchManifest();
+        }}
+      />
 
       {/* --- MAIN CORE INTERFACE --- */}
       <main className="flex-1 flex overflow-hidden">
