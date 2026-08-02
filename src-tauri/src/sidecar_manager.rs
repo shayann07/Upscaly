@@ -219,3 +219,22 @@ pub fn kill_all_processes() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_gpu_device_struct() {
+        let gpu = GpuDevice {
+            id: 0,
+            name: "NVIDIA GeForce RTX 4090".to_string(),
+        };
+
+        assert_eq!(gpu.id, 0);
+        assert_eq!(gpu.name, "NVIDIA GeForce RTX 4090");
+
+        let json = serde_json::to_string(&gpu).unwrap();
+        assert!(json.contains("NVIDIA GeForce RTX 4090"));
+    }
+}

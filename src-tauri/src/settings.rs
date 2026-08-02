@@ -51,3 +51,30 @@ pub fn save_settings(app: &AppHandle, settings: &AppSettings) -> Result<(), Stri
     let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
     fs::write(path, json).map_err(|e| e.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_settings_default() {
+        let defaults = AppSettings::default();
+        assert_eq!(defaults.default_gpu_id, 0);
+        assert_eq!(defaults.default_scale, 4);
+        assert_eq!(defaults.default_tile_size, 0);
+        assert_eq!(defaults.sound_muted, false);
+    }
+
+    #[test]
+    fn test_app_settings_json_roundtrip() {
+        let mut settings = AppSettings::default();
+        settings.sound_muted = true;
+        settings.default_scale = 2;
+
+        let json = serde_json::to_string(&settings).unwrap();
+        let parsed: AppSettings = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.sound_muted, true);
+        assert_eq!(parsed.default_scale, 2);
+    }
+}

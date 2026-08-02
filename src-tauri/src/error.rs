@@ -72,3 +72,20 @@ impl Serialize for AppError {
         state.end()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_error_serialization() {
+        let err = AppError::SidecarNotFound { path: "realesrgan.exe".into() };
+        let json = serde_json::to_string(&err).unwrap();
+        assert!(json.contains("SIDECAR_NOT_FOUND"));
+        assert!(json.contains("realesrgan.exe"));
+
+        let gpu_err = AppError::GpuError { message: "Device 0 lost".into() };
+        let json_gpu = serde_json::to_string(&gpu_err).unwrap();
+        assert!(json_gpu.contains("GPU_ERROR"));
+    }
+}

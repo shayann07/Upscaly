@@ -238,3 +238,25 @@ pub async fn download_file(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn test_calculate_sha256() {
+        let temp_dir = std::env::temp_dir();
+        let test_file = temp_dir.join("upscaly_sha256_test.txt");
+
+        {
+            let mut f = std::fs::File::create(&test_file).unwrap();
+            f.write_all(b"Upscaly Real-ESRGAN Vulkan").unwrap();
+        }
+
+        let hash = calculate_sha256(&test_file).unwrap();
+        assert_eq!(hash.len(), 64);
+
+        let _ = std::fs::remove_file(&test_file);
+    }
+}
