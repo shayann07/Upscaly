@@ -24,7 +24,7 @@ describe('SettingsPanel Component', () => {
   it('fires scale selection callback on click', () => {
     const onSelectScale = vi.fn();
     render(<SettingsPanel {...defaultProps} onSelectScale={onSelectScale} />);
-    const scale2xBtn = screen.getByText('2x Scale');
+    const scale2xBtn = screen.getByText(/2x/);
     fireEvent.click(scale2xBtn);
     expect(onSelectScale).toHaveBeenCalledWith(2);
   });
