@@ -1,177 +1,246 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { convertFileSrc } from '@tauri-apps/api/core';
-import { MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowsOut, SlidersHorizontal } from '@phosphor-icons/react';
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
 interface ComparisonSliderProps {
-  originalPath: string;
-  upscaledPath: string;
+  inputPath?: string;
+  outputPath?: string;
+  originalPath?: string;
+  upscaledPath?: string;
+  mode?: "split" | "side";
+  viewMode?: "split" | "side-by-side";
+  zoom?: number;
+  onZoomChange?: (newZoom: number) => void;
+  accentColor?: string;
+  onToggleViewMode?: () => void;
+  isHoldingOriginal?: boolean;
 }
 
-export const ComparisonSlider: React.FC<ComparisonSliderProps> = ({
+export function ComparisonSlider({
+  inputPath,
+  outputPath,
   originalPath,
   upscaledPath,
-}) => {
-  const [sliderPos, setSliderPos] = useState(50);
-  const [zoomLevel, setZoomLevel] = useState<1 | 2 | 4>(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  mode = "split",
+  viewMode,
+  zoom = 1,
+  onZoomChange,
+  accentColor = "var(--accent)",
+}: ComparisonSliderProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [sliderPct, setSliderPct] = useState(52);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const [isHolding, setIsHolding] = useState(false);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [startPan, setStartPan] = useState({ x: 0, y: 0 });
 
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const isDraggingSlider = useRef(false);
-  const isPanning = useRef(false);
-  const startPan = useRef({ x: 0, y: 0 });
-  const animFrameId = useRef<number | null>(null);
+  const [inputDims, setInputDims] = useState<{ w: number; h: number } | null>(null);
+  const [outputDims, setOutputDims] = useState<{ w: number; h: number } | null>(null);
 
-  // 60FPS Hardware Drag Handler via requestAnimationFrame
-  const updateSliderPosition = useCallback((clientX: number) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
+  const realInputPath = inputPath || originalPath || "";
+  const realOutputPath = outputPath || upscaledPath || "";
+  const activeMode = viewMode === "side-by-side" ? "side" : mode;
 
-    if (animFrameId.current) cancelAnimationFrame(animFrameId.current);
-    animFrameId.current = requestAnimationFrame(() => {
-      setSliderPos(percentage);
-    });
+  const inputSrc = useMemo(() => realInputPath ? convertFileSrc(realInputPath) : "", [realInputPath]);
+  const outputSrc = useMemo(() => realOutputPath ? convertFileSrc(realOutputPath) : "", [realOutputPath]);
+
+  // Reset pan when zoom is reset to 1x
+  useEffect(() => {
+    if (zoom <= 1) {
+      setPanOffset({ x: 0, y: 0 });
+    }
+  }, [zoom]);
+
+  // Get image dimensions
+  useEffect(() => {
+    if (!inputSrc || !outputSrc) return;
+    const img1 = new Image();
+    img1.onload = () => setInputDims({ w: img1.naturalWidth, h: img1.naturalHeight });
+    img1.src = inputSrc;
+
+    const img2 = new Image();
+    img2.onload = () => setOutputDims({ w: img2.naturalWidth, h: img2.naturalHeight });
+    img2.src = outputSrc;
+  }, [inputSrc, outputSrc]);
+
+  // Space hold for reveal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Space" && e.target === document.body) {
+        e.preventDefault();
+        setIsHolding(true);
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Space") setIsHolding(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
   }, []);
 
-  const handleMouseDownSlider = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    isDraggingSlider.current = true;
-  };
-
-  const handleMouseDownContainer = (e: React.MouseEvent) => {
-    if (zoomLevel > 1) {
-      isPanning.current = true;
-      startPan.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+  // Mouse wheel zoom handler
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 1.25 : 0.8;
+    const newZoom = Math.max(1, Math.min(10, Math.round(zoom * delta * 10) / 10));
+    if (onZoomChange) {
+      onZoomChange(newZoom);
     }
   };
 
+  // Drag / Pan mouse handlers
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (zoom > 1 && e.button === 0) {
+        setIsPanning(true);
+        setStartPan({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+      } else if (activeMode === "split" && e.button === 0) {
+        setIsDragging(true);
+        updateSlider(e.clientX);
+      }
+    },
+    [zoom, panOffset, activeMode]
+  );
+
+  const updateSlider = useCallback(
+    (clientX: number) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const pct = Math.max(1, Math.min(99, ((clientX - rect.left) / rect.width) * 100));
+      setSliderPct(pct);
+    },
+    []
+  );
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (isDraggingSlider.current) {
-        updateSliderPosition(e.clientX);
-      } else if (isPanning.current) {
-        setPan({
-          x: e.clientX - startPan.current.x,
-          y: e.clientY - startPan.current.y,
+      if (isPanning) {
+        setPanOffset({
+          x: e.clientX - startPan.x,
+          y: e.clientY - startPan.y,
         });
+      } else if (isDragging) {
+        updateSlider(e.clientX);
       }
     };
 
     const handleMouseUp = () => {
-      isDraggingSlider.current = false;
-      isPanning.current = false;
+      setIsDragging(false);
+      setIsPanning(false);
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      if (animFrameId.current) cancelAnimationFrame(animFrameId.current);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [updateSliderPosition, pan.x, pan.y, zoomLevel]);
+  }, [isDragging, isPanning, startPan, updateSlider]);
 
-  const handleZoomToggle = () => {
-    if (zoomLevel === 1) setZoomLevel(2);
-    else if (zoomLevel === 2) setZoomLevel(4);
-    else {
-      setZoomLevel(1);
-      setPan({ x: 0, y: 0 });
-    }
-  };
+  const EASE = "var(--ease-spring)";
 
-  const resetZoom = () => {
-    setZoomLevel(1);
-    setPan({ x: 0, y: 0 });
-  };
+  // Image style matrix with zoom and pan transform
+  const imageStyle = (src: string, isBlurred?: boolean): React.CSSProperties => ({
+    position: "absolute",
+    inset: 0,
+    backgroundImage: `url(${src})`,
+    backgroundSize: "contain",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+    filter: isBlurred ? "blur(2.4px) saturate(.82)" : "none",
+    transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
+    transformOrigin: "center center",
+    transition: isPanning ? "none" : `transform .22s ${EASE}`,
+  });
 
-  return (
-    <div className="relative w-full max-w-4xl mx-auto flex flex-col gap-3 select-none">
-      {/* Header & Zoom Controls Bar */}
-      <div className="flex items-center justify-between px-2 text-xs">
-        <div className="flex items-center gap-2 font-mono text-[#D2C3F6]/80">
-          <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
-          <span>Original (Left) vs Upscaled (Right)</span>
+  if (activeMode === "side") {
+    return (
+      <div
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        className="absolute inset-0 grid grid-cols-2 gap-0.5 bg-[var(--bg-base)] select-none"
+        style={{ cursor: zoom > 1 ? (isPanning ? "grabbing" : "grab") : "default" }}
+      >
+        <div className="relative overflow-hidden">
+          <div style={imageStyle(inputSrc, true)} />
+          <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] text-[var(--text-tertiary)] tracking-[0.06em]">
+            ORIGINAL{inputDims ? ` · ${inputDims.w}×${inputDims.h}` : ""}
+          </div>
         </div>
-
-        {/* Zoom Lens Pill Controls */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#23212C]/80 border border-[#D2C3F6]/20 backdrop-blur-md">
-          <button
-            onClick={handleZoomToggle}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#36255C] text-[#F1FEC8] hover:bg-[#4A3078] transition-colors font-mono font-bold text-[11px]"
-            title="Toggle Zoom (1x / 2x / 4x)"
-          >
-            {zoomLevel === 4 ? (
-              <MagnifyingGlassMinus size={14} />
-            ) : (
-              <MagnifyingGlassPlus size={14} />
-            )}
-            <span>{zoomLevel}x Zoom</span>
-          </button>
-          {zoomLevel > 1 && (
-            <button
-              onClick={resetZoom}
-              className="p-1 rounded-lg text-[#D2C3F6]/70 hover:text-[#F1FEC8] hover:bg-[#36255C]/50 transition-colors"
-              title="Reset Zoom & Pan"
-            >
-              <ArrowsOut size={14} />
-            </button>
-          )}
+        <div className="relative overflow-hidden">
+          <div style={imageStyle(outputSrc)} />
+          <div className="absolute bottom-3 right-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em]" style={{ color: accentColor }}>
+            UPSCALED{outputDims ? ` · ${outputDims.w}×${outputDims.h}` : ""}
+          </div>
         </div>
       </div>
+    );
+  }
 
-      {/* Main Split Slider Viewport */}
+  // Split mode
+  return (
+    <div
+      ref={containerRef}
+      onWheel={handleWheel}
+      onMouseDown={handleMouseDown}
+      className="absolute inset-0 overflow-hidden select-none"
+      style={{ cursor: zoom > 1 ? (isPanning ? "grabbing" : "grab") : "ew-resize" }}
+    >
+      {/* Output (fine) layer — full frame */}
+      <div className="absolute inset-0">
+        <div style={imageStyle(outputSrc)} />
+      </div>
+
+      {/* Input (coarse) layer — clipped */}
       <div
-        ref={containerRef}
-        onMouseDown={handleMouseDownContainer}
-        className={`relative aspect-video w-full rounded-3xl overflow-hidden liquid-glass border border-[#D2C3F6]/20 shadow-2xl ${
-          zoomLevel > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-ew-resize'
-        }`}
+        className="absolute inset-0"
+        style={{
+          clipPath: `inset(0 ${isHolding ? 0 : 100 - sliderPct}% 0 0)`,
+          transition: "clip-path .08s linear",
+        }}
       >
-        {/* Transform Layer for Zoom & Pan */}
-        <div
-          className="w-full h-full relative transition-transform duration-150 ease-out"
-          style={{
-            transform: `scale(${zoomLevel}) translate(${pan.x / zoomLevel}px, ${pan.y / zoomLevel}px)`,
-            transformOrigin: 'center center',
-          }}
-        >
-          {/* Base Layer: Original Image */}
-          <img
-            src={convertFileSrc(originalPath)}
-            alt="Original"
-            className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-          />
+        <div style={imageStyle(inputSrc, true)} />
+      </div>
 
-          {/* Top Layer: Upscaled Image with clip-path inset */}
-          <img
-            src={convertFileSrc(upscaledPath || originalPath)}
-            alt="Upscaled"
-            className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-            style={{
-              clipPath: `inset(0 0 0 ${sliderPos}%)`,
-              willChange: 'clip-path',
-            }}
-          />
-        </div>
+      {/* Divider line */}
+      <div
+        className="absolute top-0 bottom-0 w-px bg-[var(--text-primary)] z-[6] pointer-events-none"
+        style={{
+          left: `${isHolding ? 100 : sliderPct}%`,
+          opacity: isHolding ? 0 : 1,
+        }}
+      />
 
-        {/* Vertical Glowing Laser Divider Line */}
-        <div
-          className="absolute top-0 bottom-0 width-[2px] bg-[#D2C3F6] pointer-events-none shadow-[0_0_12px_#D2C3F6,0_0_24px_#36255C] z-20"
-          style={{ left: `${sliderPos}%` }}
-        />
+      {/* Handle */}
+      <div
+        className="absolute top-1/2 w-7 h-7 rounded-full bg-[var(--text-primary)] flex items-center justify-center z-[7] cursor-ew-resize shadow-[0_4px_14px_rgba(0,0,0,.6)] pointer-events-none"
+        style={{
+          left: `${sliderPct}%`,
+          transform: "translate(-50%, -50%)",
+          opacity: isHolding ? 0 : 1,
+        }}
+      >
+        <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--bg-base)] tracking-[0.04em]">◀▶</span>
+      </div>
 
-        {/* Liquid Glass Center Handle Pill */}
-        <div
-          onMouseDown={handleMouseDownSlider}
-          className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-[#23212C]/90 border-2 border-[#D2C3F6] text-[#F1FEC8] flex items-center justify-center shadow-2xl shadow-[#36255C]/80 cursor-ew-resize hover:scale-110 active:scale-125 transition-transform z-30"
-          style={{ left: `${sliderPos}%` }}
-        >
-          <SlidersHorizontal size={18} className="rotate-90 text-[#F1FEC8]" />
-        </div>
+      {/* Labels */}
+      <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] text-[var(--text-tertiary)] tracking-[0.06em] z-10 pointer-events-none">
+        ORIGINAL{inputDims ? ` · ${inputDims.w}×${inputDims.h}` : ""}
+      </div>
+      <div
+        className="absolute bottom-3 right-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] z-10 pointer-events-none"
+        style={{ color: accentColor }}
+      >
+        UPSCALED{outputDims ? ` · ${outputDims.w}×${outputDims.h}` : ""}
       </div>
     </div>
   );
-};
+}
+
+export default ComparisonSlider;

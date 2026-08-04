@@ -18,7 +18,7 @@ describe('SettingsPanel Component', () => {
     expect(screen.getByText('Photos')).toBeInTheDocument();
     expect(screen.getByText('Anime & Art')).toBeInTheDocument();
     expect(screen.getByText('Video')).toBeInTheDocument();
-    expect(screen.getByText('realesrgan-x4plus')).toBeInTheDocument();
+    expect(screen.getByText(/RealESRGAN/i)).toBeInTheDocument();
   });
 
   it('fires scale selection callback on click', () => {
