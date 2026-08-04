@@ -79,9 +79,12 @@ export function AdvancedSettings({
   const vramPct = Math.min(100, Math.round((usedVramGb / totalVramGb) * 100));
 
   const handleAutoTuneClick = () => {
-    let recTile = 0; // Auto
-    if (totalVramGb <= 4) {
-      recTile = 128;
+    let recTile = 0; // Auto by default
+    const isIntel = currentGpu && (currentGpu.name.toLowerCase().includes("intel") || currentGpu.name.toLowerCase().includes("uhd"));
+    if (isIntel) {
+      recTile = 256; // 256px tile size reduces tile overhead by 75% on Intel iGPUs
+    } else if (totalVramGb <= 4) {
+      recTile = 256;
     } else if (totalVramGb <= 8) {
       recTile = 256;
     } else {
@@ -91,7 +94,7 @@ export function AdvancedSettings({
     handleTileSize(recTile);
 
     if (onAutoTune) {
-      onAutoTune(recTile, `${totalVramGb}.0 GB VRAM`);
+      onAutoTune(recTile, `${totalVramGb}.0 GB VRAM (${isIntel ? "Intel GPU Tuned" : "Auto Tuned"})`);
     }
   };
 
