@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { motion } from "framer-motion";
 import { SUPPORTED_MODELS, ModelInfo } from "../lib/types";
 
@@ -29,43 +28,16 @@ export function ModelCatalogModal({
   onClose,
   accentColor = "var(--accent)",
   isOpen = true,
-  installedModelIds,
-  onDownloadModel,
-  downloadingModelId,
+  installedModelIds = [],
+  onDownloadModel = () => {},
+  downloadingModelId = null,
   downloadProgress = 0,
 }: ModelCatalogModalProps) {
-  const [localInstalled, setLocalInstalled] = useState<string[]>(
-    SUPPORTED_MODELS.filter((m: ModelInfo) => m.installed).map((m: ModelInfo) => m.id)
-  );
-  const [localDownloading, setLocalDownloading] = useState<string | null>(null);
-  const [localDlPct, setLocalDlPct] = useState(0);
-
   if (isOpen === false) return null;
 
-  const activeInstalled = installedModelIds && installedModelIds.length > 0 ? installedModelIds : localInstalled;
-  const activeDownloading = downloadingModelId !== undefined ? downloadingModelId : localDownloading;
-  const activeDlPct = downloadingModelId !== undefined ? downloadProgress : localDlPct;
-
-  const handleDownload = (model: ModelInfo) => {
-    if (onDownloadModel) {
-      onDownloadModel(model.id);
-      return;
-    }
-    setLocalDownloading(model.id);
-    setLocalDlPct(0);
-    const iv = setInterval(() => {
-      setLocalDlPct((prev) => {
-        const next = prev + 7 + Math.random() * 9;
-        if (next >= 100) {
-          clearInterval(iv);
-          setLocalDownloading(null);
-          setLocalInstalled((prev) => [...prev, model.id]);
-          return 100;
-        }
-        return next;
-      });
-    }, 180);
-  };
+  const activeInstalled = installedModelIds;
+  const activeDownloading = downloadingModelId;
+  const activeDlPct = downloadProgress;
 
   return (
     <motion.div
@@ -141,7 +113,7 @@ export function ModelCatalogModal({
                   )}
                   {!isInstalled && !isDl && (
                     <button
-                      onClick={() => handleDownload(m)}
+                      onClick={() => onDownloadModel(m.id)}
                       className="h-7 px-3 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-elevated)] text-[#EDEAE6] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)]"
                     >
                       Download
