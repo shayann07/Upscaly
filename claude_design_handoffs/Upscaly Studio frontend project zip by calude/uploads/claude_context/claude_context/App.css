@@ -1,0 +1,108 @@
+@import "tailwindcss";
+@import "atropos/css";
+
+:root {
+  --bg-obsidian: #0D0D11;
+  --bg-surface: #141419;
+  --bg-surface-card: #181820;
+  --bg-surface-hover: #22222B;
+  --border-muted: #272730;
+  --border-subtle: #1F1F26;
+  --border-accent: #3F3F4A;
+  --accent-indigo: #5B5BD6;
+  --accent-indigo-hover: #4C4CBE;
+  --accent-emerald: #10B981;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg-obsidian);
+  color: #ECECEE;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Obsidian Studio UI Classes */
+.obsidian-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-muted);
+}
+
+.obsidian-panel {
+  background-color: var(--bg-surface-card);
+  border: 1px solid var(--border-muted);
+}
+
+.obsidian-input {
+  background-color: #0F0F14;
+  border: 1px solid var(--border-muted);
+  color: #ECECEE;
+}
+
+.obsidian-input:focus {
+  border-color: var(--accent-indigo);
+  outline: none;
+}
+
+/* Slider comparison styles */
+.slider-container {
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+}
+
+.slider-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #FFFFFF;
+  cursor: ew-resize;
+  z-index: 20;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
+}
+
+.slider-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 32px;
+  height: 32px;
+  background: #181820;
+  border: 1.5px solid #3F3F4A;
+  border-radius: 50%;
+  cursor: ew-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  z-index: 21;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.slider-handle:hover {
+  background: #22222B;
+  border-color: var(--accent-indigo);
+}
+
+/* Custom Minimalist Scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0D0D11;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #272730;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3F3F4A;
+}

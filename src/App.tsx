@@ -1,47 +1,40 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { motion, AnimatePresence } from "framer-motion";
-import { XCircle, CheckCircle, Download, ArrowsClockwise, Image as ImageIcon, Video as VideoIcon, UploadSimple, ListPlus } from "@phosphor-icons/react";
 
-import "./App.css";
-import { LiquidShaderBg } from "./components/LiquidShaderBg";
+// Custom Components & Libs
 import { Titlebar } from "./components/Titlebar";
 import { DropZone } from "./components/DropZone";
-import { FilePreview } from "./components/FilePreview";
+import { ProgressOverlay } from "./components/ProgressOverlay";
+import { CompletionCard } from "./components/CompletionCard";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { AdvancedSettings } from "./components/AdvancedSettings";
-import { UpscaleButton } from "./components/UpscaleButton";
-import { ProgressOverlay } from "./components/ProgressOverlay";
 import { ComparisonSlider } from "./components/ComparisonSlider";
-import { CompletionCard } from "./components/CompletionCard";
+import { ModelCatalogModal } from "./components/ModelCatalogModal";
 import { ToastContainer, ToastItem } from "./components/ToastContainer";
-import { UpdateBadge } from "./components/UpdateBadge";
+import { RecentHistoryDrawer } from "./components/RecentHistoryDrawer";
+import { AboutModal } from "./components/AboutModal";
+import { BatchQueueView, BatchItem } from "./components/BatchQueueView";
+
 import { playDropSound, playCompleteSound, playErrorSound } from "./lib/sound";
+import { getMediaSrc } from "./lib/media";
+import { getModelMetadata } from "./lib/models";
+import { addHistoryItem, getRecentHistory, HistoryItem } from "./lib/history";
 
 interface GpuDevice {
   id: number;
   name: string;
-}
-
-interface ModelItem {
-  id: string;
-  name: string;
-  version: string;
-  param_url: string;
-  param_sha256: string;
-  param_size: number;
-  bin_url: string;
-  bin_sha256: string;
-  bin_size: number;
+  detail?: string;
 }
 
 interface JobProgress {
   job_id: string;
   percentage: number;
   status: string;
-  error: string | null;
+  error?: string;
   phase?: string;
   eta_seconds?: number;
   fps?: number;
@@ -49,243 +42,371 @@ interface JobProgress {
 
 interface DownloadProgressEvent {
   model_id: string;
-  file_type: "param" | "bin";
-  downloaded: number;
-  total: number;
   percentage: number;
 }
+
+interface BackendSettings {
+  default_gpu_id: number;
+  default_scale: number;
+  default_tile_size: number;
+  output_directory: string | null;
+  sound_muted: boolean;
+  auto_check_updates: boolean;
+}
+
+const getMediaDimensions = (src: string, isVid: boolean): Promise<{ w: number; h: number }> => {
+  return new Promise((resolve) => {
+    if (isVid) {
+      const vid = document.createElement("video");
+      vid.src = src;
+      vid.onloadedmetadata = () => {
+        resolve({ w: vid.videoWidth || 1920, h: vid.videoHeight || 1080 });
+      };
+      vid.onerror = () => resolve({ w: 1920, h: 1080 });
+    } else {
+      const img = new Image();
+      img.src = src;
+      img.onload = () => {
+        resolve({ w: img.width || 1920, h: img.height || 1080 });
+      };
+      img.onerror = () => resolve({ w: 1920, h: 1080 });
+    }
+  });
+};
 
 export default function App() {
   // --- STATE ---
   const [gpus, setGpus] = useState<GpuDevice[]>([]);
   const [selectedGpu, setSelectedGpu] = useState<number>(0);
   const [installedModels, setInstalledModels] = useState<string[]>([]);
-  const [cloudModels, setCloudModels] = useState<ModelItem[]>([]);
   const [category, setCategory] = useState<"photos" | "anime" | "video">("photos");
 
-  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState<string>("realesrgan-x4plus");
   const [scale, setScale] = useState<number>(4);
   const [tileSize, setTileSize] = useState<number>(0); // 0 = Auto
   const [customOutputPath, setCustomOutputPath] = useState<string>("");
+  const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
+  const [isAboutOpen, setIsAboutOpen] = useState<boolean>(false);
 
-  // Sound Settings
-  const [isMuted] = useState<boolean>(false);
-
-  // File Details
+  // File & Batch state
   const [filePath, setFilePath] = useState<string>("");
   const [fileName, setFileName] = useState<string>("");
-  const [fileSize, setFileSize] = useState<number>(0);
   const [isVideo, setIsVideo] = useState<boolean>(false);
-  const [isDragOver, setIsDragOver] = useState<boolean>(false);
+  const [currentFileDims, setCurrentFileDims] = useState<{ w: number; h: number } | null>(null);
   const [upscaledPath, setUpscaledPath] = useState<string>("");
-  const pendingOutputPath = useRef<string>("");
+  const [isDragOver] = useState<boolean>(false);
+  const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
 
-  // Job Queue / Execution Status
+  // Processing state
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [jobStatus, setJobStatus] = useState<string>("idle"); // "idle", "queued", "processing", "completed", "failed", "cancelled"
+  const [jobStatus, setJobStatus] = useState<string>("idle");
   const [progressVal, setProgressVal] = useState<number>(0);
   const [statusMessage, setStatusMessage] = useState<string>("");
-  const [jobPhase, setJobPhase] = useState<string>("Initializing GPU Inference...");
+  const [jobPhase, setJobPhase] = useState<string>("");
   const [etaSeconds, setEtaSeconds] = useState<number | undefined>(undefined);
   const [fps, setFps] = useState<number | undefined>(undefined);
 
-  // Model Updates & Downloads
-  const [showModelManager, setShowModelManager] = useState<boolean>(false);
-  const [downloadingModelId, setDownloadingModelId] = useState<string | null>(null);
-  const [downloadPercentage, setDownloadPercentage] = useState<number>(0);
-  const [downloadFileProgress, setDownloadFileProgress] = useState<string>("");
-  const [updateAvailable] = useState<boolean>(true);
-  const [latestVersion] = useState<string>("v0.3.0");
+  // Studio Interactive Modes & Zoom
+  const [comparisonViewMode, setComparisonViewMode] = useState<'split' | 'side-by-side'>('split');
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
 
-  // Toast Notifications
+  // UI state
+  const [showCatalogModal, setShowCatalogModal] = useState<boolean>(false);
+  const [downloadingModelId, setDownloadingModelId] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<number>(0);
+  const isMuted = false;
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const addToast = (
-    type: "success" | "error" | "warning" | "info",
-    message: string,
-    suggestion?: string,
-    onAutoFix?: () => void
-  ) => {
-    const id = Math.random().toString(36).substring(7);
-    setToasts((prev) => [...prev, { id, type, message, suggestion, onAutoFix }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 6000);
+  // History state
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>(() => getRecentHistory());
+
+  const pendingOutputPath = useRef<string>("");
+  const isInitialLoad = useRef<boolean>(true);
+
+  const handleCycleZoom = () => {
+    setZoomLevel((prev) => (prev === 1 ? 2 : prev === 2 ? 4 : prev === 4 ? 8 : 1));
   };
 
-  const dismissToast = (id: string) => {
+  // Toast Helpers
+  const addToast = (type: "success" | "error" | "info" | "warning", heading: string, message: string) => {
+    const cleanHeading = heading.replace(/[!:]+$/g, "").trim();
+    const formattedMessage = message ? `${cleanHeading}: ${message}` : cleanHeading;
+    const newToast: ToastItem = {
+      id: Math.random().toString(),
+      type,
+      message: formattedMessage,
+    };
+    setToasts((prev) => [...prev, newToast]);
+  };
+
+  const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // --- INITIALIZATION ---
+  // Fetch installed models
+  const refreshInstalledModels = () => {
+    invoke<string[]>("list_installed_models")
+      .then((models) => {
+        setInstalledModels(models);
+        if (models.length > 0 && (!selectedModel || !models.includes(selectedModel))) {
+          setSelectedModel(models[0]);
+        } else if (!selectedModel) {
+          setSelectedModel("realesrgan-x4plus");
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch installed models:", err);
+        if (!selectedModel) setSelectedModel("realesrgan-x4plus");
+      });
+  };
+
+  // Initial load: GPUs, settings, models
   useEffect(() => {
-    // 1. Fetch GPU list once on mount
     invoke<GpuDevice[]>("list_gpus")
       .then((res) => {
         setGpus(res);
         if (res.length > 0) {
           setSelectedGpu(res[0].id);
-          addToast("info", `GPU Detected: ${res[0].name}`, "Vulkan acceleration is ready.");
+          addToast("info", `GPU Acceleration Ready`, `${res[0].name}`);
         }
       })
       .catch((err) => console.error("Failed to load GPUs:", err));
 
-    // 2. Fetch local installed models
-    refreshInstalledModels();
+    invoke<BackendSettings>("get_app_settings")
+      .then((saved) => {
+        if (saved) {
+          if (saved.default_gpu_id !== undefined) setSelectedGpu(saved.default_gpu_id);
+          if (saved.default_scale !== undefined) setScale(saved.default_scale);
+          if (saved.default_tile_size !== undefined) setTileSize(saved.default_tile_size);
+          if (saved.output_directory) setCustomOutputPath(saved.output_directory);
+        }
+      })
+      .catch(() => {});
 
-    // 3. First-launch welcome toast
-    const hasLaunched = localStorage.getItem("upscaly_launched");
-    if (!hasLaunched) {
-      localStorage.setItem("upscaly_launched", "true");
-      setTimeout(() => {
-        addToast("info", "Welcome to Upscaly", "Drag any photo or video here to start enhancing.");
-      }, 800);
-    }
+    refreshInstalledModels();
   }, []);
+
+  // Save settings when user preferences change
+  useEffect(() => {
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false;
+      return;
+    }
+    invoke("update_app_settings", {
+      settings: {
+        default_gpu_id: selectedGpu,
+        default_scale: scale,
+        default_tile_size: tileSize,
+        output_directory: customOutputPath || null,
+        sound_muted: false,
+        auto_check_updates: true,
+      },
+    }).catch(() => {});
+  }, [selectedGpu, scale, tileSize, customOutputPath]);
+
+  // Global Keyboard Shortcuts (⌘O, ⌘↩, ESC, ⌘S, ⌘H)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        handleOpenFile();
+      } else if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        handleStartUpscale();
+      } else if (e.key === "Escape") {
+        if (activeJobId) {
+          handleCancelUpscale();
+        } else {
+          setIsInspectorOpen(false);
+          setIsHistoryOpen(false);
+          setIsAboutOpen(false);
+          setShowCatalogModal(false);
+        }
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        setIsInspectorOpen((prev) => !prev);
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "h") {
+        e.preventDefault();
+        setIsHistoryOpen((prev) => !prev);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeJobId, filePath, batchItems]);
 
   // Job and download event listeners
   useEffect(() => {
     const unlistenJob = listen<JobProgress>("job-status-changed", (event) => {
       const { job_id, percentage, status, error, phase, eta_seconds, fps: jobFps } = event.payload;
 
-      if (activeJobId && job_id !== activeJobId) return;
+      // Update single studio job
+      if (activeJobId && job_id === activeJobId) {
+        setProgressVal(percentage);
+        setJobStatus(status);
+        if (phase) setJobPhase(phase);
+        if (eta_seconds !== undefined) setEtaSeconds(eta_seconds);
+        if (jobFps !== undefined) setFps(jobFps);
 
-      setProgressVal(percentage);
-      setJobStatus(status);
-      if (phase) setJobPhase(phase);
-      if (eta_seconds !== undefined) setEtaSeconds(eta_seconds);
-      if (jobFps !== undefined) setFps(jobFps);
-
-      if (status === "processing") {
-        setStatusMessage(`Upscaling in progress... ${percentage.toFixed(1)}%`);
-      } else if (status === "queued") {
-        setStatusMessage("Queued in GPU worker thread...");
-      } else if (status === "completed") {
-        setStatusMessage("Upscaling Completed Successfully!");
-        if (pendingOutputPath.current) {
-          setUpscaledPath(pendingOutputPath.current);
+        if (status === "processing") {
+          setStatusMessage(`Upscaling in progress... ${percentage.toFixed(1)}%`);
+        } else if (status === "queued") {
+          setStatusMessage("Queued in GPU worker thread...");
+        } else if (status === "completed") {
+          setStatusMessage("Upscaling Completed Successfully!");
+          const finalPath = pendingOutputPath.current || upscaledPath;
+          if (finalPath) {
+            setUpscaledPath(finalPath);
+            const meta = getModelMetadata(selectedModel);
+            const newHist = addHistoryItem({
+              fileName,
+              originalPath: filePath,
+              upscaledPath: finalPath,
+              modelName: meta.name,
+              scale,
+              isVideo,
+            });
+            setHistoryItems(newHist);
+          }
+          setActiveJobId(null);
+          refreshInstalledModels();
+          playCompleteSound(isMuted);
+          addToast("success", "Upscaling Complete", "Enhanced output saved.");
+        } else if (status === "failed") {
+          setActiveJobId(null);
+          setJobStatus("idle");
+          playErrorSound(isMuted);
+          const errStr = error || "Processing failed during sidecar execution.";
+          addToast("error", "Upscaling Failed", errStr);
+        } else if (status === "cancelled") {
+          setActiveJobId(null);
+          setJobStatus("idle");
+          addToast("info", "Cancelled", "Upscaling task was cancelled.");
         }
-        setActiveJobId(null);
-        refreshInstalledModels();
-        playCompleteSound(isMuted);
-        addToast("success", "Upscaling complete!", "Your enhanced media is ready for preview.");
-      } else if (status === "failed") {
-        setActiveJobId(null);
-        setJobStatus("idle");
-        playErrorSound(isMuted);
-        const errStr = error || "Processing failed during sidecar execution.";
-        addToast(
-          "error",
-          "Upscale Failed",
-          errStr,
-          errStr.includes("Out of Memory") || errStr.includes("VRAM")
-            ? () => setTileSize(128)
-            : undefined
-        );
-      } else if (status === "cancelled") {
-        setActiveJobId(null);
-        setJobStatus("idle");
-        addToast("info", "Upscale Cancelled", "Temporary processing files have been cleaned up.");
       }
-    });
 
-    const unlistenDownload = listen<DownloadProgressEvent>("download-progress", (event) => {
-      const { model_id, file_type, percentage, downloaded, total } = event.payload;
-      setDownloadingModelId(model_id);
-      setDownloadPercentage(percentage);
-      setDownloadFileProgress(
-        `Downloading ${file_type}: ${(downloaded / 1024 / 1024).toFixed(1)}MB / ${(total / 1024 / 1024).toFixed(1)}MB`
+      // Update batch queue items
+      setBatchItems((prev) =>
+        prev.map((item) => {
+          if (item.id === job_id) {
+            const isFinished = status === "completed";
+            const isErr = status === "failed";
+            return {
+              ...item,
+              progress: percentage,
+              status: isFinished ? "done" : isErr ? "error" : status === "processing" ? "processing" : "queued",
+              outputPath: isFinished ? pendingOutputPath.current || item.outputPath : item.outputPath,
+            };
+          }
+          return item;
+        })
       );
     });
 
+    const unlistenDownload = listen<DownloadProgressEvent>("download-progress", (event) => {
+      const { model_id, percentage } = event.payload;
+      setDownloadingModelId(model_id);
+      setDownloadProgress(percentage);
+      if (percentage >= 100) {
+        setDownloadingModelId(null);
+        setDownloadProgress(0);
+        refreshInstalledModels();
+        addToast("success", "Model Downloaded", `Model ${model_id} installed successfully.`);
+      }
+    });
+
     return () => {
-      unlistenJob.then((fn) => fn());
-      unlistenDownload.then((fn) => fn());
+      unlistenJob.then((f) => f());
+      unlistenDownload.then((f) => f());
     };
-  }, [activeJobId, isMuted]);
+  }, [activeJobId, filePath, fileName, upscaledPath, selectedModel, scale, isVideo, isMuted]);
 
-  // --- KEYBOARD SHORTCUTS ---
-  const handleKeyboard = useCallback(
-    (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "o") {
-        e.preventDefault();
-        handleOpenFileDialog();
-      }
-      if ((e.key === "Enter" || e.key === " ") && filePath && jobStatus === "idle" && selectedModel) {
-        const tag = (e.target as HTMLElement)?.tagName;
-        if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-        e.preventDefault();
-        handleStartUpscale();
-      }
-      if (e.key === "Escape") {
-        if (jobStatus === "processing" || jobStatus === "queued") {
-          handleCancelUpscale();
-        } else if (filePath) {
-          handleClearFile();
-        }
-      }
-    },
-    [filePath, jobStatus, selectedModel]
-  );
-
-  useEffect(() => {
-    window.addEventListener("keydown", handleKeyboard);
-    return () => window.removeEventListener("keydown", handleKeyboard);
-  }, [handleKeyboard]);
-
-  const refreshInstalledModels = () => {
-    invoke<string[]>("get_installed_models")
-      .then((res) => {
-        setInstalledModels(res);
-        if (res.length > 0 && !selectedModel) {
-          setSelectedModel(res[0]);
-        }
-      })
-      .catch((err) => console.error("Failed to load installed models:", err));
-  };
-
-  // --- ACTIONS ---
-  const handleOpenFileDialog = async () => {
+  // File Select Handler
+  const handleOpenFile = async () => {
     try {
       const selected = await open({
-        multiple: false,
+        multiple: true,
         filters: [
-          { name: "Media Files", extensions: ["png", "jpg", "jpeg", "webp", "bmp", "mp4", "mkv", "avi", "mov"] },
-          { name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "bmp"] },
-          { name: "Videos", extensions: ["mp4", "mkv", "avi", "mov"] },
+          {
+            name: "Media Files",
+            extensions: ["png", "jpg", "jpeg", "webp", "mp4", "mkv", "mov", "avi"],
+          },
         ],
       });
-      if (selected && typeof selected === "string") {
-        setFilePath(selected);
-        setUpscaledPath("");
-        const name = selected.split(/[/\\]/).pop() || selected;
+
+      if (!selected) return;
+
+      const paths = Array.isArray(selected) ? selected : [selected];
+      if (paths.length === 0) return;
+
+      playDropSound(isMuted);
+
+      if (paths.length === 1) {
+        const path = paths[0];
+        const name = path.split(/[\\/]/).pop() || "media_file";
+        const isVid = /\.(mp4|mkv|mov|avi)$/i.test(name);
+
+        setFilePath(path);
         setFileName(name);
-        setFileSize(0);
-        const isVid = selected.endsWith(".mp4") || selected.endsWith(".mkv") || selected.endsWith(".avi") || selected.endsWith(".mov");
         setIsVideo(isVid);
-        if (isVid) setCategory("video");
-        playDropSound(isMuted);
+        setUpscaledPath("");
+        setJobStatus("idle");
+        setProgressVal(0);
+        setStatusMessage("");
+        setJobPhase("");
+
+        const dims = await getMediaDimensions(getMediaSrc(path), isVid);
+        setCurrentFileDims(dims);
+
+        const newBatchItem: BatchItem = {
+          id: Math.random().toString(),
+          filePath: path,
+          fileName: name,
+          w: dims.w,
+          h: dims.h,
+          fileSize: 1024 * 1024 * 5,
+          isVideo: isVid,
+          progress: 0,
+          status: "ready",
+          model: selectedModel,
+        };
+        setBatchItems([newBatchItem]);
+        addToast("info", "File Loaded", `${name} (${dims.w}×${dims.h})`);
+      } else {
+        const newItems: BatchItem[] = [];
+        for (const path of paths) {
+          const name = path.split(/[\\/]/).pop() || "media_file";
+          const isVid = /\.(mp4|mkv|mov|avi)$/i.test(name);
+          const dims = await getMediaDimensions(getMediaSrc(path), isVid);
+          newItems.push({
+            id: Math.random().toString(),
+            filePath: path,
+            fileName: name,
+            w: dims.w,
+            h: dims.h,
+            fileSize: 1024 * 1024 * 5,
+            isVideo: isVid,
+            progress: 0,
+            status: "ready",
+            model: selectedModel,
+          });
+        }
+
+        setBatchItems((prev) => [...prev, ...newItems]);
+        setFilePath(newItems[0].filePath || "");
+        setFileName(newItems[0].fileName || "");
+        setIsVideo(newItems[0].isVideo || false);
+        setCurrentFileDims({ w: newItems[0].w || 1920, h: newItems[0].h || 1080 });
+        addToast("info", "Batch Loaded", `Added ${paths.length} files to queue.`);
       }
     } catch (err) {
-      console.error("Failed to open file dialog:", err);
+      console.error("Failed to pick files:", err);
+      addToast("error", "File Picker Error", String(err));
     }
   };
 
-  const handleFileDropObject = (fileObj: File) => {
-    setFileName(fileObj.name);
-    setFileSize(fileObj.size);
-    setUpscaledPath("");
-
-    const path = (fileObj as any).path || fileObj.name;
-    setFilePath(path);
-
-    const isVid = fileObj.type.startsWith("video/") || fileObj.name.endsWith(".mp4") || fileObj.name.endsWith(".mkv");
-    setIsVideo(isVid);
-    if (isVid) setCategory("video");
-    playDropSound(isMuted);
-  };
-
-  const handleSelectCustomFolder = async () => {
+  const handleSelectDestinationFolder = async () => {
     try {
       const selected = await open({
         directory: true,
@@ -293,436 +414,446 @@ export default function App() {
       });
       if (selected && typeof selected === "string") {
         setCustomOutputPath(selected);
-        addToast("info", "Output folder updated", selected);
+        addToast("info", "Output Folder Set", selected);
       }
     } catch (err) {
-      console.error("Failed to select folder:", err);
-    }
-  };
-
-  const handleStartUpscale = async () => {
-    if (!filePath || !selectedModel) return;
-
-    const dotIdx = filePath.lastIndexOf(".");
-    const ext = dotIdx !== -1 ? filePath.substring(dotIdx) : ".png";
-    const base = dotIdx !== -1 ? filePath.substring(0, dotIdx) : filePath;
-    const nameOnly = base.split(/[/\\]/).pop() || base;
-
-    let output = `${base}_upscaled${ext}`;
-    if (customOutputPath) {
-      output = `${customOutputPath}/${nameOnly}_upscaled${ext}`;
-    }
-    pendingOutputPath.current = output;
-
-    const jobId = Math.random().toString(36).substring(7);
-
-    const jobConfig = {
-      id: jobId,
-      input_path: filePath,
-      output_path: output,
-      model_name: selectedModel,
-      gpu_id: selectedGpu,
-      scale: scale,
-      tile_size: tileSize,
-      is_video: isVideo,
-    };
-
-    setJobStatus("queued");
-    setProgressVal(0);
-    setActiveJobId(jobId);
-    setStatusMessage("Queued in background thread...");
-
-    try {
-      await invoke("enqueue_job", { job: jobConfig });
-    } catch (err: any) {
-      setJobStatus("failed");
-      setActiveJobId(null);
-      playErrorSound(isMuted);
-      addToast("error", "Failed to start upscale", err.toString());
-    }
-  };
-
-  const handleCancelUpscale = async () => {
-    if (!activeJobId) return;
-    try {
-      await invoke("cancel_active_job", { jobId: activeJobId });
-      setJobStatus("cancelled");
-      setActiveJobId(null);
-    } catch (err: any) {
-      console.error("Cancel failed:", err);
+      console.error("Failed to pick folder:", err);
     }
   };
 
   const handleClearFile = () => {
     setFilePath("");
     setFileName("");
-    setFileSize(0);
-    setUpscaledPath("");
-    setJobStatus("idle");
-  };
-
-  const handleResetState = () => {
-    setFilePath("");
-    setFileName("");
-    setFileSize(0);
+    setIsVideo(false);
+    setCurrentFileDims(null);
     setUpscaledPath("");
     setJobStatus("idle");
     setProgressVal(0);
+    setStatusMessage("");
+    setJobPhase("");
+    setBatchItems([]);
+    setZoomLevel(1);
+    addToast("info", "Queue Cleared", "Ready for next input.");
   };
 
-  const handleFetchManifest = async () => {
-    const mockCloudModels: ModelItem[] = [
-      {
-        id: "realesrgan-x4plus",
-        name: "RealESRGAN x4 Plus (Photo)",
-        version: "v0.3.0",
-        param_url: "https://raw.githubusercontent.com/xinntao/Real-ESRGAN/master/models/RealESRGAN_x4plus.param",
-        param_sha256: "dummy-hash",
-        param_size: 1548,
-        bin_url: "https://raw.githubusercontent.com/xinntao/Real-ESRGAN/master/models/RealESRGAN_x4plus.bin",
-        bin_sha256: "dummy-hash-bin",
-        bin_size: 67108864,
-      },
-      {
-        id: "realesrgan-x4plus-anime",
-        name: "RealESRGAN x4 Plus Anime",
-        version: "v0.3.0",
-        param_url: "https://raw.githubusercontent.com/xinntao/Real-ESRGAN/master/models/RealESRGAN_x4plus_anime.param",
-        param_sha256: "dummy-hash-anime",
-        param_size: 1200,
-        bin_url: "https://raw.githubusercontent.com/xinntao/Real-ESRGAN/master/models/RealESRGAN_x4plus_anime.bin",
-        bin_sha256: "dummy-hash-bin-anime",
-        bin_size: 16777216,
-      },
-    ];
-    setCloudModels(mockCloudModels);
+  const handleRemoveBatchItem = (id: string) => {
+    setBatchItems((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      if (next.length === 0) {
+        handleClearFile();
+      } else if (filePath && !next.some((item) => item.filePath === filePath)) {
+        setFilePath(next[0].filePath || "");
+        setFileName(next[0].fileName || "");
+        setIsVideo(next[0].isVideo || false);
+        if (next[0].w && next[0].h) setCurrentFileDims({ w: next[0].w, h: next[0].h });
+      }
+      return next;
+    });
   };
 
-  const handleDownloadModel = async (model: ModelItem) => {
-    setDownloadingModelId(model.id);
-    setDownloadPercentage(0);
+  // Start Upscale Logic
+  const handleStartUpscale = async () => {
+    if (batchItems.length > 1) {
+      handleStartBatchUpscale();
+      return;
+    }
+
+    if (!filePath) {
+      addToast("warning", "No File Selected", "Please drag and drop or open an image/video first.");
+      return;
+    }
+
     try {
-      await invoke("download_model_files", { model });
-      setDownloadingModelId(null);
-      refreshInstalledModels();
-      addToast("success", "Model installed!", `${model.name} is ready for use.`);
-    } catch (err: any) {
-      setDownloadingModelId(null);
-      addToast("error", "Download failed", err.toString());
+      setJobStatus("queued");
+      setProgressVal(0);
+      setStatusMessage("Queued in GPU worker thread...");
+      setJobPhase("PREPARING");
+
+      const ext = isVideo ? ".mp4" : ".png";
+      const baseName = fileName.replace(/\.[^/.]+$/, "");
+      const outputFilename = `${baseName}_upscaled_${scale}x${ext}`;
+
+      let outPath = "";
+      if (customOutputPath) {
+        outPath = `${customOutputPath}/${outputFilename}`;
+      } else {
+        const lastSlash = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
+        const parentDir = filePath.substring(0, lastSlash);
+        outPath = `${parentDir}/${outputFilename}`;
+      }
+
+      pendingOutputPath.current = outPath;
+
+      const jobId = await invoke<string>("run_upscale", {
+        request: {
+          input_path: filePath,
+          output_path: outPath,
+          model_id: selectedModel,
+          gpu_id: selectedGpu,
+          scale,
+          tile_size: tileSize,
+          is_video: isVideo,
+        },
+      });
+
+      setActiveJobId(jobId);
+      setJobStatus("processing");
+      addToast("info", "Upscaling Started", `Job ID: ${jobId.slice(0, 8)}...`);
+    } catch (err) {
+      console.error("Upscale failed to start:", err);
+      setJobStatus("idle");
+      playErrorSound(isMuted);
+      addToast("error", "Error Starting Upscale", String(err));
     }
   };
 
+  // Batch Upscale Logic
+  const handleStartBatchUpscale = async () => {
+    const readyItems = batchItems.filter((i) => i.status === "ready" || i.status === "error" || (i.status as string) === "idle");
+    if (readyItems.length === 0) {
+      addToast("warning", "Queue Complete", "All items in batch have already completed.");
+      return;
+    }
+
+    addToast("info", "Batch Started", `Processing ${readyItems.length} queued items...`);
+
+    for (const item of readyItems) {
+      if (!item.filePath || !item.fileName) continue;
+      try {
+        setBatchItems((prev) =>
+          prev.map((b) => (b.id === item.id ? { ...b, status: "queued", progress: 0 } : b))
+        );
+
+        const isVid = Boolean(item.isVideo);
+        const ext = isVid ? ".mp4" : ".png";
+        const baseName = item.fileName.replace(/\.[^/.]+$/, "");
+        const outputFilename = `${baseName}_upscaled_${scale}x${ext}`;
+
+        let outPath = "";
+        if (customOutputPath) {
+          outPath = `${customOutputPath}/${outputFilename}`;
+        } else {
+          const lastSlash = Math.max(item.filePath.lastIndexOf("/"), item.filePath.lastIndexOf("\\"));
+          const parentDir = item.filePath.substring(0, lastSlash);
+          outPath = `${parentDir}/${outputFilename}`;
+        }
+
+        pendingOutputPath.current = outPath;
+
+        setFilePath(item.filePath);
+        setFileName(item.fileName);
+        setIsVideo(Boolean(item.isVideo));
+        if (item.w && item.h) setCurrentFileDims({ w: item.w, h: item.h });
+
+        const jobId = await invoke<string>("run_upscale", {
+          request: {
+            input_path: item.filePath,
+            output_path: outPath,
+            model_id: selectedModel,
+            gpu_id: selectedGpu,
+            scale,
+            tile_size: tileSize,
+            is_video: isVid,
+          },
+        });
+
+        setActiveJobId(jobId);
+        setJobStatus("processing");
+
+        setBatchItems((prev) =>
+          prev.map((b) => (b.id === item.id ? { ...b, id: jobId, status: "processing" } : b))
+        );
+
+        await new Promise<void>((resolve) => {
+          const checkDone = setInterval(() => {
+            setBatchItems((currentItems) => {
+              const current = currentItems.find((b) => b.id === jobId);
+              if (!current || current.status === "done" || (current.status as string) === "completed" || current.status === "error") {
+                clearInterval(checkDone);
+                resolve();
+              }
+              return currentItems;
+            });
+          }, 300);
+        });
+      } catch (err) {
+        console.error("Batch item failed:", err);
+        setBatchItems((prev) =>
+          prev.map((b) => (b.id === item.id ? { ...b, status: "error" } : b))
+        );
+      }
+    }
+
+    setActiveJobId(null);
+    setJobStatus("completed");
+    addToast("success", "Batch Complete", "All batch jobs processed.");
+  };
+
+  const handleCancelUpscale = async (idToCancel?: string) => {
+    const targetId = idToCancel || activeJobId;
+    if (!targetId) return;
+
+    try {
+      await invoke("cancel_upscale", { jobId: targetId });
+      setActiveJobId(null);
+      setJobStatus("idle");
+      addToast("info", "Cancelled", "Upscaling process was cancelled.");
+    } catch (err) {
+      console.error("Failed to cancel job:", err);
+    }
+  };
+
+  const handleDownloadModel = async (modelId: string) => {
+    try {
+      setDownloadingModelId(modelId);
+      setDownloadProgress(5);
+      addToast("info", "Downloading Model", `Fetching weights for ${modelId}...`);
+      await invoke("download_model", { modelId });
+    } catch (err) {
+      console.error("Download failed:", err);
+      setDownloadingModelId(null);
+      setDownloadProgress(0);
+      addToast("error", "Download Failed", String(err));
+    }
+  };
+
+  const handleShowInExplorerNative = (path: string) => {
+    revealItemInDir(path).catch((err: unknown) => {
+      console.error("Failed to reveal item:", err);
+      addToast("error", "Explorer Error", String(err));
+    });
+  };
+
+  const handleLoadHistoryItem = (item: HistoryItem) => {
+    setFilePath(item.originalPath);
+    setFileName(item.fileName);
+    setUpscaledPath(item.upscaledPath);
+    setIsVideo(item.isVideo);
+    setScale(item.scale);
+    setJobStatus("completed");
+    setIsHistoryOpen(false);
+    setBatchItems([]);
+    setZoomLevel(1);
+    addToast("info", "Loaded from History", item.fileName);
+  };
+
   return (
-    <div
-      className="relative h-screen w-screen flex flex-col text-[#F1FEC8] font-sans overflow-hidden bg-[#121018] select-none"
-      style={{ isolation: "isolate" }}
-    >
-      {/* 60FPS Luminous Ambient Shader Canvas */}
-      <LiquidShaderBg isProcessing={jobStatus === "processing"} />
+    <div style={{ position: "fixed", inset: 0, background: "var(--bg-stripe)", color: "var(--text-primary)", fontFamily: "var(--font-ui)", fontSize: "13px", overflow: "hidden", userSelect: "none", WebkitFontSmoothing: "antialiased" }}>
 
-      {/* Custom Header Titlebar */}
-      <Titlebar
-        onShowModelCatalog={() => {
-          setShowModelManager(true);
-          handleFetchManifest();
-        }}
-        onShowSettings={() => {}}
-        onShowAbout={() => {}}
-      />
-
-      {/* Floating Toast Notification Stack */}
-      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-
-      {/* --- PRO TWO-COLUMN SPLIT DESKTOP WORKSPACE LAYOUT --- */}
-      <main className="relative z-10 flex-1 flex overflow-hidden pt-13">
-        {/* LEFT SIDEBAR: CONTROL & CONFIGURATION PANEL (380px Fixed Width) */}
-        <aside className="w-[380px] shrink-0 border-r border-white/10 bg-[#16141D]/75 backdrop-blur-2xl p-5 flex flex-col justify-between overflow-y-auto space-y-4 shadow-2xl">
-          <div className="space-y-4">
-            {/* Optional Model Update Badge */}
-            {updateAvailable && jobStatus === "idle" && (
-              <div className="flex justify-center">
-                <UpdateBadge
-                  latestVersion={latestVersion}
-                  onDownload={() => {
-                    setShowModelManager(true);
-                    handleFetchManifest();
-                  }}
-                  isDownloading={downloadingModelId !== null}
-                  downloadPercentage={downloadPercentage}
-                />
-              </div>
-            )}
-
-            {/* Media Source Card / Small Select DropZone */}
-            {filePath ? (
-              <FilePreview
-                filePath={filePath}
-                fileName={fileName}
-                fileSize={fileSize}
-                isVideo={isVideo}
-                scale={scale}
-                onRemove={handleClearFile}
+      {/* Center Workspace Canvas Stage - Full Bleed Window */}
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+        <AnimatePresence mode="wait">
+          {!filePath && batchItems.length === 0 ? (
+            /* EMPTY DROPZONE STAGE */
+            <motion.div
+              key="empty-stage"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.2 }}
+              style={{ position: "relative", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}
+            >
+              <div style={{ position: "absolute", inset: 0, background: "radial-gradient(105% 75% at 50% 45%, rgba(11,10,9,.55), rgba(11,10,9,.88) 78%)" }} />
+              <DropZone
+                isDragOver={isDragOver}
+                onAddFiles={handleOpenFile}
+                onAddBatch={handleOpenFile}
               />
-            ) : (
-              <div
-                onClick={handleOpenFileDialog}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragOver(true);
-                }}
-                onDragLeave={() => setIsDragOver(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setIsDragOver(false);
-                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                    handleFileDropObject(e.dataTransfer.files[0]);
-                  }
-                }}
-                className={`p-6 rounded-3xl border border-dashed transition-all cursor-pointer text-center relative overflow-hidden backdrop-blur-xl ${
-                  isDragOver
-                    ? "border-[#F1FEC8] bg-[#36255C]/60 scale-[1.02]"
-                    : "border-[#D2C3F6]/30 hover:border-[#D2C3F6]/60 bg-[#23212C]/60 hover:bg-[#23212C]/90"
-                }`}
-              >
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#36255C] to-[#5E3C98] border border-[#D2C3F6]/30 flex items-center justify-center mx-auto mb-3 shadow-lg">
-                  <UploadSimple size={28} className="text-[#F1FEC8] animate-bounce" />
-                </div>
-                <h4 className="text-xs font-extrabold text-[#F1FEC8]">Select Source File</h4>
-                <p className="text-[10px] text-[#D2C3F6]/70 mt-1 font-medium">Click to browse or drag photo/video here</p>
-              </div>
-            )}
-
-            {/* AI Model & Parameter Settings */}
-            <SettingsPanel
-              category={category}
-              onSelectCategory={setCategory}
-              installedModels={installedModels}
-              selectedModel={selectedModel}
-              onSelectModel={setSelectedModel}
-              scale={scale}
-              onSelectScale={setScale}
-            />
-
-            {/* Advanced Hardware & VRAM Accordion */}
-            <AdvancedSettings
-              gpus={gpus}
-              selectedGpu={selectedGpu}
-              onSelectGpu={setSelectedGpu}
-              tileSize={tileSize}
-              onSelectTileSize={setTileSize}
-              customOutputPath={customOutputPath}
-              onSelectOutputPath={handleSelectCustomFolder}
-            />
-          </div>
-
-          {/* Volumetric Glowing Action Button */}
-          <div className="pt-2">
-            <UpscaleButton
-              disabled={!filePath || !selectedModel}
-              isProcessing={jobStatus === "processing" || jobStatus === "queued"}
-              onClick={handleStartUpscale}
-            />
-          </div>
-        </aside>
-
-        {/* RIGHT STAGE: INTERACTIVE MEDIA SHOWCASE & COMPARISON SANDBOX */}
-        <section className="flex-1 bg-[#121018]/50 backdrop-blur-xl p-6 flex flex-col justify-center items-center overflow-y-auto relative">
-          <AnimatePresence mode="wait">
-            {/* STAGE 1: IDLE SHOWCASE & ATROPOS HERO CARD */}
-            {jobStatus === "idle" && (
-              <motion.div
-                key="idle-stage"
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.96 }}
-                transition={{ duration: 0.2 }}
-                className="w-full max-w-2xl"
-              >
-                {!filePath ? (
-                  <DropZone
-                    onFileSelect={handleFileDropObject}
-                    onBrowseClick={handleOpenFileDialog}
-                    isDragOver={isDragOver}
-                    setIsDragOver={setIsDragOver}
-                  />
-                ) : (
-                  <div className="rounded-3xl liquid-glass border border-[#D2C3F6]/25 p-8 flex flex-col items-center justify-center text-center space-y-4 shadow-2xl backdrop-blur-2xl">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#36255C] to-[#5E3C98] border border-[#F1FEC8]/30 flex items-center justify-center text-[#F1FEC8] shadow-xl">
-                      {isVideo ? <VideoIcon size={36} weight="duotone" /> : <ImageIcon size={36} weight="duotone" />}
-                    </div>
-                    <div>
-                      <h3 className="text-base font-extrabold text-[#F1FEC8]">{fileName}</h3>
-                      <p className="text-xs text-[#D2C3F6]/80 mt-1 font-mono">
-                        Ready to enhance with <span className="text-[#F1FEC8] font-bold">{selectedModel}</span> ({scale}x scale)
-                      </p>
-                    </div>
-                    <div className="pt-2">
-                      <span className="text-[10px] font-mono font-bold px-3 py-1.5 rounded-full bg-[#36255C]/80 border border-[#D2C3F6]/30 text-[#F1FEC8] shadow">
-                        Press "Upscale Media" to launch Vulkan GPU inference
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-            )}
-
-            {/* STAGE 2: PROCESSING & LIVE SCAN HUD */}
-            {(jobStatus === "processing" || jobStatus === "queued") && (
-              <motion.div
-                key="processing-stage"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.2 }}
-                className="w-full max-w-xl"
-              >
-                <ProgressOverlay
-                  percentage={progressVal}
-                  statusText={statusMessage}
-                  phase={jobPhase}
-                  etaSeconds={etaSeconds}
-                  fps={fps}
-                  onCancel={handleCancelUpscale}
+            </motion.div>
+          ) : (
+            /* ACTIVE MEDIA STAGE - FULL BLEED WINDOW */
+            <motion.div
+              key="active-stage"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+              }}
+            >
+              {jobStatus === "completed" && upscaledPath ? (
+                <ComparisonSlider
+                  originalPath={filePath}
+                  upscaledPath={upscaledPath}
+                  viewMode={comparisonViewMode}
+                  zoom={zoomLevel}
+                  onZoomChange={setZoomLevel}
+                  onToggleViewMode={() => setComparisonViewMode((prev) => (prev === 'split' ? 'side-by-side' : 'split'))}
                 />
-              </motion.div>
-            )}
-
-            {/* STAGE 3: COMPLETED RESULTS & COMPARISON SLIDER */}
-            {jobStatus === "completed" && (
-              <motion.div
-                key="completed-stage"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.2 }}
-                className="w-full max-w-3xl space-y-6"
-              >
-                <CompletionCard
-                  outputPath={upscaledPath || pendingOutputPath.current}
-                  onReset={handleResetState}
+              ) : isVideo ? (
+                <video
+                  src={getMediaSrc(filePath)}
+                  controls={jobStatus !== "processing" && jobStatus !== "queued"}
+                  autoPlay={jobStatus === "processing" || jobStatus === "queued"}
+                  loop
+                  muted
+                  className={`max-h-full max-w-full object-contain rounded-xl transition-all ${
+                    jobStatus === "processing" || jobStatus === "queued" ? "opacity-30 blur-[2px]" : ""
+                  }`}
                 />
-
-                {!isVideo && (
-                  <ComparisonSlider
-                    originalPath={filePath}
-                    upscaledPath={upscaledPath || pendingOutputPath.current}
-                  />
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </section>
-      </main>
-
-      {/* --- MODEL MANAGER / CATALOG MODAL --- */}
-      {showModelManager && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center p-6 select-none">
-          <div className="w-full max-w-xl bg-[#16141D]/60 border border-white/10 rounded-3xl overflow-hidden flex flex-col max-h-[80vh] shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-3xl relative">
-            
-            {/* Modal Ambient Glow */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[80%] h-32 bg-purple-500/20 rounded-[100%] blur-3xl pointer-events-none" />
-
-            {/* Modal Header */}
-            <div className="p-5 border-b border-white/5 flex items-center justify-between relative z-10 bg-black/20">
-              <div>
-                <h3 className="text-sm font-extrabold text-white uppercase tracking-widest flex items-center gap-2">
-                  <ListPlus size={18} className="text-emerald-400" />
-                  Model Catalog
-                </h3>
-                <p className="text-[10px] text-white/50 font-medium mt-1">Download, update, and manage AI model weights</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowModelManager(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 text-white/50 hover:text-white hover:bg-rose-500/20 hover:border-rose-500/30 border border-transparent transition-all cursor-pointer active:scale-95"
-              >
-                <XCircle size={20} weight="fill" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-5 overflow-y-auto space-y-4 flex-1 relative z-10">
-              {downloadingModelId && (
-                <div className="bg-black/40 border border-purple-500/30 rounded-2xl p-5 space-y-3 shadow-[0_0_15px_rgba(168,85,247,0.1)]">
-                  <div className="flex items-center justify-between text-xs font-bold">
-                    <span className="text-purple-300 animate-pulse flex items-center gap-2">
-                      <ArrowsClockwise size={14} className="animate-spin" />
-                      Downloading weights...
-                    </span>
-                    <span className="font-mono text-white">{downloadPercentage.toFixed(1)}%</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-black rounded-full overflow-hidden border border-white/5">
-                    <div
-                      className="h-full bg-gradient-to-r from-purple-600 to-emerald-400 transition-all duration-150 relative"
-                      style={{ width: `${downloadPercentage}%` }}
-                    >
-                      <div className="absolute inset-0 bg-white/20 w-full animate-shimmer" />
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-white/50 font-mono truncate">{downloadFileProgress}</p>
-                </div>
+              ) : (
+                <img
+                  src={getMediaSrc(filePath)}
+                  alt={fileName}
+                  className={`max-h-full max-w-full object-contain rounded-xl transition-all ${
+                    jobStatus === "processing" || jobStatus === "queued" ? "opacity-30 blur-[2px]" : ""
+                  }`}
+                />
               )}
 
-              {/* Models List */}
-              <div className="space-y-3">
-                {cloudModels.length === 0 ? (
-                  <div className="text-center py-12 text-white/30 space-y-3">
-                    <ArrowsClockwise size={28} className="animate-spin mx-auto text-white/20" />
-                    <p className="text-xs font-medium tracking-wide">Fetching model manifest...</p>
-                  </div>
-                ) : (
-                  cloudModels.map((m) => {
-                    const isInstalled = installedModels.includes(m.id);
-                    const isDownloading = downloadingModelId === m.id;
-                    const totalSizeMB = ((m.param_size + m.bin_size) / 1024 / 1024).toFixed(1);
-
+              {/* 8x6 Tile Grid Overlay during Processing matching HTML handoff */}
+              {(jobStatus === "processing" || jobStatus === "queued") && (
+                <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gridTemplateRows: "repeat(6, 1fr)", gap: "1px", pointerEvents: "none" }}>
+                  {Array.from({ length: 48 }).map((_, i) => {
+                    const cutoff = (progressVal / 100) * 48;
+                    const state = i < Math.floor(cutoff) ? "done" : i < Math.ceil(cutoff) ? "active" : "pending";
                     return (
                       <div
-                        key={m.id}
-                        className="flex items-center justify-between p-4 bg-black/40 rounded-2xl border border-white/5 hover:border-white/10 transition-colors group"
-                      >
-                        <div>
-                          <p className="text-sm font-bold text-white group-hover:text-emerald-50 transition-colors flex items-center gap-2">
-                            {m.name}
-                          </p>
-                          <p className="text-[10px] text-white/40 mt-1 font-mono uppercase tracking-wider">
-                            v{m.version} &bull; {totalSizeMB} MB
-                          </p>
-                        </div>
-
-                        {isInstalled ? (
-                          <span className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-bold uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl shadow-sm">
-                            <CheckCircle size={14} weight="fill" />
-                            <span>Installed</span>
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={downloadingModelId !== null}
-                            onClick={() => handleDownloadModel(m)}
-                            className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-4 py-2 rounded-xl shadow transition-all duration-300 ${
-                              isDownloading 
-                                ? 'bg-black/40 text-white/40 border border-white/5 cursor-not-allowed'
-                                : 'bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-white/20 hover:shadow-[0_0_15px_rgba(255,255,255,0.1)] active:scale-95 cursor-pointer'
-                            }`}
-                          >
-                            {isDownloading ? (
-                              <ArrowsClockwise size={14} className="animate-spin" />
-                            ) : (
-                              <Download size={14} weight="bold" className={isDownloading ? '' : 'text-emerald-400'} />
-                            )}
-                            <span>{isDownloading ? "Downloading" : "Install"}</span>
-                          </button>
-                        )}
-                      </div>
+                        key={i}
+                        style={{
+                          background: state === "done" ? "transparent" : state === "active" ? "rgba(168,11,36,.16)" : "rgba(9,8,8,.72)",
+                          boxShadow: state === "active" ? "inset 0 0 0 1px #A80B24" : "none",
+                          transition: "background .3s ease",
+                        }}
+                      />
                     );
-                  })
-                )}
-              </div>
-            </div>
-          </div>
+                  })}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Top Floating Header Islands */}
+      <Titlebar
+        hasFiles={Boolean(filePath || batchItems.length > 0)}
+        currentFile={filePath || (batchItems.length > 0 ? batchItems[0].fileName : null)}
+        isDone={jobStatus === "completed"}
+        selectedGpu={selectedGpu}
+        availableGpus={gpus.map((g) => ({ id: g.id, name: g.name, detail: g.detail || (g.id === 0 ? "Default GPU" : "Vulkan Device") }))}
+        onSelectGpu={setSelectedGpu}
+        settingsOpen={isInspectorOpen}
+        onToggleSettings={() => setIsInspectorOpen(!isInspectorOpen)}
+        onOpenCatalog={() => setShowCatalogModal(true)}
+        onOpenHistory={() => setIsHistoryOpen(true)}
+        onOpenAbout={() => setIsAboutOpen(true)}
+        onRemoveFile={handleClearFile}
+      />
+
+      {/* Left Queue Rail */}
+      <BatchQueueView
+        items={batchItems}
+        selectedId={batchItems.find((b) => b.fileName === fileName)?.id}
+        selectedScale={scale}
+        currentFileDims={currentFileDims}
+        onSelect={(id) => {
+          const item = batchItems.find((b) => b.id === id);
+          if (item && item.filePath && item.fileName) {
+            setFilePath(item.filePath);
+            setFileName(item.fileName);
+            if (item.w && item.h) setCurrentFileDims({ w: item.w, h: item.h });
+          }
+        }}
+        onAddFiles={handleOpenFile}
+        onAddMoreFiles={handleOpenFile}
+        onClear={handleClearFile}
+        onClearCompleted={() => setBatchItems((prev) => prev.filter((b) => b.status !== "done" && (b.status as string) !== "completed"))}
+        onRemoveItem={handleRemoveBatchItem}
+      />
+
+      {/* Bottom Floating Control Dock */}
+      <div style={{ position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)", zIndex: 42 }}>
+        <SettingsPanel
+          category={category}
+          onSelectCategory={setCategory}
+          installedModels={installedModels}
+          selectedModel={selectedModel}
+          onSelectModel={setSelectedModel}
+          scale={scale}
+          onSelectScale={setScale}
+          isProcessing={jobStatus === "processing" || jobStatus === "queued"}
+          hasFiles={Boolean(filePath || batchItems.length > 0)}
+          isBatchMode={batchItems.length > 1}
+          onRun={handleStartUpscale}
+          onCancel={() => handleCancelUpscale()}
+          onOpenCatalog={() => setShowCatalogModal(true)}
+        />
+      </div>
+
+      {/* Telemetry Progress Floating Overlay */}
+      {(jobStatus === "processing" || jobStatus === "queued") && (
+        <ProgressOverlay
+          percentage={progressVal}
+          statusText={statusMessage}
+          phase={jobPhase || "UPSCALE 4X"}
+          etaSeconds={etaSeconds}
+          fps={fps}
+          onCancel={() => handleCancelUpscale()}
+        />
+      )}
+
+      {/* Completion Card Floating Banner */}
+      {jobStatus === "completed" && upscaledPath && (
+        <CompletionCard
+          outputPath={upscaledPath}
+          outputDims={currentFileDims ? { w: currentFileDims.w * scale, h: currentFileDims.h * scale } : undefined}
+          compareMode={comparisonViewMode === "split" ? "split" : "side"}
+          zoom={zoomLevel}
+          onSetSplit={() => setComparisonViewMode("split")}
+          onSetSide={() => setComparisonViewMode("side-by-side")}
+          onCycleZoom={handleCycleZoom}
+          onOpen={() => handleShowInExplorerNative(upscaledPath)}
+          onReset={handleClearFile}
+        />
+      )}
+
+      {/* Right Inspector Panel Drawer */}
+      {isInspectorOpen && (
+        <div style={{ position: "absolute", top: 56, right: 12, bottom: 78, width: 312, zIndex: 38, animation: "slidein .3s var(--ease-spring) both" }}>
+          <AdvancedSettings
+            gpus={gpus}
+            selectedGpu={selectedGpu}
+            onSelectGpu={setSelectedGpu}
+            tileSize={tileSize}
+            onSelectTileSize={setTileSize}
+            customOutputPath={customOutputPath}
+            onSelectOutputPath={handleSelectDestinationFolder}
+            onClose={() => setIsInspectorOpen(false)}
+          />
         </div>
       )}
+
+      {/* Overlays & Modals */}
+      {showCatalogModal && (
+        <ModelCatalogModal
+          isOpen={showCatalogModal}
+          installedModelIds={installedModels}
+          onDownloadModel={handleDownloadModel}
+          downloadingModelId={downloadingModelId}
+          downloadProgress={downloadProgress}
+          onClose={() => setShowCatalogModal(false)}
+        />
+      )}
+
+      {isHistoryOpen && (
+        <RecentHistoryDrawer
+          isOpen={isHistoryOpen}
+          history={historyItems as any}
+          onSelectHistoryItem={handleLoadHistoryItem}
+          onClose={() => setIsHistoryOpen(false)}
+        />
+      )}
+
+      {isAboutOpen && <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />}
+
+      <ToastContainer toasts={toasts} onDismiss={removeToast} />
     </div>
   );
 }
