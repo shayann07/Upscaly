@@ -186,6 +186,8 @@ fn run_single_image_job(app: &AppHandle, job: &Job) -> Result<(), String> {
         "-g", &job.gpu_id.to_string(),
         "-s", &job.scale.to_string(),
         "-t", &job.tile_size.to_string(),
+        "-j", "4:4:4",
+        "-x",
         "-v"
     ]);
 
