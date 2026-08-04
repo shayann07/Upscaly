@@ -98,10 +98,12 @@ use windows_sys::Win32::Foundation::HANDLE;
 #[cfg(target_os = "windows")]
 use std::os::windows::io::AsRawHandle;
 
-/// Attaches a spawned child process to a Windows Job Object configured to kill child processes on parent exit.
 #[cfg(target_os = "windows")]
-pub fn attach_to_job_object(child: &Child) {
-    unsafe {
+static GLOBAL_JOB_OBJECT: OnceLock<usize> = OnceLock::new();
+
+#[cfg(target_os = "windows")]
+fn get_or_create_job_object() -> usize {
+    *GLOBAL_JOB_OBJECT.get_or_init(|| unsafe {
         let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
         if job != 0 {
             let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
@@ -112,7 +114,18 @@ pub fn attach_to_job_object(child: &Child) {
                 &info as *const _ as *const _,
                 std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
             );
-            AssignProcessToJobObject(job, child.as_raw_handle() as HANDLE);
+        }
+        job as usize
+    })
+}
+
+/// Attaches a spawned child process to a Windows Job Object configured to kill child processes on parent exit.
+#[cfg(target_os = "windows")]
+pub fn attach_to_job_object(child: &Child) {
+    let job_handle = get_or_create_job_object();
+    if job_handle != 0 {
+        unsafe {
+            AssignProcessToJobObject(job_handle as HANDLE, child.as_raw_handle() as HANDLE);
         }
     }
 }

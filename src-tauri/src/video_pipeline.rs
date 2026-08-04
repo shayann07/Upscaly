@@ -38,7 +38,7 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     let fps_string = get_video_framerate(&job.input_path)?;
 
     // 3. Extract video frames using ffmpeg
-    update_progress(app, &job.id, 5.0, "Extracting video frames...");
+    update_progress(app, &job.id, 5.0, "Extracting Video Frames (FFmpeg)...");
     
     let ffmpeg_binary = resolve_ffmpeg_binary(app)?;
     let extract_status = Command::new(&ffmpeg_binary)
@@ -70,7 +70,7 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     }
 
     // 5. Run upscaling on the frames folder using NCNN Vulkan
-    update_progress(app, &job.id, 10.0, "Upscaling video frames...");
+    update_progress(app, &job.id, 10.0, &format!("Starting GPU Upscaling ({} frames)...", total_frames));
 
     let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan")?;
     let models_dir = get_models_dir(app);
@@ -91,32 +91,45 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     cmd.stderr(Stdio::piped());
 
     let mut child = cmd.spawn().map_err(|e| format!("Failed to start NCNN upscaler process: {}", e))?;
+    crate::sidecar_manager::attach_to_job_object(&child);
 
     // Spawn a monitor thread to check upscaled files count in the output directory
     let job_id_clone = job.id.clone();
     let app_clone = app.clone();
     let frames_out_clone = frames_out_dir.clone();
     let total_frames_f = total_frames as f64;
+    let start_time = std::time::Instant::now();
 
     let monitor_handle = thread::spawn(move || {
         loop {
-            // Count completed files in frames_out_dir
             if let Ok(entries) = fs::read_dir(&frames_out_clone) {
                 let completed = entries
                     .filter_map(Result::ok)
                     .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "jpg" || ext == "png"))
                     .count();
 
-                // Upscaling takes 10% to 90% of total progress
                 let upscale_ratio = completed as f64 / total_frames_f;
                 let current_progress = 10.0 + (upscale_ratio * 80.0);
 
-                let _status_msg = format!("Upscaling frames ({} / {})...", completed, total_frames);
+                let elapsed = start_time.elapsed().as_secs_f64();
+                let (eta_sec, current_fps) = if completed > 0 && elapsed > 0.5 {
+                    let secs_per_frame = elapsed / completed as f64;
+                    let remaining_frames = total_frames.saturating_sub(completed);
+                    let eta = (remaining_frames as f64 * secs_per_frame) as u64;
+                    let fps_val = 1.0 / secs_per_frame;
+                    (Some(eta), Some((fps_val * 10.0).round() / 10.0))
+                } else {
+                    (None, None)
+                };
+
                 let _ = app_clone.emit("job-status-changed", JobProgress {
                     job_id: job_id_clone.clone(),
                     percentage: current_progress.min(90.0),
                     status: "processing".to_string(),
                     error: None,
+                    phase: Some(format!("Upscaling Video Frames ({} / {})", completed, total_frames)),
+                    eta_seconds: eta_sec,
+                    fps: current_fps,
                 });
 
                 if completed >= total_frames {
@@ -124,7 +137,7 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
                 }
             }
 
-            thread::sleep(Duration::from_millis(500));
+            thread::sleep(Duration::from_millis(350));
         }
     });
 
@@ -138,7 +151,7 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     }
 
     // 6. Reassemble frames into output video using ffmpeg
-    update_progress(app, &job.id, 90.0, "Reassembling video and merging audio...");
+    update_progress(app, &job.id, 90.0, "Reassembling Video & Merging Audio (FFmpeg)...");
 
     let reassemble_status = Command::new(&ffmpeg_binary)
         .args(&[
@@ -165,7 +178,7 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     // 7. Clean up scratch temporary directories
     let _ = fs::remove_dir_all(&job_temp_dir);
 
-    update_progress(app, &job.id, 100.0, "Done");
+    update_progress(app, &job.id, 100.0, "Complete");
 
     Ok(())
 }
@@ -191,7 +204,6 @@ fn get_video_framerate(video_path: &str) -> Result<String, String> {
     fps_str = fps_str.trim().to_string();
     
     if fps_str.is_empty() {
-        // Fallback to standard 30fps if empty
         Ok("30/1".to_string())
     } else {
         Ok(fps_str)
@@ -224,11 +236,14 @@ fn resolve_ffmpeg_binary(app: &AppHandle) -> Result<String, String> {
 }
 
 /// Helper function to emit progress updates.
-fn update_progress(app: &AppHandle, job_id: &str, percentage: f64, status: &str) {
+fn update_progress(app: &AppHandle, job_id: &str, percentage: f64, phase_text: &str) {
     let _ = app.emit("job-status-changed", JobProgress {
         job_id: job_id.to_string(),
         percentage,
-        status: status.to_string(),
+        status: "processing".to_string(),
         error: None,
+        phase: Some(phase_text.to_string()),
+        eta_seconds: None,
+        fps: None,
     });
 }

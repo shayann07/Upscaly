@@ -6,7 +6,7 @@ use std::io::{BufReader, BufRead};
 use serde::{Serialize, Deserialize};
 use std::thread;
 
-use crate::sidecar_manager::resolve_sidecar_path;
+use crate::sidecar_manager::{resolve_sidecar_path, attach_to_job_object};
 use crate::model_manager::get_models_dir;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -27,6 +27,9 @@ pub struct JobProgress {
     pub percentage: f64,
     pub status: String, // "queued", "processing", "completed", "failed", "cancelled"
     pub error: Option<String>,
+    pub phase: Option<String>,
+    pub eta_seconds: Option<u64>,
+    pub fps: Option<f64>,
 }
 
 static JOB_QUEUE: OnceLock<Mutex<VecDeque<Job>>> = OnceLock::new();
@@ -67,10 +70,12 @@ pub fn start_queue_worker(app: AppHandle) {
                         percentage: 0.0,
                         status: "processing".to_string(),
                         error: None,
+                        phase: Some("Initializing GPU Engine...".to_string()),
+                        eta_seconds: None,
+                        fps: None,
                     });
 
                     let result = if job.is_video {
-                        // For video, we will orchestrate it using the video_pipeline module
                         crate::video_pipeline::run_video_job(&app, &job)
                     } else {
                         run_single_image_job(&app, &job)
@@ -83,6 +88,9 @@ pub fn start_queue_worker(app: AppHandle) {
                                 percentage: 100.0,
                                 status: "completed".to_string(),
                                 error: None,
+                                phase: Some("Complete".to_string()),
+                                eta_seconds: Some(0),
+                                fps: None,
                             });
                         }
                         Err(err) => {
@@ -94,6 +102,9 @@ pub fn start_queue_worker(app: AppHandle) {
                                 percentage: 0.0,
                                 status: status.to_string(),
                                 error: error_msg,
+                                phase: Some("Failed".to_string()),
+                                eta_seconds: None,
+                                fps: None,
                             });
                         }
                     }
@@ -103,7 +114,6 @@ pub fn start_queue_worker(app: AppHandle) {
                     active_jobs.remove(&job.id);
                 }
                 None => {
-                    // No more jobs, shut down worker thread loop
                     let mut running = get_worker_running().lock().unwrap();
                     *running = false;
                     break;
@@ -125,6 +135,9 @@ pub fn add_job_to_queue(app: AppHandle, job: Job) {
         percentage: 0.0,
         status: "queued".to_string(),
         error: None,
+        phase: Some("Queued in GPU worker thread...".to_string()),
+        eta_seconds: None,
+        fps: None,
     });
 
     start_queue_worker(app);
@@ -132,7 +145,6 @@ pub fn add_job_to_queue(app: AppHandle, job: Job) {
 
 /// Cancels a running or queued job.
 pub fn cancel_job(job_id: &str) -> Result<(), String> {
-    // 1. Remove from queue if not started yet
     {
         let mut queue = get_job_queue().lock().unwrap();
         if let Some(pos) = queue.iter().position(|j| j.id == job_id) {
@@ -141,7 +153,6 @@ pub fn cancel_job(job_id: &str) -> Result<(), String> {
         }
     }
 
-    // 2. Kill running process if active
     {
         let mut active_jobs = get_active_jobs().lock().unwrap();
         if let Some(mut child) = active_jobs.remove(job_id) {
@@ -151,6 +162,14 @@ pub fn cancel_job(job_id: &str) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Forcefully terminates all active jobs (e.g. on window exit)
+pub fn kill_all_active_jobs() {
+    let mut active_jobs = get_active_jobs().lock().unwrap();
+    for (_, mut child) in active_jobs.drain() {
+        let _ = child.kill();
+    }
 }
 
 /// Executes a single image upscale job by calling the NCNN Vulkan binary and parsing progress.
@@ -174,15 +193,13 @@ fn run_single_image_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     cmd.stderr(Stdio::piped());
 
     let child = cmd.spawn().map_err(|e| format!("Failed to start upscale process: {}", e))?;
-    
-    // Register active job process
+    attach_to_job_object(&child);
+
     {
         let mut active_jobs = get_active_jobs().lock().unwrap();
         active_jobs.insert(job.id.clone(), child);
     }
 
-    // Monitor progress output from stderr/stdout
-    // NCNN outputs progress to stderr or stdout like "25.00%\n"
     if let Some(stderr) = get_active_jobs().lock().unwrap().get_mut(&job.id).and_then(|c| c.stderr.take()) {
         let reader = BufReader::new(stderr);
         for line_res in reader.lines() {
@@ -199,20 +216,21 @@ fn run_single_image_job(app: &AppHandle, job: &Job) -> Result<(), String> {
                         percentage: val,
                         status: "processing".to_string(),
                         error: None,
+                        phase: Some("GPU Inference...".to_string()),
+                        eta_seconds: None,
+                        fps: None,
                     });
                 }
             }
         }
     }
 
-    // Wait for exit status
     let mut active_jobs = get_active_jobs().lock().unwrap();
     if let Some(mut child) = active_jobs.remove(&job.id) {
         let status = child.wait().map_err(|e| e.to_string())?;
         if status.success() {
             Ok(())
         } else {
-            // Check if killed/cancelled
             if active_jobs.contains_key(&job.id) {
                 Err("Upscale engine failed or exited with error".to_string())
             } else {
