@@ -826,7 +826,13 @@ export default function App() {
             tileSize={tileSize}
             onSelectTileSize={setTileSize}
             customOutputPath={customOutputPath}
+            onSetOutputDir={(dir) => setCustomOutputPath(dir)}
             onSelectOutputPath={handleSelectDestinationFolder}
+            isProcessing={jobStatus === "processing" || jobStatus === "queued"}
+            onAutoTune={(recTile, vramText) => {
+              setTileSize(recTile);
+              addToast("info", "Auto-Tuned Tile Size", `Set to ${recTile === 0 ? "AUTO" : recTile + "px"} based on ${vramText}`);
+            }}
             onClose={() => setIsInspectorOpen(false)}
           />
         </div>
