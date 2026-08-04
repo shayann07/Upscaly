@@ -11,6 +11,7 @@ interface TitlebarProps {
   selectedGpu?: number;
   availableGpus?: GpuInfo[];
   onSelectGpu?: (gpuId: number) => void;
+  isVramOverflowing?: boolean;
   settingsOpen?: boolean;
   onToggleSettings?: () => void;
   onOpenCatalog?: () => void;
@@ -36,6 +37,7 @@ export function Titlebar({
   selectedGpu = 0,
   availableGpus = [],
   onSelectGpu = () => {},
+  isVramOverflowing = false,
   settingsOpen = false,
   onToggleSettings = () => {},
   onOpenCatalog = () => {},
@@ -142,9 +144,11 @@ export function Titlebar({
       {/* GPU Island (shown when no active single file) */}
       {!hasFiles && (
         <div
-          className="absolute top-3 left-1/2 -translate-x-1/2 z-[41] border border-[var(--border-subtle)] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] overflow-hidden hover:scale-[1.06] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
+          className={`absolute top-3 left-1/2 -translate-x-1/2 z-[41] border bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] overflow-hidden hover:scale-[1.06] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)] ${
+            isVramOverflowing ? "border-[#E88A80] shadow-[0_0_12px_rgba(232,138,128,0.25)]" : "border-[var(--border-subtle)]"
+          }`}
           style={{
-            width: gpuMenuOpen ? 296 : 208,
+            width: gpuMenuOpen ? 296 : isVramOverflowing ? 250 : 208,
             borderRadius: gpuMenuOpen ? 14 : 11,
             transformOrigin: "top center",
             transition: "width .28s var(--ease-spring), transform .24s var(--ease-spring), border-radius .24s ease, border-color .24s ease, box-shadow .24s ease",
@@ -155,8 +159,13 @@ export function Titlebar({
             className="relative w-full flex items-center gap-[9px] h-[34px] px-3 border-none bg-transparent cursor-pointer transition-colors duration-150"
           >
             <span className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.07em] text-[var(--text-dim)] flex-none">GPU</span>
-            <span className="absolute left-[44px] right-[32px] text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis text-center pointer-events-none">{gpuLabel}</span>
+            <span className="absolute left-[44px] right-[40px] text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis text-center pointer-events-none">{gpuLabel}</span>
             <span className="flex-1" />
+            {isVramOverflowing && (
+              <span className="flex-none px-1.5 py-0.5 rounded-full font-['Martian_Mono',monospace] text-[8px] font-bold tracking-[0.06em] bg-[rgba(232,138,128,0.18)] text-[#E88A80] border border-[rgba(232,138,128,0.4)] animate-pulse">
+                OVERFLOW
+              </span>
+            )}
             <span
               className="flex-none text-[var(--text-dim)] text-[9px] transition-transform duration-300"
               style={{ transform: `rotate(${gpuMenuOpen ? 180 : 0}deg)`, transition: "transform .24s var(--ease-spring)" }}

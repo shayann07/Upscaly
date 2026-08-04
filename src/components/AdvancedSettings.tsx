@@ -137,7 +137,7 @@ export function AdvancedSettings({
           <div className="mt-3">
             <div className="flex justify-between items-baseline font-['Martian_Mono',monospace] text-[9px] tracking-[0.05em] mb-1.5">
               <span style={{ color: isOverflowing ? "#E88A80" : "var(--text-dim)" }}>
-                VRAM {isOverflowing ? "⚠️ OVERFLOW" : ""}
+                VRAM {isOverflowing ? "· OVERFLOW" : ""}
               </span>
               <span>
                 <span style={{ color: isOverflowing ? "#E88A80" : "#DDD8D2" }}>{usedVramGb.toFixed(1)} GB</span>
@@ -192,7 +192,7 @@ export function AdvancedSettings({
           </div>
           <div className="text-[11.5px] leading-[1.5] mt-2 transition-colors duration-200" style={{ color: isOverflowing ? "#E88A80" : "var(--text-muted)" }}>
             {isOverflowing
-              ? `⚠️ Projected VRAM usage (${usedVramGb.toFixed(1)} GB) exceeds GPU memory (${totalVramGb.toFixed(1)} GB). Consider selecting 256px or 128px.`
+              ? `Projected VRAM usage (${usedVramGb.toFixed(1)} GB) exceeds GPU memory (${totalVramGb.toFixed(1)} GB). Consider selecting 256px or 128px.`
               : tileSize === 0
               ? "Tile size is derived automatically from GPU VRAM at job start."
               : `Selected tile size: ${tileSize}px. Projected VRAM usage: ${usedVramGb.toFixed(1)} GB.`}

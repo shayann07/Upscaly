@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -687,6 +687,20 @@ export default function App() {
     addToast("info", "Loaded from History", item.fileName);
   };
 
+  const isVramOverflowing = useMemo(() => {
+    const currentGpu = gpus.find((g) => g.id === selectedGpu);
+    let totalVram = 8;
+    if (currentGpu) {
+      const match = currentGpu.name.match(/(\d+)\s*GB/i) || (currentGpu.detail && currentGpu.detail.match(/(\d+)\s*GB/i));
+      if (match && match[1]) totalVram = parseInt(match[1], 10);
+      else if (currentGpu.name.toLowerCase().includes("intel") || currentGpu.name.toLowerCase().includes("uhd")) totalVram = 2;
+    }
+    const baseIdle = Math.round(totalVram * 0.12 * 10) / 10;
+    const tileFootprint = tileSize === 512 ? 3.0 : tileSize === 256 ? 1.5 : tileSize === 128 ? 0.7 : 1.2;
+    const used = Math.round((baseIdle + tileFootprint * 0.85) * 10) / 10;
+    return used > totalVram;
+  }, [gpus, selectedGpu, tileSize]);
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "var(--bg-stripe)", color: "var(--text-primary)", fontFamily: "var(--font-ui)", fontSize: "13px", overflow: "hidden", userSelect: "none", WebkitFontSmoothing: "antialiased" }}>
 
@@ -791,6 +805,7 @@ export default function App() {
         selectedGpu={selectedGpu}
         availableGpus={gpus.map((g) => ({ id: g.id, name: g.name, detail: g.detail || (g.id === 0 ? "Default GPU" : "Vulkan Device") }))}
         onSelectGpu={setSelectedGpu}
+        isVramOverflowing={isVramOverflowing}
         settingsOpen={isInspectorOpen}
         onToggleSettings={() => setIsInspectorOpen(!isInspectorOpen)}
         onOpenCatalog={() => setShowCatalogModal(true)}
