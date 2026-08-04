@@ -87,8 +87,9 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
         "-v"
     ]);
 
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
+    // Use Stdio::null() to prevent Windows pipe buffer deadlocks when minimized
+    cmd.stdout(Stdio::null());
+    cmd.stderr(Stdio::null());
 
     let mut child = cmd.spawn().map_err(|e| format!("Failed to start NCNN upscaler process: {}", e))?;
     crate::sidecar_manager::attach_to_job_object(&child);

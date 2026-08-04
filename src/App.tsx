@@ -797,6 +797,8 @@ export default function App() {
           phase={jobPhase || "UPSCALE 4X"}
           etaSeconds={etaSeconds}
           fps={fps}
+          vram={selectedGpu === -1 ? "RAM" : "4.2 GB"}
+          tileCount={tileSize === 0 ? "AUTO" : `${tileSize}px`}
           onCancel={() => handleCancelUpscale()}
         />
       )}
