@@ -201,7 +201,13 @@ export default function App() {
           if (saved.default_gpu_id !== undefined) setSelectedGpu(saved.default_gpu_id);
           if (saved.default_scale !== undefined) setScale(saved.default_scale);
           if (saved.default_tile_size !== undefined) setTileSize(saved.default_tile_size);
-          if (saved.output_directory) setCustomOutputPath(saved.output_directory);
+          if (saved.output_directory) {
+            setCustomOutputPath(saved.output_directory);
+          } else {
+            invoke<string>("get_default_output_dir")
+              .then((defaultDir) => setCustomOutputPath(defaultDir))
+              .catch(() => {});
+          }
         }
       })
       .catch(() => {});
