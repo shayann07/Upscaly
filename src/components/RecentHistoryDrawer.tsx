@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { HistoryEntry } from "../lib/types";
+import { getMediaSrc } from "../lib/media";
 
 interface RecentHistoryDrawerProps {
   history: HistoryEntry[];
@@ -71,30 +72,40 @@ export function RecentHistoryDrawer({
               NO HISTORY YET
             </div>
           ) : (
-            history.map((h) => (
-              <div
-                key={h.id}
-                onClick={() => handleSelect(h)}
-                className="flex gap-3 p-[11px] rounded-[11px] cursor-pointer transition-colors duration-150 hover:bg-[var(--bg-elevated)]"
-              >
-                {/* Thumbnail placeholder */}
+            history.map((h) => {
+              const mediaPath = h.upscaledPath || h.originalPath || h.inputPath || "";
+              const src = mediaPath ? getMediaSrc(mediaPath) : "";
+
+              return (
                 <div
-                  className="w-[38px] h-[38px] flex-none border border-[var(--border-default)] rounded-[9px]"
-                  style={{ background: "repeating-linear-gradient(112deg, #3A322D 0 5px, #22201C 5px 10px)" }}
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[11.5px] font-medium text-[#EDEAE6] whitespace-nowrap overflow-hidden text-ellipsis mb-[3px]">
-                    {h.fileName || h.name || "Upscaled Media"}
+                  key={h.id}
+                  onClick={() => handleSelect(h)}
+                  className="flex gap-3 p-[11px] rounded-[11px] cursor-pointer transition-colors duration-150 hover:bg-[var(--bg-elevated)]"
+                >
+                  {/* Real media thumbnail */}
+                  <div className="w-[38px] h-[38px] flex-none border border-[var(--border-default)] rounded-[9px] overflow-hidden bg-[#1B1917] relative">
+                    {src && !h.isVideo ? (
+                      <img src={src} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center font-['Martian_Mono',monospace] text-[8px] text-[var(--text-muted)]">
+                        {h.isVideo ? "VID" : "IMG"}
+                      </div>
+                    )}
                   </div>
-                  <div className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.04em]">
-                    {h.meta || `${(h.modelName || h.model || 'RealESRGAN').toUpperCase()} · ${h.scale || 4}×`}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11.5px] font-medium text-[#EDEAE6] whitespace-nowrap overflow-hidden text-ellipsis mb-[3px]">
+                      {h.fileName || h.name || "Upscaled Media"}
+                    </div>
+                    <div className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.04em]">
+                      {h.meta || `${(h.modelName || h.model || 'RealESRGAN').toUpperCase()} · ${h.scale || 4}×`}
+                    </div>
+                  </div>
+                  <div className="font-['Martian_Mono',monospace] text-[9px] text-[#4A453F] flex-none">
+                    {h.time || getFormattedTime(h.timestamp)}
                   </div>
                 </div>
-                <div className="font-['Martian_Mono',monospace] text-[9px] text-[#4A453F] flex-none">
-                  {h.time || getFormattedTime(h.timestamp)}
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </motion.div>

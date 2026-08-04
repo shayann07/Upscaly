@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { BatchItem } from "../lib/types";
+import { getMediaSrc } from "../lib/media";
 
 export type { BatchItem };
 
@@ -152,6 +153,8 @@ export function BatchQueueView({
           const active = f.id === selectedId;
           const st = f.status;
           const col = (st === "done" || (st as string) === "completed") ? "var(--success)" : st === "processing" ? accentColor : st === "queued" ? "var(--text-secondary)" : "var(--text-dim)";
+          const itemPath = f.filePath || f.path || "";
+          const itemSrc = itemPath ? getMediaSrc(itemPath) : "";
 
           return (
             <div
@@ -179,24 +182,26 @@ export function BatchQueueView({
                 transition: `all .24s ${EASE}`,
               }}
             >
-              {/* Thumbnail */}
+              {/* Real Thumbnail */}
               <div
-                className="flex-none relative overflow-hidden"
+                className="flex-none relative overflow-hidden bg-[#1B1917]"
                 style={{
                   width: open ? (active ? 44 : 40) : 46,
                   height: open ? (active ? 44 : 40) : 46,
                   border: `1px solid ${active ? accentColor : open ? "var(--border-default)" : "#3E3933"}`,
                   borderRadius: open ? 9 : 11,
-                  background: "repeating-linear-gradient(28deg, #4A423B 0 5px, #332D28 5px 10px)",
                   boxShadow: open ? "none" : active ? "0 12px 30px rgba(0,0,0,.7)" : "0 6px 18px rgba(0,0,0,.5)",
                   transition: `all .24s ${EASE}`,
                 }}
               >
+                {itemSrc && !f.isVideo ? (
+                  <img src={itemSrc} alt="" className="w-full h-full object-cover" />
+                ) : null}
                 <span
                   className="absolute bottom-0 left-0 right-0 py-[1px] text-center bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[7px] tracking-[0.06em]"
                   style={{ color: col }}
                 >
-                  IMG
+                  {f.isVideo ? "VID" : "IMG"}
                 </span>
               </div>
 
