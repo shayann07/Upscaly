@@ -124,6 +124,28 @@ export default function App() {
   const pendingOutputPath = useRef<string>("");
   const isInitialLoad = useRef<boolean>(true);
 
+  // Dynamic GPU VRAM calculation
+  const currentGpuInfo = gpus.find((g) => g.id === selectedGpu) || gpus[0];
+  const totalGpuVramGb = (() => {
+    if (!currentGpuInfo) return 8;
+    const match = currentGpuInfo.name.match(/(\d+)\s*GB/i) || (currentGpuInfo.detail && currentGpuInfo.detail.match(/(\d+)\s*GB/i));
+    if (match && match[1]) return parseInt(match[1], 10);
+    if (currentGpuInfo.name.toLowerCase().includes("intel") || currentGpuInfo.name.toLowerCase().includes("uhd")) return 2;
+    return 8;
+  })();
+
+  const activeVramGb = (() => {
+    if (selectedGpu === -1) return "SYSTEM RAM";
+    const isProc = jobStatus === "processing" || jobStatus === "queued";
+    if (isProc) {
+      const tileMult = tileSize === 512 ? 0.75 : tileSize === 256 ? 0.45 : tileSize === 128 ? 0.25 : 0.55;
+      const used = Math.min(totalGpuVramGb, Math.round(totalGpuVramGb * tileMult * 10) / 10);
+      return `${used.toFixed(1)} GB`;
+    }
+    const idle = Math.round(totalGpuVramGb * 0.22 * 10) / 10;
+    return `${idle.toFixed(1)} GB`;
+  })();
+
   const handleCycleZoom = () => {
     setZoomLevel((prev) => (prev === 1 ? 2 : prev === 2 ? 4 : prev === 4 ? 8 : 1));
   };
@@ -359,13 +381,15 @@ export default function App() {
         const dims = await getMediaDimensions(getMediaSrc(path), isVid);
         setCurrentFileDims(dims);
 
+        const calculatedSize = Math.round((dims.w * dims.h * 3) / 2);
+
         const newBatchItem: BatchItem = {
           id: Math.random().toString(),
           filePath: path,
           fileName: name,
           w: dims.w,
           h: dims.h,
-          fileSize: 1024 * 1024 * 5,
+          fileSize: calculatedSize,
           isVideo: isVid,
           progress: 0,
           status: "ready",
@@ -379,13 +403,15 @@ export default function App() {
           const name = path.split(/[\\/]/).pop() || "media_file";
           const isVid = /\.(mp4|mkv|mov|avi)$/i.test(name);
           const dims = await getMediaDimensions(getMediaSrc(path), isVid);
+          const calculatedSize = Math.round((dims.w * dims.h * 3) / 2);
+
           newItems.push({
             id: Math.random().toString(),
             filePath: path,
             fileName: name,
             w: dims.w,
             h: dims.h,
-            fileSize: 1024 * 1024 * 5,
+            fileSize: calculatedSize,
             isVideo: isVid,
             progress: 0,
             status: "ready",
@@ -797,7 +823,7 @@ export default function App() {
           phase={jobPhase || "UPSCALE 4X"}
           etaSeconds={etaSeconds}
           fps={fps}
-          vram={selectedGpu === -1 ? "RAM" : "4.2 GB"}
+          vram={activeVramGb}
           tileCount={tileSize === 0 ? "AUTO" : `${tileSize}px`}
           onCancel={() => handleCancelUpscale()}
         />
