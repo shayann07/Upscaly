@@ -82,21 +82,24 @@ export function ComparisonSlider({
     }
   }, [inputSrc, outputSrc, isVideoInput, isVideoOutput]);
 
-  // Synchronize dual video playback time for video split comparison
+  // Synchronize dual video playback time for video split & side-by-side comparison
   useEffect(() => {
     const v1 = videoInputRef.current;
     const v2 = videoOutputRef.current;
     if (!v1 || !v2) return;
 
+    v1.play().catch(() => {});
+    v2.play().catch(() => {});
+
     const syncTime = () => {
-      if (Math.abs(v1.currentTime - v2.currentTime) > 0.05) {
+      if (Math.abs(v1.currentTime - v2.currentTime) > 0.08) {
         v2.currentTime = v1.currentTime;
       }
     };
 
     v1.addEventListener("timeupdate", syncTime);
     return () => v1.removeEventListener("timeupdate", syncTime);
-  }, []);
+  }, [inputSrc, outputSrc, activeMode]);
 
   // Space hold for reveal
   useEffect(() => {
@@ -215,6 +218,14 @@ export function ComparisonSlider({
             loop
             muted
             playsInline
+            onLoadedData={(e) => {
+              e.currentTarget.play().catch(() => {});
+            }}
+            onPlay={() => {
+              if (ref === videoInputRef && videoOutputRef.current) {
+                videoOutputRef.current.play().catch(() => {});
+              }
+            }}
             className="w-full h-full object-contain pointer-events-none"
           />
         </div>
