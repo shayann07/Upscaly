@@ -1,8 +1,10 @@
+import { useMemo } from "react";
 import { GpuInfo } from "../lib/types";
 
 interface GpuDevice {
   id: number;
   name: string;
+  detail?: string;
 }
 
 interface AdvancedSettingsProps {
@@ -20,8 +22,9 @@ interface AdvancedSettingsProps {
   vramUsage?: string;
   accentColor?: string;
   onClose?: () => void;
-  onAutoTune?: () => void;
+  onAutoTune?: (recommendedTileSize: number, vramText: string) => void;
   isOpen?: boolean;
+  isProcessing?: boolean;
 }
 
 export function AdvancedSettings({
@@ -34,20 +37,66 @@ export function AdvancedSettings({
   onSelectTileSize,
   outputDir = "~/Pictures/Upscaled",
   customOutputPath,
+  onSetOutputDir,
   onSelectOutputPath,
-  vramUsage = "0 GB",
   accentColor = "var(--accent)",
   onClose = () => {},
-  onAutoTune = () => {},
+  onAutoTune,
+  isProcessing = false,
 }: AdvancedSettingsProps) {
   const EASE = "var(--ease-spring)";
 
-  const devices: GpuInfo[] = availableGpus || (gpus ? gpus.map(g => ({ id: g.id, name: g.name, detail: "VULKAN" })) : []);
+  const devices: GpuInfo[] = availableGpus || (gpus ? gpus.map(g => ({ id: g.id, name: g.name, detail: g.detail || "VULKAN" })) : []);
   const handleTileSize = onSetTileSize || onSelectTileSize || (() => {});
-  const displayOutputDir = customOutputPath || outputDir;
+  const displayOutputDir = customOutputPath !== undefined ? customOutputPath : outputDir;
+
+  const currentGpu = useMemo(() => {
+    return devices.find((g) => g.id === selectedGpu) || devices[0];
+  }, [devices, selectedGpu]);
+
+  // Extract total VRAM from GPU name/detail string (e.g. "RTX 3050 6GB" -> 6)
+  const totalVramGb = useMemo(() => {
+    if (!currentGpu) return 8;
+    const match = currentGpu.name.match(/(\d+)\s*GB/i) || (currentGpu.detail && currentGpu.detail.match(/(\d+)\s*GB/i));
+    if (match && match[1]) {
+      return parseInt(match[1], 10);
+    }
+    if (currentGpu.name.toLowerCase().includes("intel") || currentGpu.name.toLowerCase().includes("uhd")) {
+      return 2;
+    }
+    return 8;
+  }, [currentGpu]);
+
+  // Dynamic VRAM calculations based on job status & tile size
+  const usedVramGb = useMemo(() => {
+    if (isProcessing) {
+      const tileMult = tileSize === 512 ? 0.75 : tileSize === 256 ? 0.45 : tileSize === 128 ? 0.25 : 0.55;
+      return Math.min(totalVramGb, Math.round(totalVramGb * tileMult * 10) / 10);
+    }
+    return Math.round(totalVramGb * 0.22 * 10) / 10;
+  }, [isProcessing, tileSize, totalVramGb]);
+
+  const vramPct = Math.min(100, Math.round((usedVramGb / totalVramGb) * 100));
+
+  const handleAutoTuneClick = () => {
+    let recTile = 0; // Auto
+    if (totalVramGb <= 4) {
+      recTile = 128;
+    } else if (totalVramGb <= 8) {
+      recTile = 256;
+    } else {
+      recTile = 512;
+    }
+
+    handleTileSize(recTile);
+
+    if (onAutoTune) {
+      onAutoTune(recTile, `${totalVramGb}.0 GB VRAM`);
+    }
+  };
 
   return (
-    <div className="h-full flex flex-col border border-[var(--border-subtle)] rounded-[14px] bg-[rgba(13,12,11,.97)] shadow-[var(--shadow-panel)] overflow-hidden">
+    <div className="h-full flex flex-col border border-[var(--border-subtle)] rounded-[14px] bg-[rgba(13,12,11,.97)] shadow-[var(--shadow-panel)] overflow-hidden select-none">
       {/* Header */}
       <div className="h-[38px] flex-none flex items-center justify-between px-3 border-b border-[var(--border-default)]">
         <span className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.1em] text-[var(--text-muted)]">SETTINGS</span>
@@ -81,20 +130,20 @@ export function AdvancedSettings({
             </div>
           ))}
 
-          {/* VRAM bar */}
+          {/* Dynamic VRAM Meter */}
           <div className="mt-3">
             <div className="flex justify-between items-baseline font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.05em] mb-1.5">
               <span>VRAM</span>
               <span>
-                <span className="text-[#DDD8D2]">{vramUsage}</span>
-                <span className="text-[var(--text-dim)]"> / {selectedGpu === -1 ? "SYSTEM RAM" : "12.0 GB"}</span>
+                <span className="text-[#DDD8D2]">{usedVramGb.toFixed(1)} GB</span>
+                <span className="text-[var(--text-dim)]"> / {totalVramGb.toFixed(1)} GB</span>
               </span>
             </div>
             <div className="h-1 rounded-sm bg-[#1B1917] overflow-hidden shadow-[inset_0_0_0_1px_var(--border-default)]">
               <div
                 className="h-full transition-all duration-300"
                 style={{
-                  width: `${selectedGpu === -1 ? 0 : 40}%`,
+                  width: `${vramPct}%`,
                   background: accentColor,
                   transition: `width .3s ${EASE}`,
                 }}
@@ -108,8 +157,8 @@ export function AdvancedSettings({
           <div className="flex items-baseline justify-between mb-2.5">
             <span className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.1em] text-[var(--text-dim)]">TILE SIZE</span>
             <button
-              onClick={onAutoTune}
-              className="border-none bg-transparent font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] cursor-pointer p-0 hover:text-[var(--text-primary)]"
+              onClick={handleAutoTuneClick}
+              className="border border-[var(--accent-border)] px-1.5 py-0.5 rounded bg-[var(--accent-bg)] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] cursor-pointer hover:bg-[var(--bg-hover)] transition-all duration-150"
               style={{ color: accentColor }}
             >
               AUTO-TUNE
@@ -138,18 +187,22 @@ export function AdvancedSettings({
           </div>
           <div className="text-[11.5px] text-[var(--text-muted)] leading-[1.5] mt-2">
             {tileSize === 0
-              ? "Tile size is derived from available VRAM at job start."
-              : "Smaller tiles use less VRAM and run slower. 256 suits most 8 GB cards."}
+              ? "Tile size is derived automatically from GPU VRAM at job start."
+              : `Selected tile size: ${tileSize}px. Smaller tiles reduce VRAM usage.`}
           </div>
         </div>
 
         {/* Output Directory */}
         <div className="p-3.5">
-          <div className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.1em] text-[var(--text-dim)] mb-2.5">OUTPUT</div>
+          <div className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.1em] text-[var(--text-dim)] mb-2.5">OUTPUT DIRECTORY</div>
           <div className="flex gap-1.5">
-            <div className="flex-1 min-w-0 px-2.5 py-2 border border-[var(--border-default)] rounded-lg bg-[var(--bg-elevated)] font-['Martian_Mono',monospace] text-[10px] text-[var(--text-secondary)] whitespace-nowrap overflow-hidden text-ellipsis">
-              {displayOutputDir}
-            </div>
+            <input
+              type="text"
+              value={displayOutputDir}
+              onChange={(e) => onSetOutputDir && onSetOutputDir(e.target.value)}
+              placeholder="System Default"
+              className="flex-1 min-w-0 px-2.5 py-2 border border-[var(--border-default)] rounded-lg bg-[var(--bg-elevated)] font-['Martian_Mono',monospace] text-[10px] text-[var(--text-secondary)] outline-none transition-colors duration-150 focus:border-[var(--border-hover)] focus:text-[var(--text-primary)]"
+            />
             <button
               onClick={onSelectOutputPath || (() => {})}
               className="flex-none px-3 border border-[var(--border-default)] rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
