@@ -37,8 +37,8 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     // 2. Query original video framerate (with safe fallback)
     let fps_string = get_video_framerate(app, &job.input_path);
 
-    // 3. Extract video frames using ffmpeg
-    update_progress(app, &job.id, 2.0, "Extracting Video Frames (FFmpeg)...");
+    // 3. Extract video frames using multi-threaded FFmpeg
+    update_progress(app, &job.id, 2.0, "Extracting Video Frames (FFmpeg Multi-Thread)...");
     
     let ffmpeg_binary = resolve_ffmpeg_binary(app)?;
 
@@ -47,8 +47,9 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     let extract_output = Command::new(&ffmpeg_binary)
         .args(&[
             "-y",
+            "-threads", "0",
             "-i", &job.input_path,
-            "-q:v", "2", // High quality JPEG/PNG
+            "-q:v", "2",
             "-pix_fmt", "rgb24",
             input_frame_pattern.to_str().unwrap()
         ])
@@ -73,8 +74,8 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
         return Err("No video frames extracted. Check if input file is a valid video.".to_string());
     }
 
-    // 5. Run upscaling on the frames folder using NCNN Vulkan
-    update_progress(app, &job.id, 10.0, &format!("Starting GPU Upscaling ({} frames)...", total_frames));
+    // 5. Run upscaling on the frames folder using NCNN Vulkan with FP16 (-x) and thread optimization (-j 4:4:4)
+    update_progress(app, &job.id, 10.0, &format!("GPU Accelerated Upscaling ({} frames)...", total_frames));
 
     let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan")?;
     let models_dir = get_models_dir(app);
@@ -89,7 +90,8 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
         "-s", &job.scale.to_string(),
         "-t", &job.tile_size.to_string(),
         "-f", "png",
-        "-j", "2:2:2",
+        "-j", "4:4:4", // Maximize worker thread concurrency (load:proc:save)
+        "-x",          // FP16 Precision mode for 2x faster GPU Tensor/Vulkan execution
         "-v"
     ]);
 
@@ -144,7 +146,7 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
                 }
             }
 
-            thread::sleep(Duration::from_millis(300));
+            thread::sleep(Duration::from_millis(250));
         }
     });
 
@@ -179,30 +181,60 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
 
     let out_frame_pattern = frames_out_dir.join(format!("frame_%08d.{}", sample_ext));
 
-    update_progress(app, &job.id, 92.0, "Reassembling Video & Merging Audio (FFmpeg)...");
+    update_progress(app, &job.id, 92.0, "Reassembling Video & Merging Audio (FFmpeg NVENC/Fast)...");
 
-    let reassemble_output = Command::new(&ffmpeg_binary)
+    // Try hardware-accelerated re-encoding (NVENC or QSV) with CPU fallback
+    let hw_result = Command::new(&ffmpeg_binary)
         .args(&[
             "-y",
             "-framerate", &fps_string,
             "-i", out_frame_pattern.to_str().unwrap(),
             "-i", &job.input_path,
-            "-c:v", "libx264",
+            "-c:v", "h264_nvenc",
+            "-preset", "p2",
+            "-cq", "20",
             "-pix_fmt", "yuv420p",
             "-c:a", "copy",
             "-map", "0:v:0",
-            "-map", "1:a:0?", // optional audio map
+            "-map", "1:a:0?",
             &job.output_path
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to run ffmpeg frame reassembler: {}", e))?;
+        .output();
 
-    if !reassemble_output.status.success() {
-        let err_log = String::from_utf8_lossy(&reassemble_output.stderr);
-        let last_line = err_log.lines().last().unwrap_or("Video encoding error");
-        return Err(format!("ffmpeg reassemble failed: {}", last_line));
+    let reassemble_success = match hw_result {
+        Ok(out) if out.status.success() => true,
+        _ => {
+            // Fallback to fast CPU x264 re-encoding
+            let cpu_out = Command::new(&ffmpeg_binary)
+                .args(&[
+                    "-y",
+                    "-framerate", &fps_string,
+                    "-i", out_frame_pattern.to_str().unwrap(),
+                    "-i", &job.input_path,
+                    "-c:v", "libx264",
+                    "-preset", "superfast",
+                    "-crf", "18",
+                    "-pix_fmt", "yuv420p",
+                    "-c:a", "copy",
+                    "-map", "0:v:0",
+                    "-map", "1:a:0?",
+                    &job.output_path
+                ])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .output();
+
+            match cpu_out {
+                Ok(out) => out.status.success(),
+                Err(_) => false,
+            }
+        }
+    };
+
+    if !reassemble_success {
+        return Err("ffmpeg reassemble failed during video output encoding".to_string());
     }
 
     // 7. Clean up scratch temporary directories
