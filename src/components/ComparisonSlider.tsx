@@ -277,7 +277,8 @@ export function ComparisonSlider({
         className="absolute inset-0"
         style={{
           clipPath: `inset(0 ${isHolding ? 0 : 100 - sliderPct}% 0 0)`,
-          transition: "clip-path .08s linear",
+          transition: isDragging ? "none" : "clip-path .08s linear",
+          willChange: "clip-path",
         }}
       >
         {renderMedia(inputSrc, isVideoInput, videoInputRef)}
@@ -290,6 +291,8 @@ export function ComparisonSlider({
         style={{
           left: `${isHolding ? 100 : sliderPct}%`,
           opacity: isHolding ? 0 : 1,
+          transition: isDragging ? "none" : "left .08s linear",
+          willChange: "left",
         }}
       >
         <div className="w-px h-full bg-[var(--text-primary)] shadow-[0_0_8px_rgba(0,0,0,.8)]" />
