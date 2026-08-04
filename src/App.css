@@ -1,139 +1,76 @@
-@import "tailwindcss";
-@import "atropos/css";
+@import "./index.css";
 
 :root {
-  --color-cosmic: #23212C;
-  --color-violet: #36255C;
-  --color-lavender: #D2C3F6;
-  --color-vanilla: #F1FEC8;
+  font-family: var(--font-ui), system-ui, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text-primary);
+  background-color: var(--bg-base);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-body {
-  margin: 0;
-  font-family: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
-  background-color: #16141D;
-  color: #F1FEC8;
-  overflow: hidden;
-  user-select: none;
-}
-
-/* Custom Glassmorphism Styles */
-.liquid-glass {
-  background: rgba(35, 33, 44, 0.55);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(210, 195, 246, 0.12);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-}
-
-.liquid-glass-card, .glass-card {
-  background: rgba(54, 37, 92, 0.35);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(210, 195, 246, 0.15);
-  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
-}
-
-.liquid-glass-pill {
-  background: rgba(35, 33, 44, 0.65);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(210, 195, 246, 0.2);
-}
-
-/* Liquid Shimmer Button Keyframes */
-@keyframes shimmer-sweep {
-  0% { transform: translateX(-100%) rotate(25deg); }
-  100% { transform: translateX(200%) rotate(25deg); }
-}
-
-.animate-shimmer {
-  position: relative;
-  overflow: hidden;
-}
-
-.animate-shimmer::after {
-  content: '';
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(241, 254, 200, 0.35) 50%,
-    transparent 100%
-  );
-  animation: shimmer-sweep 3s infinite linear;
-  pointer-events: none;
-}
-
-/* Before/After Split comparison slider styles */
-.slider-container {
-  position: relative;
-  overflow: hidden;
-  user-select: none;
-}
-
-.slider-image {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  pointer-events: none;
-}
-
-.slider-divider {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: #D2C3F6;
-  cursor: ew-resize;
-  box-shadow: 0 0 12px #D2C3F6, 0 0 24px #36255C;
-  z-index: 10;
-}
-
-.slider-handle {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 40px;
-  height: 40px;
-  background: rgba(35, 33, 44, 0.9);
-  backdrop-filter: blur(10px);
-  border-radius: 50%;
-  cursor: ew-resize;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-  border: 2px solid #D2C3F6;
-  color: #F1FEC8;
-  z-index: 11;
-  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-.slider-handle:hover {
-  transform: translate(-50%, -50%) scale(1.15);
-}
-
-/* Custom scrollbars */
+/* Custom scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(22, 20, 29, 0.5);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(210, 195, 246, 0.2);
+  background: #2A2826;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(210, 195, 246, 0.4);
+  background: #423E3A;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--text-primary);
+}
+
+/* Keyframe animations matching design handoff */
+@keyframes scan {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(420%); }
+}
+
+@keyframes recpulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translate(-50%, 14px); }
+  70% { transform: translate(-50%, -3px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@keyframes slidein {
+  from { opacity: 0; transform: translateX(30px); }
+  70% { transform: translateX(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes pop {
+  0% { opacity: 0; transform: scale(0.955); }
+  65% { transform: scale(1.012); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes toastin {
+  0% { opacity: 0; transform: translateX(40px) scale(0.96); }
+  70% { transform: translateX(-4px) scale(1.006); }
+  100% { opacity: 1; transform: none; }
 }
