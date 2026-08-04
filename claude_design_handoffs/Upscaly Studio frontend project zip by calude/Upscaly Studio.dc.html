@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Martian+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;background:#0B0A09;overflow:hidden}
+a{color:#A80B24;text-decoration:none}
+a:hover{color:#F2F0ED}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#2A2826;border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#423E3A}
+@keyframes scan{0%{transform:translateX(-110%)}100%{transform:translateX(420%)}}
+@keyframes recpulse{0%,100%{opacity:1}50%{opacity:.2}}
+@keyframes rise{from{opacity:0;transform:translate(-50%,14px)}70%{transform:translate(-50%,-3px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes slidein{from{opacity:0;transform:translateX(30px)}70%{transform:translateX(-4px)}to{opacity:1;transform:none}}
+@keyframes pop{0%{opacity:0;transform:scale(.955)}65%{transform:scale(1.012)}100%{opacity:1;transform:scale(1)}}
+@keyframes toastin{0%{opacity:0;transform:translateX(40px) scale(.96)}70%{transform:translateX(-4px) scale(1.006)}100%{opacity:1;transform:none}}
+</style>
+</helmet>
+
+<div style="position:fixed;inset:0;background:repeating-linear-gradient(115deg,#171514 0 13px,#0B0A09 13px 26px);color:#F2F0ED;font-family:Archivo,Helvetica,sans-serif;font-size:13px;overflow:hidden;user-select:none;-webkit-font-smoothing:antialiased">
+
+  <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden">
+
+    <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;inset:0;background:radial-gradient(105% 75% at 50% 45%,rgba(11,10,9,.55),rgba(11,10,9,.88) 78%)"></div>
+      <div style="position:relative;width:min(516px,calc(100% - 48px));border:1px solid #34312D;border-radius:16px;background:rgba(13,12,11,.97);box-shadow:0 30px 74px rgba(0,0,0,.62);overflow:hidden;animation:pop .4s cubic-bezier(.22,1.15,.36,1) both">
+
+        <div onDragOver="{{ dragOver }}" onDragLeave="{{ dragOut }}" onDrop="{{ dropFiles }}" style="{{ dropTargetStyle }}">
+          <div style="display:flex;align-items:flex-end;gap:9px;margin-bottom:22px">
+            <div style="width:22px;height:22px;border-radius:3px;border:1px solid #34312D;background:#26221E"></div>
+            <div style="width:32px;height:32px;border-radius:3px;border:1px solid #3A352F;background:linear-gradient(#0B0A09 1px,transparent 1px) 0 0/100% 16px,linear-gradient(90deg,#0B0A09 1px,transparent 1px) 0 0/16px 100%,#312C27"></div>
+            <div style="{{ motifStyle }}"></div>
+          </div>
+
+          <div style="font-size:21px;font-weight:600;letter-spacing:-0.02em;margin-bottom:8px">{{ dropTitle }}</div>
+          <div style="font-size:12.5px;color:#8A847C;line-height:1.5;max-width:300px">Images or video, a single file or a whole folder. Nothing leaves your machine.</div>
+          <div style="font-family:'Martian Mono',monospace;font-size:9px;letter-spacing:0.07em;color:#403B36;margin-top:14px">PNG JPG WEBP &nbsp;·&nbsp; MP4 MKV MOV</div>
+
+          <div style="display:flex;align-items:center;gap:8px;margin-top:24px">
+            <button type="button" onClick="{{ addFiles }}" style="height:38px;padding:0 20px;display:flex;align-items:center;gap:9px;border:none;border-radius:9px;background:#F2F0ED;color:#0B0A09;font-family:Archivo,sans-serif;font-size:12.5px;font-weight:600;cursor:pointer;transition:transform .18s cubic-bezier(.22,1.4,.36,1)" style-hover="transform:translateY(-2px)">
+              <span>Choose files</span>
+            </button>
+            <button type="button" onClick="{{ addBatch }}" style="height:38px;padding:0 16px;border:1px solid #34312D;border-radius:9px;background:transparent;color:#B8B2AA;font-family:Archivo,sans-serif;font-size:12.5px;font-weight:600;cursor:pointer;transition:all .18s cubic-bezier(.22,1.4,.36,1)" style-hover="transform:translateY(-2px);color:#F2F0ED;background:#161514">Folder</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <div style="{{ canvasFrameStyle }}">
+    <sc-if value="{{ showPlainPreview }}" hint-placeholder-val="{{ false }}">
+      <div style="{{ canvasMediaStyle }}"></div>
+    </sc-if>
+
+    <sc-if value="{{ showCompareSplit }}" hint-placeholder-val="{{ false }}">
+      <div onMouseDown="{{ sliderDown }}" style="position:absolute;inset:0;overflow:hidden;cursor:ew-resize">
+        <div style="position:absolute;inset:0">
+          <div style="{{ texFineStyle }}"></div>
+        </div>
+        <div style="{{ beforeLayerStyle }}">
+          <div style="{{ texCoarseStyle }}"></div>
+        </div>
+        <div style="{{ dividerStyle }}"></div>
+        <div style="{{ handleStyle }}">
+          <span style="font-family:'Martian Mono',monospace;font-size:9px;color:#0B0A09;letter-spacing:0.04em">◀▶</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ showCompareSide }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;gap:2px;background:#0B0A09">
+        <div style="position:relative;overflow:hidden">
+          <div style="{{ texCoarseStyle }}"></div>
+        </div>
+        <div style="position:relative;overflow:hidden">
+          <div style="{{ texFineStyle }}"></div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isRunning }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(6,1fr);gap:1px;pointer-events:none">
+        <sc-for list="{{ tileCells }}" as="c" hint-placeholder-count="48">
+          <div style="{{ c.style }}"></div>
+        </sc-for>
+      </div>
+    </sc-if>
+    </div>
+
+  </div>
+
+  <div style="position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:8px;z-index:40">
+  <div style="display:flex;align-items:center;gap:12px;height:34px;padding:0 13px 0 12px;border:1px solid #34312D;border-radius:11px;background:rgba(15,14,13,.94);box-shadow:0 10px 28px rgba(0,0,0,.5);transform-origin:left center;transition:transform .24s cubic-bezier(.22,1.15,.36,1),border-color .24s ease,box-shadow .24s ease" style-hover="transform:scale(1.06);border-color:#4A453E;box-shadow:0 16px 38px rgba(0,0,0,.62)">
+    <div style="display:flex;align-items:center;gap:7px">
+      <div style="width:11px;height:11px;border-radius:50%;background:#FF5F57;display:flex;align-items:center;justify-content:center;font-family:'Martian Mono',monospace;font-size:9px;font-weight:700;line-height:1;color:rgba(60,4,1,0);cursor:pointer;transition:color .14s ease" style-hover="color:#3C0401">✕</div>
+      <div style="width:11px;height:11px;border-radius:50%;background:#FEBC2E;display:flex;align-items:center;justify-content:center;font-family:'Martian Mono',monospace;font-size:11px;font-weight:700;line-height:1;color:rgba(70,44,1,0);cursor:pointer;transition:color .14s ease" style-hover="color:#462C01">−</div>
+      <div style="width:11px;height:11px;border-radius:50%;background:#28C840;display:flex;align-items:center;justify-content:center;font-family:'Martian Mono',monospace;font-size:8px;font-weight:700;line-height:1;color:rgba(3,44,9,0);cursor:pointer;transition:color .14s ease" style-hover="color:#032C09">▢</div>
+    </div>
+    <div style="width:1px;height:15px;background:#232120"></div>
+    <span style="font-weight:700;font-size:12.5px;letter-spacing:-0.01em">Upscaly</span>
+    <span style="font-family:'Martian Mono',monospace;font-size:9px;color:#6B655E;letter-spacing:0.06em">0.1.0</span>
+  </div>
+
+  </div>
+
+  <div style="{{ fileChipStyle }}">
+    <sc-if value="{{ hasFiles }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:11px;height:34px;padding:0 6px 0 12px;border:1px solid #34312D;border-radius:11px;background:rgba(15,14,13,.94);box-shadow:0 10px 28px rgba(0,0,0,.5);transition:transform .24s cubic-bezier(.22,1.15,.36,1),border-color .24s ease,box-shadow .24s ease" style-hover="transform:scale(1.05);border-color:#4A453E;box-shadow:0 16px 38px rgba(0,0,0,.62)">
+        <span style="font-size:12px;font-weight:600;color:#F2F0ED;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:230px">{{ curName }}</span>
+        <span style="font-family:'Martian Mono',monospace;font-size:9px;color:#5A554F;letter-spacing:0.05em;white-space:nowrap">{{ curKindTag }}</span>
+        <span style="{{ curOutTagStyle }}">{{ outDims }}</span>
+        <button type="button" onClick="{{ removeCurrent }}" title="Remove from queue" style="width:24px;height:24px;flex:none;display:flex;align-items:center;justify-content:center;border:1px solid #4A211C;border-radius:8px;background:#1A100E;color:#E88A80;font-size:14px;line-height:1;cursor:pointer;transition:all .16s" style-hover="background:#3A1A15;color:#F2C4BE;border-color:#6A2E26">×</button>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="{{ gpuIslandStyle }}" style-hover="transform:translateX(-50%) scale(1.06);border-color:#4A453E;box-shadow:0 16px 38px rgba(0,0,0,.62)">
+    <button type="button" onClick="{{ toggleGpuMenu }}" style="{{ gpuBtnStyle }}">
+      <span style="font-family:'Martian Mono',monospace;font-size:9.5px;letter-spacing:0.07em;color:#5A554F;flex:none">GPU</span>
+      <span style="position:absolute;left:44px;right:32px;font-size:12px;font-weight:600;color:#F2F0ED;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;pointer-events:none">{{ gpuLabel }}</span>
+      <span style="flex:1"></span>
+      <span style="{{ gpuCaretStyle }}">▾</span>
+    </button>
+    <div style="{{ gpuListStyle }}">
+      <div style="padding:6px;border-top:1px solid #232120">
+        <sc-for list="{{ gpus }}" as="g" hint-placeholder-count="3">
+          <div onClick="{{ g.select }}" style="{{ g.style }}">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:600;color:#F2F0ED;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ g.name }}</div>
+              <div style="font-family:'Martian Mono',monospace;font-size:9px;color:#5A554F;letter-spacing:0.04em;margin-top:2px">{{ g.detail }}</div>
+            </div>
+            <span style="{{ g.checkStyle }}">{{ g.check }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="position:absolute;top:12px;right:12px;display:flex;align-items:center;gap:3px;height:34px;padding:0 5px;border:1px solid #34312D;border-radius:11px;background:rgba(15,14,13,.94);box-shadow:0 10px 28px rgba(0,0,0,.5);z-index:40;transform-origin:right center;transition:transform .24s cubic-bezier(.22,1.15,.36,1),border-color .24s ease,box-shadow .24s ease" style-hover="transform:scale(1.06);border-color:#4A453E;box-shadow:0 16px 38px rgba(0,0,0,.62)">
+    <button type="button" onClick="{{ openCatalog }}" style="height:24px;padding:0 9px;border:none;border-radius:7px;background:transparent;color:#9A948C;font-family:Archivo,sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;transition:all .16s" style-hover="background:#1C1B19;color:#F2F0ED">Models</button>
+    <button type="button" onClick="{{ openHistory }}" style="height:24px;padding:0 9px;border:none;border-radius:7px;background:transparent;color:#9A948C;font-family:Archivo,sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;transition:all .16s" style-hover="background:#1C1B19;color:#F2F0ED">History</button>
+    <button type="button" onClick="{{ toggleInspector }}" style="{{ inspectorBtnStyle }}" style-hover="color:#F2F0ED">Settings</button>
+    <button type="button" onClick="{{ openAbout }}" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;border:none;border-radius:7px;background:transparent;color:#6B655E;font-family:'Martian Mono',monospace;font-size:11px;cursor:pointer;transition:all .16s" style-hover="background:#1C1B19;color:#F2F0ED">?</button>
+  </div>
+
+  <div onMouseEnter="{{ railIn }}" onMouseLeave="{{ railOut }}" style="{{ railStyle }}">
+    <div style="{{ railHeadStyle }}">
+      <span style="{{ railWordStyle }}">QUEUE</span>
+      <span style="{{ railCountStyle }}">{{ railHeadLabel }}</span>
+    </div>
+
+    <sc-if value="{{ showBatchStrip }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:none;padding:0 8px 8px">
+        <div style="height:3px;border-radius:2px;background:#1B1917;overflow:hidden">
+          <div style="{{ batchBarStyle }}"></div>
+        </div>
+        <div style="{{ batchLabelStyle }}">
+          <span>{{ doneCount }} DONE</span>
+          <span>{{ batchPctLabel }}</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <div style="{{ railListStyle }}">
+      <sc-for list="{{ files }}" as="f" hint-placeholder-count="3">
+        <div onClick="{{ f.select }}" draggable="true" onDragStart="{{ f.dragStart }}" onDragEnter="{{ f.dragEnter }}" onDragOver="{{ rowDragOver }}" onDragEnd="{{ rowDragEnd }}" style="{{ f.rowStyle }}">
+          <div style="{{ f.thumbStyle }}">
+            <span style="{{ f.thumbTagStyle }}">{{ f.kindTag }}</span>
+          </div>
+          <div style="{{ f.textStyle }}">
+            <div style="font-size:11.5px;font-weight:500;color:#EDEAE6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">{{ f.name }}</div>
+            <div style="font-family:'Martian Mono',monospace;font-size:9px;color:#6B655E;letter-spacing:0.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.meta }}</div>
+          </div>
+          <div style="{{ f.statusStyle }}">{{ f.statusLabel }}</div>
+          <div style="{{ f.railBarStyle }}"></div>
+        </div>
+      </sc-for>
+      <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:10px 4px;text-align:center;font-family:'Martian Mono',monospace;font-size:9px;line-height:1.9;color:#403B36;letter-spacing:0.06em">EMPTY</div>
+      </sc-if>
+    </div>
+
+    <div style="{{ railFootStyle }}">
+      <button type="button" onClick="{{ addFiles }}" title="Add files" style="{{ railAddStyle }}" style-hover="background:#1C1B19;color:#F2F0ED;border-color:#34312D">
+        <span style="font-size:14px;line-height:1">+</span>
+        <span style="{{ railAddLabelStyle }}">Add files</span>
+      </button>
+      <button type="button" onClick="{{ clearAll }}" title="Clear queue" style="{{ railClrStyle }}" style-hover="background:#2A1512;color:#E88A80;border-color:#4A211C">CLR</button>
+    </div>
+
+    <sc-if value="{{ showRailEstimate }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:none;padding:10px 12px;border-top:1px solid #232120;display:flex;flex-direction:column;gap:5px">
+        <div style="font-family:'Martian Mono',monospace;font-size:9px;letter-spacing:0.1em;color:#5A554F">ESTIMATE</div>
+        <div style="font-family:'Martian Mono',monospace;font-size:10px;color:#DDD8D2;white-space:nowrap">{{ estimateDims }}</div>
+        <div style="font-family:'Martian Mono',monospace;font-size:10px;color:#7E7871;white-space:nowrap">{{ estimateCost }}</div>
+      </div>
+    </sc-if>
+  </div>
+
+  <div onMouseEnter="{{ dockIn }}" onMouseLeave="{{ dockOut }}" style="{{ dockStyle }}">
+    <div style="display:flex;gap:2px;padding:2px;border:1px solid #232120;border-radius:12px;background:#121110">
+      <button type="button" onClick="{{ setPhoto }}" style="{{ photoTabStyle }}">Photo</button>
+      <button type="button" onClick="{{ setAnime }}" style="{{ animeTabStyle }}">Anime</button>
+      <button type="button" onClick="{{ setVideo }}" style="{{ videoTabStyle }}">Video</button>
+    </div>
+
+    <div style="{{ modelWrapStyle }}">
+      <button type="button" onClick="{{ toggleModelMenu }}" style="{{ modelBtnStyle }}" style-hover="border-color:#454138">
+        <div style="flex:1;min-width:0;text-align:left">
+          <div style="font-size:12px;font-weight:600;color:#F2F0ED;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ modelName }}</div>
+          <div style="{{ modelIdStyle }}">{{ modelId }}</div>
+        </div>
+        <span style="flex:none;color:#5A554F;font-size:9px">▲</span>
+      </button>
+      <sc-if value="{{ modelMenuOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;bottom:calc(100% + 10px);left:0;width:376px;border:1px solid #34312D;border-radius:14px;background:#0F0E0D;box-shadow:0 24px 60px rgba(0,0,0,.7);padding:8px;z-index:80;animation:pop .2s cubic-bezier(.22,1.3,.36,1) both">
+          <sc-for list="{{ modelList }}" as="m" hint-placeholder-count="3">
+            <div onClick="{{ m.select }}" style="{{ m.style }}">
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:7px">
+                  <span style="font-size:12.5px;font-weight:600;color:#F2F0ED">{{ m.name }}</span>
+                  <span style="{{ m.tagStyle }}">{{ m.tag }}</span>
+                </div>
+                <div style="font-size:11.5px;color:#6B655E;margin-top:3px;line-height:1.4">{{ m.note }}</div>
+              </div>
+              <span style="{{ m.checkStyle }}">{{ m.check }}</span>
+            </div>
+          </sc-for>
+          <div onClick="{{ openCatalog }}" style="margin-top:4px;padding:9px 10px;border-top:1px solid #232120;font-family:'Martian Mono',monospace;font-size:10px;letter-spacing:0.06em;color:#A80B24;cursor:pointer">BROWSE FULL CATALOG →</div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="display:flex;gap:2px;padding:2px;border:1px solid #232120;border-radius:12px;background:#121110">
+      <button type="button" onClick="{{ setScale2 }}" style="{{ s2Style }}">2×</button>
+      <button type="button" onClick="{{ setScale3 }}" style="{{ s3Style }}">3×</button>
+      <button type="button" onClick="{{ setScale4 }}" style="{{ s4Style }}">4×</button>
+    </div>
+
+    <button type="button" onClick="{{ primaryAction }}" style="{{ primaryStyle }}" style-hover="transform:translateY(-2px)">
+      <span>{{ primaryLabel }}</span>
+      <span style="{{ primaryHintStyle }}">{{ primaryHint }}</span>
+    </button>
+  </div>
+
+  <sc-if value="{{ isRunning }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;bottom:78px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:16px;padding:11px 14px;border:1px solid #34312D;border-radius:12px;background:rgba(11,10,9,.95);box-shadow:0 18px 44px rgba(0,0,0,.65);z-index:35;animation:rise .3s cubic-bezier(.22,1.3,.36,1) both">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-family:'Martian Mono',monospace;font-size:10px;letter-spacing:0.08em;color:#A80B24;white-space:nowrap">{{ phaseLabel }}</span>
+      </div>
+      <div style="width:1px;height:20px;background:#232120"></div>
+      <div style="display:flex;align-items:center;gap:14px;font-family:'Martian Mono',monospace;font-size:10px;white-space:nowrap">
+        <span style="color:#5A554F">ETA <span style="color:#F2F0ED">{{ etaLabel }}</span></span>
+        <span style="color:#5A554F">RATE <span style="color:#F2F0ED">{{ rateLabel }}</span></span>
+        <span style="color:#5A554F">VRAM <span style="color:#F2F0ED">{{ vramLabel }}</span></span>
+        <span style="color:#5A554F">TILE <span style="color:#F2F0ED">{{ tileCountLabel }}</span></span>
+      </div>
+      <button type="button" onClick="{{ cancelJob }}" style="height:26px;padding:0 12px;border:1px solid #4A211C;border-radius:8px;background:#1A100E;color:#E88A80;font-family:Archivo,sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;transition:all .16s" style-hover="background:#2A1512;color:#F2C4BE">Cancel</button>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;bottom:78px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;padding:10px 12px;border:1px solid #34312D;border-radius:12px;background:rgba(11,10,9,.95);box-shadow:0 18px 44px rgba(0,0,0,.65);z-index:35;animation:rise .32s cubic-bezier(.22,1.3,.36,1) both">
+      <div style="width:24px;height:24px;flex:none;border:1px solid #3A5A3E;border-radius:8px;background:#132015;display:flex;align-items:center;justify-content:center;color:#86AE8D;font-size:12px">✓</div>
+      <div style="font-family:'Martian Mono',monospace;font-size:10px;color:#B8B2AA;white-space:nowrap;max-width:300px;overflow:hidden;text-overflow:ellipsis">{{ outPathLabel }}</div>
+      <span style="font-family:'Martian Mono',monospace;font-size:9px;color:#5A554F;letter-spacing:0.05em;white-space:nowrap">{{ outSizeLabel }}</span>
+      <div style="width:1px;height:20px;background:#232120"></div>
+      <div style="display:flex;align-items:center;gap:2px">
+        <button type="button" onClick="{{ setSplit }}" style="{{ splitBtnStyle }}">Split</button>
+        <button type="button" onClick="{{ setSide }}" style="{{ sideBtnStyle }}">Side</button>
+        <button type="button" onClick="{{ cycleZoom }}" style="height:26px;padding:0 10px;border:none;border-radius:7px;background:transparent;color:#9A948C;font-family:'Martian Mono',monospace;font-size:10px;cursor:pointer;transition:all .16s" style-hover="background:#1C1B19;color:#F2F0ED">{{ zoomLabel }}</button>
+      </div>
+      <button type="button" onClick="{{ noop }}" style="height:26px;padding:0 12px;border:none;border-radius:8px;background:#F2F0ED;color:#0B0A09;font-family:Archivo,sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;transition:transform .18s cubic-bezier(.22,1.4,.36,1)" style-hover="transform:translateY(-2px)">Open</button>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ inspectorOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;top:56px;right:12px;bottom:78px;width:312px;display:flex;flex-direction:column;border:1px solid #34312D;border-radius:14px;background:rgba(13,12,11,.97);box-shadow:0 20px 50px rgba(0,0,0,.6);overflow:hidden;z-index:38;animation:slidein .3s cubic-bezier(.22,1.25,.36,1) both">
+      <div style="height:38px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid #232120">
+        <span style="font-family:'Martian Mono',monospace;font-size:9.5px;letter-spacing:0.1em;color:#6B655E">SETTINGS</span>
+        <button type="button" onClick="{{ toggleInspector }}" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border:none;border-radius:7px;background:transparent;color:#6B655E;font-size:14px;cursor:pointer;transition:all .16s" style-hover="background:#1C1B19;color:#F2F0ED">×</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;min-height:0">
+
+        <div style="padding:14px;border-bottom:1px solid #232120">
+          <div style="font-family:'Martian Mono',monospace;font-size:9px;letter-spacing:0.1em;color:#5A554F;margin-bottom:9px">DEVICE</div>
+          <sc-for list="{{ gpus }}" as="g" hint-placeholder-count="3">
+            <div onClick="{{ g.select }}" style="{{ g.panelStyle }}">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:11.5px;font-weight:600;color:#EDEAE6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ g.name }}</div>
+                <div style="font-family:'Martian Mono',monospace;font-size:9px;color:#5A554F;letter-spacing:0.04em;margin-top:2px">{{ g.detail }}</div>
+              </div>
+              <span style="{{ g.checkStyle }}">{{ g.check }}</span>
+            </div>
+          </sc-for>
+          <div style="margin-top:12px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;font-family:'Martian Mono',monospace;font-size:9px;color:#5A554F;letter-spacing:0.05em;margin-bottom:5px"><span>VRAM</span><span><span style="color:#DDD8D2">{{ vramUsedLabel }}</span><span style="color:#5A554F"> / {{ vramTotalLabel }}</span></span></div>
+            <div style="{{ vramTrackStyle }}"><div style="{{ vramBarStyle }}"></div></div>
+          </div>
+        </div>
+
+        <div style="padding:14px;border-bottom:1px solid #232120">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px">
+            <span style="font-family:'Martian Mono',monospace;font-size:9px;letter-spacing:0.1em;color:#5A554F">TILE SIZE</span>
+            <button type="button" onClick="{{ autoTune }}" style="border:none;background:transparent;color:#A80B24;font-family:'Martian Mono',monospace;font-size:9px;letter-spacing:0.06em;cursor:pointer;padding:0" style-hover="color:#F2F0ED">AUTO-TUNE</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">
+            <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="4">
+              <button type="button" onClick="{{ t.select }}" style="{{ t.style }}">{{ t.label }}</button>
+            </sc-for>
+          </div>
+          <div style="font-size:11.5px;color:#6B655E;line-height:1.5;margin-top:8px">{{ tileHint }}</div>
+        </div>
+
+        <div style="padding:14px">
+          <div style="font-family:'Martian Mono',monospace;font-size:9px;letter-spacing:0.1em;color:#5A554F;margin-bottom:9px">OUTPUT</div>
+          <div style="display:flex;gap:5px">
+            <div style="flex:1;min-width:0;padding:8px 10px;border:1px solid #232120;border-radius:8px;background:#121110;font-family:'Martian Mono',monospace;font-size:10px;color:#B8B2AA;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ outputDir }}</div>
+            <button type="button" onClick="{{ pickDir }}" style="flex:none;padding:0 11px;border:1px solid #232120;border-radius:8px;background:#121110;color:#B8B2AA;font-family:Archivo,sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;transition:all .16s" style-hover="background:#1C1B19;color:#F2F0ED">Browse</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ catalogOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeOverlays }}" style="position:absolute;inset:0;background:rgba(6,5,5,.78);display:flex;align-items:center;justify-content:center;z-index:100;padding:40px">
+      <div onClick="{{ stop }}" style="width:100%;max-width:620px;max-height:80vh;display:flex;flex-direction:column;border:1px solid #34312D;border-radius:16px;overflow:hidden;background:#0F0E0D;box-shadow:0 40px 90px rgba(0,0,0,.75);animation:pop .28s cubic-bezier(.22,1.3,.36,1) both">
+        <div style="flex:none;height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid #232120">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font-size:13.5px;font-weight:600">Model catalog</span>
+            <span style="font-family:'Martian Mono',monospace;font-size:9.5px;color:#5A554F;letter-spacing:0.06em">{{ installedCountLabel }}</span>
+          </div>
+          <button type="button" onClick="{{ closeOverlays }}" style="width:24px;height:24px;border:none;border-radius:7px;background:transparent;color:#6B655E;font-size:15px;cursor:pointer;transition:all .16s" style-hover="background:#1C1B19;color:#F2F0ED">×</button>
+        </div>
+        <div style="flex:1;overflow-y:auto;min-height:0;padding:8px">
+          <sc-for list="{{ catalog }}" as="c" hint-placeholder-count="6">
+            <div style="display:flex;align-items:center;gap:14px;padding:12px;border-radius:11px;transition:background .16s" style-hover="background:#121110">
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+                  <span style="font-size:12.5px;font-weight:600;color:#F2F0ED">{{ c.name }}</span>
+                  <span style="{{ c.tagStyle }}">{{ c.tag }}</span>
+                </div>
+                <div style="font-size:11.5px;color:#6B655E;margin-bottom:3px">{{ c.note }}</div>
+                <div style="font-family:'Martian Mono',monospace;font-size:9px;color:#4A453F;letter-spacing:0.04em">{{ c.meta }}</div>
+              </div>
+              <div style="flex:none">
+                <sc-if value="{{ c.isInstalled }}" hint-placeholder-val="{{ true }}">
+                  <span style="font-family:'Martian Mono',monospace;font-size:9px;letter-spacing:0.06em;color:#86AE8D;padding:6px 10px;border:1px solid #2C3D2E;border-radius:7px;background:#121A13">INSTALLED</span>
+                </sc-if>
+                <sc-if value="{{ c.isDownloading }}" hint-placeholder-val="{{ false }}">
+                  <div style="width:100px">
+                    <div style="font-family:'Martian Mono',monospace;font-size:9px;color:#A80B24;margin-bottom:5px;letter-spacing:0.04em">{{ c.dlLabel }}</div>
+                    <div style="height:3px;border-radius:2px;background:#1B1917;overflow:hidden"><div style="{{ c.dlBarStyle }}"></div></div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ c.canDownload }}" hint-placeholder-val="{{ false }}">
+                  <button type="button" onClick="{{ c.download }}" style="height:28px;padding:0 12px;border:1px solid #34312D;border-radius:8px;background:#121110;color:#EDEAE6;font-family:Archivo,sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;transition:all .16s" style-hover="background:#1C1B19">Download</button>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ historyOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeOverlays }}" style="position:absolute;inset:0;background:rgba(6,5,5,.7);display:flex;align-items:stretch;justify-content:flex-end;z-index:100;padding:12px">
+      <div onClick="{{ stop }}" style="width:380px;display:flex;flex-direction:column;border:1px solid #34312D;border-radius:16px;overflow:hidden;background:#0D0C0B;box-shadow:0 30px 70px rgba(0,0,0,.6);animation:slidein .3s cubic-bezier(.22,1.25,.36,1) both">
+        <div style="flex:none;height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #232120">
+          <div style="display:flex;align-items:baseline;gap:9px">
+            <span style="font-size:13px;font-weight:600">Recent jobs</span>
+            <span style="font-family:'Martian Mono',monospace;font-size:9.5px;color:#5A554F">{{ historyCount }}</span>
+          </div>
+          <button type="button" onClick="{{ closeOverlays }}" style="width:24px;height:24px;border:none;border-radius:7px;background:transparent;color:#6B655E;font-size:15px;cursor:pointer;transition:all .16s" style-hover="background:#1C1B19;color:#F2F0ED">×</button>
+        </div>
+        <div style="flex:1;overflow-y:auto;min-height:0;padding:8px">
+          <sc-for list="{{ history }}" as="h" hint-placeholder-count="5">
+            <div onClick="{{ h.select }}" style="display:flex;gap:12px;padding:11px;border-radius:11px;cursor:pointer;transition:background .16s" style-hover="background:#121110">
+              <div style="width:38px;height:38px;flex:none;border:1px solid #232120;border-radius:9px;background:repeating-linear-gradient(112deg,#3A322D 0 5px,#22201C 5px 10px)"></div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:11.5px;font-weight:500;color:#EDEAE6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px">{{ h.name }}</div>
+                <div style="font-family:'Martian Mono',monospace;font-size:9px;color:#5A554F;letter-spacing:0.04em">{{ h.meta }}</div>
+              </div>
+              <div style="font-family:'Martian Mono',monospace;font-size:9px;color:#4A453F;flex:none">{{ h.time }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ aboutOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeOverlays }}" style="position:absolute;inset:0;background:rgba(6,5,5,.78);display:flex;align-items:center;justify-content:center;z-index:100;padding:40px">
+      <div onClick="{{ stop }}" style="width:100%;max-width:480px;border:1px solid #34312D;border-radius:16px;overflow:hidden;background:#0F0E0D;box-shadow:0 40px 90px rgba(0,0,0,.75);animation:pop .28s cubic-bezier(.22,1.3,.36,1) both">
+        <div style="padding:18px 20px 16px;border-bottom:1px solid #232120">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:8px">
+            <span style="font-family:'Martian Mono',monospace;font-size:9.5px;color:#5A554F;letter-spacing:0.09em">REAL-ESRGAN NCNN · VULKAN</span>
+            <button type="button" onClick="{{ closeOverlays }}" style="width:24px;height:24px;flex:none;border:none;border-radius:7px;background:transparent;color:#6B655E;font-size:15px;line-height:1;cursor:pointer;transition:all .16s" style-hover="background:#1C1B19;color:#F2F0ED">×</button>
+          </div>
+          <div style="font-size:12.5px;color:#8A847C;line-height:1.6">Local image and video upscaling on Vulkan. No account, no network calls, no telemetry — media never leaves the machine.</div>
+        </div>
+        <div style="padding:16px 20px 20px">
+          <div style="font-family:'Martian Mono',monospace;font-size:9px;letter-spacing:0.1em;color:#5A554F;margin-bottom:9px">SHORTCUTS</div>
+          <sc-for list="{{ hotkeys }}" as="k" hint-placeholder-count="7">
+            <div style="display:flex;align-items:center;gap:14px;padding:8px 0;border-top:1px solid #232120">
+              <span style="width:96px;flex:none;font-family:'Martian Mono',monospace;font-size:10px;color:#EDEAE6;letter-spacing:0.02em">{{ k.key }}</span>
+              <span style="flex:1;font-size:12px;color:#8A847C">{{ k.desc }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="{{ toastWrapStyle }}">
+    <sc-for list="{{ toasts }}" as="t" hint-placeholder-count="0">
+      <div style="{{ t.style }}">
+        <div style="flex:1;min-width:0">
+          <div style="font-family:'Martian Mono',monospace;font-size:9px;letter-spacing:0.08em;color:#5A554F;margin-bottom:3px">{{ t.kind }}</div>
+          <div style="font-size:11.5px;color:#DDD8D2;line-height:1.45">{{ t.text }}</div>
+        </div>
+        <button type="button" onClick="{{ t.dismiss }}" style="width:18px;height:18px;flex:none;border:none;background:transparent;color:#5A554F;font-size:13px;line-height:1;cursor:pointer;pointer-events:auto" style-hover="color:#F2F0ED">×</button>
+      </div>
+    </sc-for>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const ACCENT_DEFAULT = "#A80B24";
+
+const MODELS = [
+  { id: "realesrgan-x4plus", name: "RealESRGAN Ultra", note: "Highest detail on photographs, portraits and landscapes", cat: "photo", scale: 4, size: "67.0 MB", speed: 1.0, installed: true },
+  { id: "realesr-general-x4v3", name: "General v3 Fast", note: "Quick general-purpose pass, tolerant of compression artefacts", cat: "photo", scale: 4, size: "4.7 MB", speed: 2.7, installed: true },
+  { id: "realesrgan-x4plus-anime", name: "Anime Art", note: "Line work, flats and cel shading in illustration and manga", cat: "anime", scale: 4, size: "17.9 MB", speed: 1.5, installed: true },
+  { id: "realesr-animevideov3-x2", name: "Anime Video 2×", note: "Frame sequences at low latency", cat: "video", scale: 2, size: "2.4 MB", speed: 3.3, installed: true },
+  { id: "realesr-animevideov3-x3", name: "Anime Video 3×", note: "Frame sequences, balanced quality and throughput", cat: "video", scale: 3, size: "2.4 MB", speed: 2.4, installed: false },
+  { id: "realesr-animevideov3-x4", name: "Anime Video 4×", note: "Frame sequences at maximum reconstruction detail", cat: "video", scale: 4, size: "2.4 MB", speed: 1.8, installed: false },
+];
+
+const GPUS = [
+  { id: 0, name: "NVIDIA GeForce RTX 4070", detail: "12 GB · VULKAN 1.3 · FP16" },
+  { id: 1, name: "Intel UHD Graphics 770", detail: "SHARED · VULKAN 1.3" },
+  { id: -1, name: "CPU fallback", detail: "16 THREADS · NO VULKAN" },
+];
+
+const TILES = [
+  { v: 0, label: "AUTO" },
+  { v: 128, label: "128" },
+  { v: 256, label: "256" },
+  { v: 512, label: "512" },
+];
+
+const HOTKEYS = [
+  { key: "SPACE", desc: "Hold to reveal the source frame" },
+  { key: "S", desc: "Switch split slider / side-by-side" },
+  { key: "TAB", desc: "Toggle the settings panel" },
+  { key: "1 2 3", desc: "Set scale to 2×, 3× or 4×" },
+  { key: "⌘ O", desc: "Add files to the queue" },
+  { key: "⌘ ↩", desc: "Run the queue" },
+  { key: "ESC", desc: "Cancel job or close overlays" },
+];
+
+const DEMO = [
+  { name: "DSC_04812.png", w: 1920, h: 1280, kind: "image", size: "4.21 MB" },
+  { name: "kitchen-window.jpg", w: 1280, h: 853, kind: "image", size: "1.84 MB" },
+  { name: "cover-art-flat.png", w: 1024, h: 1024, kind: "image", size: "2.02 MB" },
+  { name: "roof-timelapse.mp4", w: 1920, h: 1080, kind: "video", size: "48.7 MB" },
+  { name: "IMG_2291.jpeg", w: 3024, h: 4032, kind: "image", size: "6.55 MB" },
+];
+
+const EASE = "cubic-bezier(.22,1.15,.36,1)";
+let uid = 0;
+const nextId = () => "f" + ++uid;
+
+class Component extends DCLogic {
+  state = {
+    files: [], selectedId: null,
+    cat: "photo", modelId: "realesrgan-x4plus", scale: 4, gpu: 0, tile: 0,
+    inspectorOpen: false, modelMenuOpen: false, gpuMenuOpen: false, catalogOpen: false, historyOpen: false, aboutOpen: false,
+    compare: "split", zoom: 1, sliderPct: 52, holding: false,
+    railHover: false, dockHover: false, demoPct: 44, isDragOver: false,
+    toasts: [],
+    installed: MODELS.filter((m) => m.installed).map((m) => m.id),
+    downloading: null, dlPct: 0,
+    presets: [
+      { id: "p1", name: "Print portraits", model: "realesrgan-x4plus", scale: 4, cat: "photo" },
+      { id: "p2", name: "Quick web pass", model: "realesr-general-x4v3", scale: 2, cat: "photo" },
+      { id: "p3", name: "Manga scans", model: "realesrgan-x4plus-anime", scale: 4, cat: "anime" },
+    ],
+    activePreset: null,
+    history: [
+      { id: "h1", name: "porch-light.png", meta: "REALESRGAN ULTRA · 4× · 7680×5120", time: "14:22", w: 1920, h: 1280, scale: 4, kind: "image", model: "realesrgan-x4plus", cat: "photo", size: "4.02 MB" },
+      { id: "h2", name: "sketch-002.png", meta: "ANIME ART · 4× · 4096×4096", time: "13:58", w: 1024, h: 1024, scale: 4, kind: "image", model: "realesrgan-x4plus-anime", cat: "anime", size: "1.71 MB" },
+      { id: "h3", name: "clip-intro.mp4", meta: "ANIME VIDEO 2× · 3840×2160", time: "11:40", w: 1920, h: 1080, scale: 2, kind: "video", model: "realesr-animevideov3-x2", cat: "video", size: "52.4 MB" },
+      { id: "h4", name: "IMG_1187.jpeg", meta: "GENERAL V3 FAST · 4× · 8064×6048", time: "10:05", w: 2016, h: 1512, scale: 4, kind: "image", model: "realesr-general-x4v3", cat: "photo", size: "5.18 MB" },
+      { id: "h5", name: "poster-draft.png", meta: "REALESRGAN ULTRA · 4× · 6144×8192", time: "09:31", w: 1536, h: 2048, scale: 4, kind: "image", model: "realesrgan-x4plus", cat: "photo", size: "6.90 MB" },
+    ],
+    outputDir: "~/Pictures/Upscaled",
+  };
+
+  timer = null;
+
+  componentDidMount() {
+    this.onKeyDown = (e) => {
+      const tag = (e.target && e.target.tagName) || "";
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
+      if (e.code === "Space") { e.preventDefault(); this.setState({ holding: true }); }
+      else if (e.key === "s" || e.key === "S") this.setState((s) => ({ compare: s.compare === "split" ? "side" : "split" }));
+      else if (e.key === "Tab") { e.preventDefault(); this.setState((s) => ({ inspectorOpen: !s.inspectorOpen })); }
+      else if (e.key === "1") this.pickScale(2);
+      else if (e.key === "2") this.pickScale(3);
+      else if (e.key === "3") this.pickScale(4);
+      else if (e.key === "Escape") this.setState({ catalogOpen: false, historyOpen: false, aboutOpen: false, modelMenuOpen: false, gpuMenuOpen: false });
+      else if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); this.run(); }
+      else if ((e.metaKey || e.ctrlKey) && (e.key === "o" || e.key === "O")) { e.preventDefault(); this.addOne(); }
+    };
+    this.onKeyUp = (e) => { if (e.code === "Space") this.setState({ holding: false }); };
+    this.onMove = (e) => {
+      if (!this.dragging || !this.box) return;
+      const r = this.box.getBoundingClientRect();
+      const pct = Math.max(1, Math.min(99, ((e.clientX - r.left) / r.width) * 100));
+      this.setState(this.dragTarget === "demo" ? { demoPct: pct } : { sliderPct: pct });
+    };
+    this.onUp = () => { this.dragging = false; };
+    window.addEventListener("keydown", this.onKeyDown);
+    window.addEventListener("keyup", this.onKeyUp);
+    window.addEventListener("mousemove", this.onMove);
+    window.addEventListener("mouseup", this.onUp);
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener("keydown", this.onKeyDown);
+    window.removeEventListener("keyup", this.onKeyUp);
+    window.removeEventListener("mousemove", this.onMove);
+    window.removeEventListener("mouseup", this.onUp);
+    if (this.timer) clearInterval(this.timer);
+  }
+
+  get accent() { return this.props.accentColor || ACCENT_DEFAULT; }
+  get model() { return MODELS.find((m) => m.id === this.state.modelId) || MODELS[0]; }
+  get current() { return this.state.files.find((f) => f.id === this.state.selectedId) || this.state.files[0] || null; }
+
+  toast(kind, text) {
+    const id = "t" + Math.random().toString(36).slice(2, 7);
+    this.setState((s) => ({ toasts: [...s.toasts, { id, kind, text }] }));
+    setTimeout(() => this.setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), 5000);
+  }
+
+  makeFile(d) { return { id: nextId(), name: d.name, w: d.w, h: d.h, kind: d.kind, size: d.size, status: "ready", progress: 0 }; }
+
+  addOne() {
+    const d = DEMO[this.state.files.length % DEMO.length];
+    const f = this.makeFile(d);
+    this.setState((s) => ({ files: [...s.files, f], selectedId: s.selectedId || f.id }));
+    if (f.kind === "video") this.setState({ cat: "video", modelId: "realesr-animevideov3-x2", scale: 2 });
+    this.toast("FILE ADDED", d.name + " · " + d.w + "×" + d.h);
+  }
+
+  addBatch() {
+    const files = DEMO.map((d) => this.makeFile(d));
+    this.setState((s) => ({ files: [...s.files, ...files], selectedId: s.selectedId || files[0].id }));
+    this.toast("QUEUE UPDATED", files.length + " files scanned from folder");
+  }
+
+  clearAll() {
+    if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    this.setState({ files: [], selectedId: null });
+  }
+
+  removeCurrent() {
+    const c = this.current;
+    if (!c) return;
+    this.setState((s) => {
+      const files = s.files.filter((f) => f.id !== c.id);
+      return { files, selectedId: files.length ? files[0].id : null };
+    });
+  }
+
+  pickScale(n) {
+    const match = MODELS.find((m) => m.cat === this.state.cat && m.scale === n && this.state.installed.includes(m.id));
+    this.setState({ scale: n, activePreset: null, modelId: match ? match.id : this.state.modelId });
+  }
+
+  pickCat(cat) {
+    const match = MODELS.find((m) => m.cat === cat && this.state.installed.includes(m.id)) || MODELS.find((m) => m.cat === cat);
+    this.setState({ cat, activePreset: null, modelId: match ? match.id : this.state.modelId, scale: match ? match.scale : this.state.scale });
+  }
+
+  pickModel(id) {
+    const m = MODELS.find((x) => x.id === id);
+    this.setState({ modelId: id, scale: m ? m.scale : this.state.scale, modelMenuOpen: false, activePreset: null });
+  }
+
+  run() {
+    if (this.timer) return;
+    const pending = this.state.files.filter((f) => f.status === "ready" || f.status === "failed");
+    if (!pending.length) return;
+    this.setState((s) => ({
+      files: s.files.map((f) => (f.status === "ready" || f.status === "failed" ? { ...f, status: "queued", progress: 0 } : f)),
+      selectedId: pending[0].id,
+    }));
+    this.toast("JOB SUBMITTED", pending.length + " job" + (pending.length > 1 ? "s" : "") + " handed to the Vulkan worker");
+    this.tick();
+  }
+
+  tick() {
+    this.timer = setInterval(() => {
+      this.setState((s) => {
+        const files = s.files.slice();
+        const idx = files.findIndex((f) => f.status === "queued" || f.status === "running");
+        if (idx === -1) { clearInterval(this.timer); this.timer = null; return {}; }
+        const f = { ...files[idx] };
+        f.status = "running";
+        f.progress = Math.min(100, f.progress + 3.4 + Math.random() * 4.6);
+        if (f.progress >= 100) { f.status = "done"; f.progress = 100; }
+        files[idx] = f;
+        const nextSel = f.status === "done" ? (files.find((x) => x.status === "queued") || f).id : f.id;
+        if (!files.some((x) => x.status === "queued" || x.status === "running")) {
+          const n = files.filter((x) => x.status === "done").length;
+          setTimeout(() => this.toast("QUEUE DRAINED", n === 1
+            ? f.name + " written at " + f.w * s.scale + "×" + f.h * s.scale
+            : n + " files written to " + s.outputDir), 60);
+        }
+        return { files, selectedId: nextSel };
+      });
+    }, 190);
+  }
+
+  cancel() {
+    if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    this.setState((s) => ({ files: s.files.map((f) => (f.status === "running" || f.status === "queued" ? { ...f, status: "ready", progress: 0 } : f)) }));
+    this.toast("CANCELLED", "Worker released the GPU queue");
+  }
+
+  fmtTime(sec) {
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec % 60);
+    return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+  }
+
+  estFor(f) {
+    if (!f) return 0;
+    const mp = (f.w * this.state.scale * f.h * this.state.scale) / 1e6;
+    return Math.max(2, (mp / (this.model.speed * 11)) * (f.kind === "video" ? 46 : 1) * (this.state.gpu === -1 ? 7 : 1));
+  }
+
+  pill(active, big) {
+    const h = big ? 32 : 26;
+    const pad = big ? 14 : 11;
+    return "height:" + h + "px;padding:0 " + pad + "px;border-radius:10px;border:1px solid " + (active ? this.accent : "transparent") +
+      ";background:" + (active ? "rgba(168,11,36,.12)" : "transparent") + ";color:" + (active ? "#F2F0ED" : "#7E7871") +
+      ";font-family:Archivo,sans-serif;font-size:" + (big ? "12.5px" : "11.5px") + ";font-weight:600;cursor:pointer;white-space:nowrap;transition:all .22s " + EASE;
+  }
+
+  seg(active) {
+    return "height:26px;padding:0 11px;border:none;border-radius:7px;background:" + (active ? "#2A2725" : "transparent") +
+      ";color:" + (active ? "#F2F0ED" : "#7E7871") + ";font-family:Archivo,sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;transition:all .16s";
+  }
+
+  renderVals() {
+    const s = this.state;
+    const A = this.accent;
+    const cur = this.current;
+    const open = s.railHover;
+    const big = s.dockHover;
+    const telemetry = this.props.showTelemetry !== false;
+    const running = cur && (cur.status === "running" || cur.status === "queued");
+    const done = cur && cur.status === "done";
+    const anyRunning = s.files.some((f) => f.status === "running" || f.status === "queued");
+    const outW = cur ? cur.w * s.scale : 0;
+    const outH = cur ? cur.h * s.scale : 0;
+    const est = this.estFor(cur);
+    const doneCount = s.files.filter((f) => f.status === "done").length;
+    const batchPct = s.files.length ? Math.round(s.files.reduce((a, f) => a + (f.status === "done" ? 100 : f.progress), 0) / s.files.length) : 0;
+    const phases = cur && cur.kind === "video"
+      ? ["DECODING FRAMES", "UPSCALING FRAMES", "MERGING TILES", "ENCODING H.264"]
+      : ["ALLOCATING BUFFERS", "UPSCALING TILES", "UPSCALING TILES", "ENCODING PNG"];
+    const phase = phases[Math.min(3, Math.floor((cur ? cur.progress : 0) / 26))];
+
+    return {
+      isEmpty: s.files.length === 0,
+      hasFiles: s.files.length > 0,
+
+      canvasFrameStyle: "position:absolute;inset:0;overflow:hidden;display:" + (s.files.length ? "block" : "none"),
+      canvasMediaStyle: "position:absolute;inset:0;background:repeating-linear-gradient(112deg,#3A322D 0 11px,#25211D 11px 22px),radial-gradient(circle at 40% 32%,#5A4C42,transparent 62%);filter:" + (running ? "saturate(.7) brightness(.86)" : "none") + ";transition:filter .3s ease",
+      texFineStyle: "position:absolute;inset:0;background:repeating-linear-gradient(112deg,#4A403A 0 3px,#2E2823 3px 6px),radial-gradient(circle at 40% 32%,#6B5B4E,transparent 62%);transform:scale(" + s.zoom + ");transform-origin:center;transition:transform .3s " + EASE,
+      texCoarseStyle: "position:absolute;inset:0;background:repeating-linear-gradient(112deg,#4A403A 0 13px,#2E2823 13px 26px),radial-gradient(circle at 40% 32%,#6B5B4E,transparent 62%);filter:blur(2.4px) saturate(.82);transform:scale(" + s.zoom + ");transform-origin:center;transition:transform .3s " + EASE,
+      beforeLayerStyle: "position:absolute;inset:0;clip-path:inset(0 " + (s.holding ? 0 : 100 - s.sliderPct) + "% 0 0);transition:clip-path .08s linear",
+      dividerStyle: "position:absolute;top:0;bottom:0;left:" + (s.holding ? 100 : s.sliderPct) + "%;width:1px;background:#F2F0ED;z-index:6;pointer-events:none;opacity:" + (s.holding ? 0 : 1),
+      handleStyle: "position:absolute;top:50%;left:" + s.sliderPct + "%;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;background:#F2F0ED;display:flex;align-items:center;justify-content:center;z-index:7;cursor:ew-resize;box-shadow:0 4px 14px rgba(0,0,0,.6);opacity:" + (s.holding ? 0 : 1),
+      sliderDown: (e) => { this.dragging = true; this.dragTarget = "slider"; this.box = e.currentTarget; this.onMove(e); },
+      dragOver: (e) => { e.preventDefault(); if (!s.isDragOver) this.setState({ isDragOver: true }); },
+      dragOut: () => this.setState({ isDragOver: false }),
+      dropFiles: (e) => { e.preventDefault(); this.setState({ isDragOver: false }); this.addBatch(); },
+      dropTargetStyle: "position:relative;padding:44px 32px 40px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;cursor:pointer;background:" + (s.isDragOver ? "rgba(168,11,36,.05)" : "transparent") + ";transition:background .2s ease",
+      brTLStyle: "position:absolute;top:14px;left:14px;width:13px;height:13px;border-top:1px solid " + (s.isDragOver ? A : "#312C27") + ";border-left:1px solid " + (s.isDragOver ? A : "#312C27") + ";border-radius:3px 0 0 0;transition:border-color .2s ease",
+      brTRStyle: "position:absolute;top:14px;right:14px;width:13px;height:13px;border-top:1px solid " + (s.isDragOver ? A : "#312C27") + ";border-right:1px solid " + (s.isDragOver ? A : "#312C27") + ";border-radius:0 3px 0 0;transition:border-color .2s ease",
+      brBLStyle: "position:absolute;bottom:14px;left:14px;width:13px;height:13px;border-bottom:1px solid " + (s.isDragOver ? A : "#312C27") + ";border-left:1px solid " + (s.isDragOver ? A : "#312C27") + ";border-radius:0 0 0 3px;transition:border-color .2s ease",
+      brBRStyle: "position:absolute;bottom:14px;right:14px;width:13px;height:13px;border-bottom:1px solid " + (s.isDragOver ? A : "#312C27") + ";border-right:1px solid " + (s.isDragOver ? A : "#312C27") + ";border-radius:0 0 3px 3px;transition:border-color .2s ease",
+      motifStyle: "width:46px;height:46px;border-radius:4px;border:1px solid " + (s.isDragOver ? A : "#4A443C") + ";background:linear-gradient(#0B0A09 1px,transparent 1px) 0 0/100% 8px,linear-gradient(90deg,#0B0A09 1px,transparent 1px) 0 0/8px 100%,#443E37;transition:border-color .2s ease",
+      dropTitle: s.isDragOver ? "Release to queue" : "Drop media to upscale",
+
+      showPlainPreview: !!cur && !done,
+      showCompareSplit: !!done && s.compare === "split",
+      showCompareSide: !!done && s.compare === "side",
+      isRunning: !!running,
+      isDone: !!done,
+
+      curDims: cur ? cur.w + "×" + cur.h : "",
+      outDims: outW + "×" + outH,
+      curName: cur ? cur.name : "",
+      curKindTag: cur ? (cur.kind === "video" ? "MOV · " + cur.w + "×" + cur.h : "IMG · " + cur.w + "×" + cur.h) : "",
+      curOutTagStyle: "display:" + (done ? "inline-block" : "none") + ";padding:3px 7px;border-radius:6px;background:" + A + ";font-family:'Martian Mono',monospace;font-size:9px;letter-spacing:0.06em;color:#0B0A09;font-weight:600;white-space:nowrap",
+      fileChipStyle: "position:absolute;top:12px;left:50%;transform:translateX(-50%);max-width:calc(100% - 470px);z-index:41;display:" + (s.files.length ? "flex" : "none"),
+      gpuIslandStyle: "position:absolute;top:12px;left:50%;width:" + (s.gpuMenuOpen ? 296 : 208) + "px;transform:translateX(-50%);z-index:41;display:" + (s.files.length ? "none" : "block") + ";border:1px solid #34312D;border-radius:" + (s.gpuMenuOpen ? 14 : 11) + "px;background:rgba(15,14,13,.94);box-shadow:0 10px 28px rgba(0,0,0,.5);overflow:hidden;transform-origin:top center;transition:width .28s " + EASE + ",transform .24s " + EASE + ",border-radius .24s ease,border-color .24s ease,box-shadow .24s ease",
+      gpuBtnStyle: "position:relative;width:100%;display:flex;align-items:center;gap:9px;height:34px;padding:0 12px;border:none;background:transparent;cursor:pointer;transition:background .16s",
+      gpuCaretStyle: "flex:none;color:#5A554F;font-size:9px;transform:rotate(" + (s.gpuMenuOpen ? 180 : 0) + "deg);transition:transform .24s " + EASE,
+      gpuListStyle: "max-height:" + (s.gpuMenuOpen ? 210 : 0) + "px;opacity:" + (s.gpuMenuOpen ? 1 : 0) + ";overflow:hidden;transition:max-height .28s " + EASE + ",opacity .2s ease",
+      gpuLabel: (GPUS.find((g) => g.id === s.gpu) || GPUS[0]).name.replace("NVIDIA ", ""),
+      gpuDetail: (GPUS.find((g) => g.id === s.gpu) || GPUS[0]).detail,
+      gpuMenuOpen: s.gpuMenuOpen,
+      toggleGpuMenu: () => this.setState((st) => ({ gpuMenuOpen: !st.gpuMenuOpen })),
+      removeCurrent: () => this.removeCurrent(),
+
+      inspectorBtnStyle: "height:24px;padding:0 9px;border:none;border-radius:7px;background:" + (s.inspectorOpen ? "#2A2725" : "transparent") + ";color:" + (s.inspectorOpen ? "#F2F0ED" : "#9A948C") + ";font-family:Archivo,sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;transition:all .16s",
+
+      railIn: () => this.setState({ railHover: true }),
+      railOut: () => this.setState({ railHover: false }),
+      railStyle: "position:absolute;left:12px;top:56px;max-height:calc(100% - 148px);width:" + (open ? 264 : 56) + "px;display:" + (s.files.length ? "flex" : "none") + ";flex-direction:column;border:1px solid " + (open ? "#34312D" : "transparent") + ";border-radius:14px;background:" + (open ? "rgba(13,12,11,.96)" : "transparent") + ";box-shadow:" + (open ? "0 16px 40px rgba(0,0,0,.62)" : "none") + ";overflow:" + (open ? "hidden" : "visible") + ";z-index:36;transition:width .28s " + EASE + ",background .28s ease,border-color .28s ease,box-shadow .28s ease",
+      railHeadStyle: "height:" + (open ? 30 : 18) + "px;flex:none;display:flex;align-items:center;justify-content:" + (open ? "flex-start" : "center") + ";gap:7px;padding:0 " + (open ? 12 : 0) + "px;border-bottom:1px solid " + (open ? "#232120" : "transparent") + ";transition:all .28s " + EASE,
+      railHeadLabel: String(s.files.length).padStart(2, "0"),
+      railWordStyle: "display:" + (open ? "inline" : "none") + ";font-family:'Martian Mono',monospace;font-size:9.5px;letter-spacing:0.1em;color:#5A554F",
+      railCountStyle: "font-family:'Martian Mono',monospace;font-size:" + (open ? "10px" : "9px") + ";letter-spacing:0.08em;color:" + (open ? "#DDD8D2" : "#6B655E") + ";transition:all .28s ease",
+      railListStyle: "flex:0 1 auto;overflow:" + (open ? "hidden auto" : "visible") + ";min-height:0;padding:" + (open ? "0 8px 8px" : "4px 0 18px"),
+      railFootStyle: "flex:none;display:" + (open ? "flex" : "none") + ";gap:5px;padding:8px;border-top:1px solid #232120;transition:all .28s " + EASE,
+      railAddStyle: "flex:1;height:" + (open ? 32 : 30) + "px;display:flex;align-items:center;justify-content:center;gap:7px;border:1px " + (open ? "solid #232120" : "dashed #332E29") + ";border-radius:" + (open ? 9 : 11) + "px;background:" + (open ? "#121110" : "rgba(13,12,11,.8)") + ";color:#8A847C;font-family:Archivo,sans-serif;font-size:11.5px;font-weight:600;cursor:pointer;transition:all .18s " + EASE,
+      railAddLabelStyle: "display:" + (open ? "inline" : "none"),
+      railClrStyle: "display:" + (open ? "flex" : "none") + ";width:40px;height:32px;align-items:center;justify-content:center;border:1px solid #232120;border-radius:9px;background:#121110;color:#9A948C;font-family:'Martian Mono',monospace;font-size:9px;cursor:pointer;transition:all .18s " + EASE,
+      showBatchStrip: open && s.files.length > 0,
+      batchBarStyle: "height:100%;width:" + batchPct + "%;background:" + A + ";transition:width .3s " + EASE,
+      batchLabelStyle: "display:" + (open ? "flex" : "none") + ";justify-content:space-between;margin-top:7px;font-family:'Martian Mono',monospace;font-size:9px;color:#6B655E;letter-spacing:0.04em",
+      doneCount: String(doneCount).padStart(2, "0"),
+      batchPctLabel: batchPct + "%",
+      showRailEstimate: open && s.files.length > 0,
+      estimateDims: cur ? cur.w + "×" + cur.h + " → " + outW + "×" + outH : "NO MEDIA",
+      estimateCost: cur ? "~" + this.fmtTime(est) + " · ~" + ((outW * outH * 3) / 1048576).toFixed(1) + " MB" : "",
+
+      files: s.files.map((f, idx) => {
+        const active = cur && f.id === cur.id;
+        const st = f.status;
+        const col = st === "done" ? "#86AE8D" : st === "running" ? A : st === "queued" ? "#B8B2AA" : "#5A554F";
+        return {
+          name: f.name,
+          meta: f.w + "×" + f.h + " · " + f.size,
+          kindTag: f.kind === "video" ? "MOV" : "IMG",
+          statusLabel: st === "done" ? "✓" : st === "running" ? Math.round(f.progress) + "%" : st === "queued" ? "···" : "",
+          statusStyle: "flex:none;display:" + (open ? "block" : "none") + ";font-family:'Martian Mono',monospace;font-size:9px;color:" + col,
+          rowStyle: "position:relative;display:flex;align-items:center;gap:" + (open ? 11 : 0) + "px;justify-content:" + (open ? "flex-start" : "center") +
+            ";padding:" + (open ? "6px" : "0") + ";margin-bottom:" + (open ? 3 : -13) + "px;cursor:pointer;border-radius:" + (open ? 10 : 12) + "px;border:1px solid " + (open && active ? "#34312D" : "transparent") +
+            ";background:" + (open && active ? "#191817" : "transparent") + ";overflow:" + (open ? "hidden" : "visible") + ";z-index:" + (active ? 40 : 20 - idx) +
+            ";opacity:" + (open || active ? 1 : 0.66) + ";transform:" + (open ? "none" : "translateX(" + (active ? 5 : 0) + "px) scale(" + (active ? 1 : 0.9) + ")") +
+            ";transform-origin:center left;transition:all .24s " + EASE,
+          textStyle: "flex:1;min-width:0;display:" + (open ? "block" : "none"),
+          thumbStyle: "width:" + (open ? (active ? 44 : 40) : 46) + "px;height:" + (open ? (active ? 44 : 40) : 46) + "px;flex:none;position:relative;border:1px solid " + (active ? A : open ? "#232120" : "#3E3933") +
+            ";border-radius:" + (open ? 9 : 11) + "px;overflow:hidden;background:repeating-linear-gradient(28deg,#4A423B 0 5px,#332D28 5px 10px);box-shadow:" + (open ? "none" : active ? "0 12px 30px rgba(0,0,0,.7)" : "0 6px 18px rgba(0,0,0,.5)") + ";transition:all .24s " + EASE,
+          thumbTagStyle: "position:absolute;bottom:0;left:0;right:0;padding:1px 0;text-align:center;background:rgba(11,10,9,.8);font-family:'Martian Mono',monospace;font-size:7px;letter-spacing:0.06em;color:" + col,
+          railBarStyle: "position:absolute;left:0;bottom:0;height:2px;width:" + (st === "running" ? f.progress : 0) + "%;background:" + A + ";transition:width .2s linear",
+          select: () => this.setState({ selectedId: f.id }),
+          dragStart: (e) => { this.dragFrom = idx; if (e.dataTransfer) e.dataTransfer.effectAllowed = "move"; },
+          dragEnter: () => {
+            if (this.dragFrom === null || this.dragFrom === undefined || this.dragFrom === idx) return;
+            const from = this.dragFrom;
+            this.dragFrom = idx;
+            this.setState((st) => {
+              const files = st.files.slice();
+              files.splice(idx, 0, files.splice(from, 1)[0]);
+              return { files };
+            });
+          },
+        };
+      }),
+
+      phaseLabel: telemetry ? phase : "UPSCALING",
+      etaLabel: this.fmtTime(est * (1 - (cur ? cur.progress : 0) / 100)),
+      rateLabel: cur && cur.kind === "video" ? "18.4 f/s" : "2.6 MP/s",
+      vramLabel: s.gpu === -1 ? "—" : (s.tile === 0 ? "4.8" : s.tile >= 512 ? "9.1" : s.tile >= 256 ? "5.2" : "2.4") + " GB",
+      vramUsedLabel: s.gpu === -1 ? "—" : (s.tile === 0 ? "4.8" : s.tile >= 512 ? "9.1" : s.tile >= 256 ? "5.2" : "2.4") + " GB",
+      vramTotalLabel: s.gpu === -1 ? "SYSTEM RAM" : s.gpu === 1 ? "SHARED" : "12.0 GB",
+      tileCountLabel: cur && cur.kind === "video"
+        ? Math.round((cur.progress / 100) * 1440) + "/1440"
+        : Math.round(((cur ? cur.progress : 0) / 100) * 48) + "/48",
+      tileCells: Array.from({ length: 48 }, (_, i) => {
+        const cutoff = ((cur ? cur.progress : 0) / 100) * 48;
+        const state = i < Math.floor(cutoff) ? "done" : i < Math.ceil(cutoff) ? "active" : "pending";
+        return {
+          style: state === "done" ? "background:transparent;transition:background .3s ease"
+            : state === "active" ? "background:rgba(168,11,36,.16);box-shadow:inset 0 0 0 1px " + A + ";transition:background .3s ease"
+            : "background:rgba(9,8,8,.72);transition:background .3s ease",
+        };
+      }),
+      cancelJob: () => this.cancel(),
+
+      outSizeLabel: ((outW * outH * 3) / 1048576).toFixed(1) + " MB",
+      outPathLabel: s.outputDir + "/" + (cur ? cur.name.replace(/\.[^.]+$/, "") : "") + "_" + s.scale + "x.png",
+      splitBtnStyle: this.seg(s.compare === "split"),
+      sideBtnStyle: this.seg(s.compare === "side"),
+      zoomLabel: s.zoom + "×",
+      cycleZoom: () => this.setState((st) => ({ zoom: st.zoom === 1 ? 2 : st.zoom === 2 ? 4 : 1 })),
+      setSplit: () => this.setState({ compare: "split" }),
+      setSide: () => this.setState({ compare: "side" }),
+      noop: () => this.toast("SHELL", "Handled by the OS file manager"),
+
+      dockIn: () => this.setState({ dockHover: true }),
+      dockOut: () => this.setState({ dockHover: false }),
+      dockStyle: "position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:" + (big ? 8 : 6) + "px;padding:" + (big ? 6 : 5) + "px;border:1px solid #34312D;border-radius:16px;background:rgba(13,12,11,.96);box-shadow:0 " + (big ? 22 : 14) + "px " + (big ? 50 : 34) + "px rgba(0,0,0,.6);z-index:42;transition:all .24s " + EASE,
+      photoTabStyle: this.pill(s.cat === "photo", big),
+      animeTabStyle: this.pill(s.cat === "anime", big),
+      videoTabStyle: this.pill(s.cat === "video", big),
+      setPhoto: () => this.pickCat("photo"),
+      setAnime: () => this.pickCat("anime"),
+      setVideo: () => this.pickCat("video"),
+
+      modelWrapStyle: "position:relative;width:" + (big ? 206 : 162) + "px;flex:none;transition:width .24s " + EASE,
+      modelBtnStyle: "width:100%;height:" + (big ? 36 : 30) + "px;display:flex;align-items:center;gap:9px;padding:0 11px;border:1px solid #232120;border-radius:11px;background:#121110;cursor:pointer;transition:all .24s " + EASE,
+      modelIdStyle: "display:" + (big ? "block" : "none") + ";font-family:'Martian Mono',monospace;font-size:9px;color:#5A554F;letter-spacing:0.04em;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis",
+      modelName: this.model.name,
+      modelId: this.model.id.toUpperCase() + " · " + this.model.size,
+      modelMenuOpen: s.modelMenuOpen,
+      toggleModelMenu: () => this.setState((st) => ({ modelMenuOpen: !st.modelMenuOpen })),
+      modelList: MODELS.filter((m) => m.cat === s.cat).map((m) => {
+        const inst = s.installed.includes(m.id);
+        const sel = m.id === s.modelId;
+        return {
+          name: m.name,
+          note: m.note,
+          tag: inst ? m.scale + "×" : "NOT INSTALLED",
+          tagStyle: "font-family:'Martian Mono',monospace;font-size:9px;letter-spacing:0.05em;padding:3px 6px;border-radius:6px;border:1px solid " + (inst ? "#34312D" : "#4A211C") + ";color:" + (inst ? "#8A847C" : "#E88A80"),
+          check: sel ? "✓" : "",
+          checkStyle: "flex:none;width:12px;font-size:11px;color:" + A,
+          style: "display:flex;align-items:flex-start;gap:12px;padding:12px;border-radius:10px;cursor:pointer;background:" + (sel ? "#191817" : "transparent") + ";transition:background .16s",
+          select: () => (inst ? this.pickModel(m.id) : this.setState({ catalogOpen: true, modelMenuOpen: false })),
+        };
+      }),
+
+      s2Style: this.pill(s.scale === 2, big),
+      s3Style: this.pill(s.scale === 3, big),
+      s4Style: this.pill(s.scale === 4, big),
+      setScale2: () => this.pickScale(2),
+      setScale3: () => this.pickScale(3),
+      setScale4: () => this.pickScale(4),
+
+      primaryStyle: "flex:none;height:" + (big ? 36 : 30) + "px;padding:0 " + (big ? 18 : 14) + "px;display:flex;align-items:center;gap:8px;border:" + (anyRunning ? "1px solid #4A211C" : "none") +
+        ";border-radius:11px;background:" + (anyRunning ? "#1A100E" : s.files.length ? "#F2F0ED" : "#1B1917") +
+        ";color:" + (anyRunning ? "#E88A80" : s.files.length ? "#0B0A09" : "#5A554F") +
+        ";font-family:Archivo,sans-serif;font-size:" + (big ? "13px" : "12px") + ";font-weight:600;white-space:nowrap;cursor:" + (s.files.length ? "pointer" : "not-allowed") + ";transition:all .24s " + EASE,
+      primaryLabel: anyRunning ? "Cancel" : s.files.length > 1 ? "Run queue" : "Upscale",
+      primaryHint: anyRunning ? "ESC" : "⌘↩",
+      primaryHintStyle: "display:" + (big ? "inline" : "none") + ";font-family:'Martian Mono',monospace;font-size:9px;opacity:.5;letter-spacing:0.04em",
+      primaryAction: () => (anyRunning ? this.cancel() : this.run()),
+
+      rowDragOver: (e) => e.preventDefault(),
+      rowDragEnd: () => { this.dragFrom = null; },
+      addFiles: () => this.addOne(),
+      addBatch: () => this.addBatch(),
+      clearAll: () => this.clearAll(),
+
+      inspectorOpen: s.inspectorOpen,
+      toggleInspector: () => this.setState((st) => ({ inspectorOpen: !st.inspectorOpen })),
+      gpus: GPUS.map((g) => ({
+        name: g.name,
+        detail: g.detail,
+        style: "display:flex;align-items:center;gap:11px;padding:11px;cursor:pointer;border-radius:10px;background:" + (s.gpu === g.id ? "#191817" : "transparent") + ";transition:background .16s",
+        panelStyle: "display:flex;align-items:center;gap:10px;padding:10px;margin-bottom:5px;cursor:pointer;border-radius:10px;border:1px solid " + (s.gpu === g.id ? "#34312D" : "#232120") + ";background:" + (s.gpu === g.id ? "#191817" : "transparent") + ";transition:all .18s " + EASE,
+        check: s.gpu === g.id ? "✓" : "",
+        checkStyle: "flex:none;width:12px;font-size:11px;color:" + A,
+        select: () => this.setState({ gpu: g.id, gpuMenuOpen: false }),
+      })),
+      vramBarStyle: "height:100%;width:" + (s.gpu === -1 ? 0 : s.tile === 0 ? 40 : s.tile >= 512 ? 76 : s.tile >= 256 ? 44 : 20) + "%;background:" + A + ";transition:width .3s " + EASE,
+      vramTrackStyle: "height:4px;border-radius:2px;background:#1B1917;overflow:hidden;box-shadow:inset 0 0 0 1px #232120",
+      tiles: TILES.map((t) => ({
+        label: t.label,
+        style: "height:32px;border-radius:8px;border:1px solid " + (s.tile === t.v ? A : "#232120") + ";background:" + (s.tile === t.v ? "rgba(168,11,36,.1)" : "#121110") + ";color:" + (s.tile === t.v ? "#F2F0ED" : "#7E7871") + ";font-family:'Martian Mono',monospace;font-size:9.5px;letter-spacing:0.03em;cursor:pointer;transition:all .18s " + EASE,
+        select: () => this.setState({ tile: t.v }),
+      })),
+      tileHint: s.tile === 0 ? "Tile size is derived from available VRAM at job start." : "Smaller tiles use less VRAM and run slower. 256 suits most 8 GB cards.",
+      autoTune: () => { this.setState({ tile: s.gpu === -1 ? 128 : 256 }); this.toast("AUTO-TUNE", "Tile size set from device VRAM headroom"); },
+      outputDir: s.outputDir,
+      pickDir: () => this.toast("OUTPUT", "Folder picker handled by the OS"),
+      namingLabel: "{NAME}_{SCALE}X",
+      formatLabel: cur && cur.kind === "video" ? "MP4 / H.264" : "PNG / RGB8",
+      presets: s.presets.map((p) => {
+        const m = MODELS.find((x) => x.id === p.model) || MODELS[0];
+        const active = s.activePreset === p.id;
+        return {
+          name: p.name,
+          detail: m.name.toUpperCase() + " · " + p.scale + "×",
+          badge: p.scale + "×",
+          badgeStyle: "flex:none;font-family:'Martian Mono',monospace;font-size:9px;letter-spacing:0.03em;padding:4px 7px;border-radius:6px;border:1px solid " + (active ? A : "#232120") + ";color:" + (active ? A : "#5A554F"),
+          style: "display:flex;align-items:center;gap:10px;padding:10px;cursor:pointer;border-radius:10px;border:1px solid " + (active ? "#34312D" : "#232120") + ";background:" + (active ? "#191817" : "transparent") + ";transition:all .18s " + EASE,
+          apply: () => this.setState({ activePreset: p.id, modelId: p.model, scale: p.scale, cat: p.cat }),
+        };
+      }),
+      savePreset: () => {
+        const id = "p" + Math.random().toString(36).slice(2, 6);
+        this.setState((st) => ({ presets: [...st.presets, { id, name: this.model.name + " " + st.scale + "×", model: st.modelId, scale: st.scale, cat: st.cat }], activePreset: id }));
+        this.toast("PRESET SAVED", "Current model, scale and output stored");
+      },
+
+      catalogOpen: s.catalogOpen,
+      historyOpen: s.historyOpen,
+      aboutOpen: s.aboutOpen,
+      openCatalog: () => this.setState({ catalogOpen: true, modelMenuOpen: false }),
+      openHistory: () => this.setState({ historyOpen: true }),
+      openAbout: () => this.setState({ aboutOpen: true }),
+      closeOverlays: () => this.setState({ catalogOpen: false, historyOpen: false, aboutOpen: false }),
+      stop: (e) => e.stopPropagation(),
+      installedCountLabel: s.installed.length + " OF " + MODELS.length + " INSTALLED",
+      catalog: MODELS.map((m) => {
+        const inst = s.installed.includes(m.id);
+        const dl = s.downloading === m.id;
+        return {
+          name: m.name,
+          note: m.note,
+          meta: m.id.toUpperCase() + " · " + m.size + " · " + m.scale + "× NATIVE",
+          tag: m.cat.toUpperCase(),
+          tagStyle: "font-family:'Martian Mono',monospace;font-size:9px;letter-spacing:0.05em;padding:3px 6px;border-radius:6px;border:1px solid #232120;color:#7E7871",
+          isInstalled: inst && !dl,
+          isDownloading: dl,
+          canDownload: !inst && !dl,
+          dlLabel: "FETCHING " + Math.round(s.dlPct) + "%",
+          dlBarStyle: "height:100%;width:" + s.dlPct + "%;background:" + A,
+          download: () => {
+            this.setState({ downloading: m.id, dlPct: 0 });
+            const iv = setInterval(() => {
+              this.setState((st) => {
+                const p = st.dlPct + 7 + Math.random() * 9;
+                if (p >= 100) {
+                  clearInterval(iv);
+                  setTimeout(() => this.toast("MODEL INSTALLED", m.name + " verified and ready"), 40);
+                  return { dlPct: 100, downloading: null, installed: [...st.installed, m.id] };
+                }
+                return { dlPct: p };
+              });
+            }, 180);
+          },
+        };
+      }),
+
+      history: s.history.map((h) => ({
+        name: h.name,
+        meta: h.meta,
+        time: h.time,
+        select: () => {
+          const f = { id: nextId(), name: h.name, w: h.w, h: h.h, kind: h.kind, size: h.size, status: "done", progress: 100 };
+          this.setState({ files: [f], selectedId: f.id, scale: h.scale, modelId: h.model, cat: h.cat, historyOpen: false, compare: "split", zoom: 1, sliderPct: 52 });
+          this.toast("REOPENED", h.name + " restored from history");
+        },
+      })),
+      historyCount: String(s.history.length).padStart(2, "0"),
+      hotkeys: HOTKEYS,
+
+      toastWrapStyle: "position:absolute;bottom:132px;right:" + (s.inspectorOpen ? 336 : 12) + "px;display:flex;flex-direction:column;gap:8px;z-index:90;width:296px;pointer-events:none;transition:right .28s " + EASE,
+      toasts: s.toasts.slice(-3).map((t) => ({
+        kind: t.kind,
+        text: t.text,
+        style: "display:flex;gap:11px;padding:12px 13px;border:1px solid #34312D;border-radius:12px;background:rgba(13,12,11,.97);box-shadow:0 14px 34px rgba(0,0,0,.55);pointer-events:auto;animation:toastin .32s " + EASE + " both",
+        dismiss: () => this.setState((st) => ({ toasts: st.toasts.filter((x) => x.id !== t.id) })),
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>
