@@ -34,8 +34,8 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     fs::create_dir_all(&frames_in_dir).map_err(|e| format!("Failed to create input frames folder: {}", e))?;
     fs::create_dir_all(&frames_out_dir).map_err(|e| format!("Failed to create output frames folder: {}", e))?;
 
-    // 2. Query original video framerate via ffprobe
-    let fps_string = get_video_framerate(&job.input_path)?;
+    // 2. Query original video framerate (with safe fallback)
+    let fps_string = get_video_framerate(app, &job.input_path);
 
     // 3. Extract video frames using ffmpeg
     update_progress(app, &job.id, 5.0, "Extracting Video Frames (FFmpeg)...");
@@ -55,7 +55,7 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
         .map_err(|e| format!("Failed to run ffmpeg frame extractor: {}", e))?;
 
     if !extract_status.success() {
-        return Err("ffmpeg failed to extract video frames".to_string());
+        return Err("ffmpeg failed to extract video frames. Please ensure FFmpeg is installed on system PATH.".to_string());
     }
 
     // 4. Count the extracted frames
@@ -66,7 +66,7 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
         .count();
 
     if total_frames == 0 {
-        return Err("No video frames extracted. Check if video has valid streams.".to_string());
+        return Err("No video frames extracted. Check if input file is a valid video.".to_string());
     }
 
     // 5. Run upscaling on the frames folder using NCNN Vulkan
@@ -183,9 +183,13 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     Ok(())
 }
 
-/// Helper function to extract framerate fraction string from video using ffprobe.
-fn get_video_framerate(video_path: &str) -> Result<String, String> {
-    let output = Command::new("ffprobe")
+/// Helper function to extract framerate fraction string from video using ffprobe with safe fallback.
+fn get_video_framerate(app: &AppHandle, video_path: &str) -> String {
+    let ffprobe_bin = resolve_sidecar_path(app, "ffprobe")
+        .map(|p| p.to_str().unwrap_or("ffprobe").to_string())
+        .unwrap_or_else(|_| "ffprobe".to_string());
+
+    if let Ok(output) = Command::new(&ffprobe_bin)
         .args(&[
             "-v", "error",
             "-select_streams", "v:0",
@@ -194,20 +198,16 @@ fn get_video_framerate(video_path: &str) -> Result<String, String> {
             video_path
         ])
         .output()
-        .map_err(|e| format!("Failed to execute ffprobe: {}", e))?;
-
-    if !output.status.success() {
-        return Err("ffprobe failed to extract video metadata".to_string());
+    {
+        if output.status.success() {
+            let fps_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !fps_str.is_empty() {
+                return fps_str;
+            }
+        }
     }
 
-    let mut fps_str = String::from_utf8_lossy(&output.stdout).to_string();
-    fps_str = fps_str.trim().to_string();
-    
-    if fps_str.is_empty() {
-        Ok("30/1".to_string())
-    } else {
-        Ok(fps_str)
-    }
+    "30/1".to_string()
 }
 
 /// Helper function to resolve ffmpeg binary (system path or sidecar fallback).
@@ -232,7 +232,7 @@ fn resolve_ffmpeg_binary(app: &AppHandle) -> Result<String, String> {
         }
     }
 
-    Err("ffmpeg was not found on system PATH and no sidecar binary is present".to_string())
+    Err("ffmpeg was not found on system PATH and no sidecar binary is present. Please install FFmpeg on your system to process video files.".to_string())
 }
 
 /// Helper function to emit progress updates.
