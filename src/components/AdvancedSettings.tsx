@@ -1,16 +1,15 @@
 import { useMemo } from "react";
-import { GpuInfo } from "../lib/types";
 
-interface GpuDevice {
+export interface GpuInfo {
   id: number;
   name: string;
   detail?: string;
 }
 
-interface AdvancedSettingsProps {
+export interface AdvancedSettingsProps {
   selectedGpu?: number;
   availableGpus?: GpuInfo[];
-  gpus?: GpuDevice[];
+  gpus?: GpuInfo[];
   onSelectGpu?: (id: number) => void;
   tileSize?: number;
   onSetTileSize?: (size: number) => void;
@@ -19,11 +18,9 @@ interface AdvancedSettingsProps {
   customOutputPath?: string;
   onSetOutputDir?: (dir: string) => void;
   onSelectOutputPath?: () => void;
-  vramUsage?: string;
   accentColor?: string;
   onClose?: () => void;
-  onAutoTune?: (recommendedTileSize: number, vramText: string) => void;
-  isOpen?: boolean;
+  onAutoTune?: (recommendedTile: number, vramText: string) => void;
   isProcessing?: boolean;
 }
 
@@ -67,15 +64,18 @@ export function AdvancedSettings({
     return 8;
   }, [currentGpu]);
 
-  // Dynamic VRAM calculations based on job status & tile size
+  // Dynamic VRAM calculations based on job status & selected tile size
   const usedVramGb = useMemo(() => {
+    const baseIdle = Math.round(totalVramGb * 0.12 * 10) / 10;
+    // Tile size memory footprint estimation
+    const tileFootprint = tileSize === 512 ? 3.0 : tileSize === 256 ? 1.5 : tileSize === 128 ? 0.7 : 1.2;
     if (isProcessing) {
-      const tileMult = tileSize === 512 ? 0.75 : tileSize === 256 ? 0.45 : tileSize === 128 ? 0.25 : 0.55;
-      return Math.min(totalVramGb, Math.round(totalVramGb * tileMult * 10) / 10);
+      return Math.round((baseIdle + tileFootprint * 1.1) * 10) / 10;
     }
-    return Math.round(totalVramGb * 0.22 * 10) / 10;
+    return Math.round((baseIdle + tileFootprint * 0.85) * 10) / 10;
   }, [isProcessing, tileSize, totalVramGb]);
 
+  const isOverflowing = usedVramGb > totalVramGb;
   const vramPct = Math.min(100, Math.round((usedVramGb / totalVramGb) * 100));
 
   const handleAutoTuneClick = () => {
@@ -135,10 +135,12 @@ export function AdvancedSettings({
 
           {/* Dynamic VRAM Meter */}
           <div className="mt-3">
-            <div className="flex justify-between items-baseline font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.05em] mb-1.5">
-              <span>VRAM</span>
+            <div className="flex justify-between items-baseline font-['Martian_Mono',monospace] text-[9px] tracking-[0.05em] mb-1.5">
+              <span style={{ color: isOverflowing ? "#E88A80" : "var(--text-dim)" }}>
+                VRAM {isOverflowing ? "⚠️ OVERFLOW" : ""}
+              </span>
               <span>
-                <span className="text-[#DDD8D2]">{usedVramGb.toFixed(1)} GB</span>
+                <span style={{ color: isOverflowing ? "#E88A80" : "#DDD8D2" }}>{usedVramGb.toFixed(1)} GB</span>
                 <span className="text-[var(--text-dim)]"> / {totalVramGb.toFixed(1)} GB</span>
               </span>
             </div>
@@ -147,8 +149,8 @@ export function AdvancedSettings({
                 className="h-full transition-all duration-300"
                 style={{
                   width: `${vramPct}%`,
-                  background: accentColor,
-                  transition: `width .3s ${EASE}`,
+                  background: isOverflowing ? "#E88A80" : accentColor,
+                  transition: `width .3s ${EASE}, background .3s ${EASE}`,
                 }}
               />
             </div>
@@ -179,19 +181,21 @@ export function AdvancedSettings({
                 onClick={() => handleTileSize(t.v)}
                 className="h-8 rounded-lg font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.03em] cursor-pointer transition-all duration-200"
                 style={{
-                  border: `1px solid ${tileSize === t.v ? accentColor : "var(--border-default)"}`,
-                  background: tileSize === t.v ? "var(--accent-bg)" : "var(--bg-elevated)",
-                  color: tileSize === t.v ? "var(--text-primary)" : "#7E7871",
+                  border: `1px solid ${tileSize === t.v ? (isOverflowing ? "#E88A80" : accentColor) : "var(--border-default)"}`,
+                  background: tileSize === t.v ? (isOverflowing ? "rgba(232,138,128,.15)" : "var(--accent-bg)") : "var(--bg-elevated)",
+                  color: tileSize === t.v ? (isOverflowing ? "#E88A80" : "var(--text-primary)") : "#7E7871",
                 }}
               >
                 {t.label}
               </button>
             ))}
           </div>
-          <div className="text-[11.5px] text-[var(--text-muted)] leading-[1.5] mt-2">
-            {tileSize === 0
+          <div className="text-[11.5px] leading-[1.5] mt-2 transition-colors duration-200" style={{ color: isOverflowing ? "#E88A80" : "var(--text-muted)" }}>
+            {isOverflowing
+              ? `⚠️ Projected VRAM usage (${usedVramGb.toFixed(1)} GB) exceeds GPU memory (${totalVramGb.toFixed(1)} GB). Consider selecting 256px or 128px.`
+              : tileSize === 0
               ? "Tile size is derived automatically from GPU VRAM at job start."
-              : `Selected tile size: ${tileSize}px. Smaller tiles reduce VRAM usage.`}
+              : `Selected tile size: ${tileSize}px. Projected VRAM usage: ${usedVramGb.toFixed(1)} GB.`}
           </div>
         </div>
 
