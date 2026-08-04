@@ -668,23 +668,10 @@ export default function App() {
       ? await invoke<boolean>("check_file_exists", { path: item.upscaledPath }).catch(() => false)
       : false;
 
-    if (!origExists) {
-      addToast("error", "Original File Missing", `Original file no longer exists on disk.`);
+    if (!origExists || !upscaledExists) {
+      const missingLabel = !origExists ? "Original source file" : "Upscaled output file";
+      addToast("error", "File Missing from Disk", `${missingLabel} no longer exists on disk.`);
       setIsHistoryOpen(false);
-      return;
-    }
-
-    if (!upscaledExists) {
-      addToast("error", "Upscaled File Missing", `Upscaled file no longer exists on disk. Original loaded into workspace.`);
-      setFilePath(item.originalPath);
-      setFileName(item.fileName);
-      setUpscaledPath("");
-      setIsVideo(item.isVideo);
-      setScale(item.scale);
-      setJobStatus("idle");
-      setIsHistoryOpen(false);
-      setBatchItems([]);
-      setZoomLevel(1);
       return;
     }
 
