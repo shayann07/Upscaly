@@ -19,14 +19,25 @@ export function ProgressOverlay({
   eta = "--:--",
   rate = "-- MP/s",
   vram = "-- GB",
-  tileCount = "0/0",
+  tileCount = "AUTO",
   onCancel = () => {},
   percentage,
   statusText,
+  fps,
   etaSeconds,
 }: ProgressOverlayProps) {
   const displayEta = etaSeconds !== undefined ? `${Math.floor(etaSeconds / 60)}:${(etaSeconds % 60).toString().padStart(2, "0")}` : eta;
-  const displayPhase = statusText || phase;
+  const rawPhase = statusText || phase;
+  
+  // Format percentage cleanly without duplicate numbers
+  const hasPercentage = rawPhase.includes("%");
+  const displayPhase = hasPercentage
+    ? rawPhase
+    : percentage !== undefined
+    ? `${rawPhase} · ${percentage.toFixed(1)}%`
+    : rawPhase;
+
+  const displayRate = fps !== undefined && fps > 0 ? `${fps.toFixed(1)} FPS` : rate;
 
   return (
     <motion.div
@@ -34,7 +45,7 @@ export function ProgressOverlay({
       animate={{ opacity: 1, y: 0, x: "-50%" }}
       exit={{ opacity: 0, y: 14, x: "-50%" }}
       transition={{ duration: 0.3, ease: [0.22, 1.3, 0.36, 1] }}
-      className="absolute bottom-[78px] left-1/2 flex items-center gap-4 z-[35]"
+      className="absolute bottom-[78px] left-1/2 flex items-center gap-4 z-[35] select-none"
       style={{
         padding: "11px 14px",
         border: "1px solid var(--border-subtle)",
@@ -46,7 +57,7 @@ export function ProgressOverlay({
       {/* Phase label */}
       <div className="flex items-center gap-2">
         <span className="font-['Martian_Mono',monospace] text-[10px] tracking-[0.08em] text-[var(--accent)] whitespace-nowrap">
-          {displayPhase} {percentage !== undefined ? `${percentage.toFixed(1)}%` : ""}
+          {displayPhase}
         </span>
       </div>
 
@@ -58,7 +69,7 @@ export function ProgressOverlay({
           ETA <span className="text-[var(--text-primary)]">{displayEta}</span>
         </span>
         <span className="text-[var(--text-dim)]">
-          RATE <span className="text-[var(--text-primary)]">{rate}</span>
+          RATE <span className="text-[var(--text-primary)]">{displayRate}</span>
         </span>
         <span className="text-[var(--text-dim)]">
           VRAM <span className="text-[var(--text-primary)]">{vram}</span>
