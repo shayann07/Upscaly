@@ -93,20 +93,6 @@ export function ComparisonSlider({
     }
   };
 
-  // Drag / Pan mouse handlers
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (zoom > 1 && e.button === 0) {
-        setIsPanning(true);
-        setStartPan({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
-      } else if (activeMode === "split" && e.button === 0) {
-        setIsDragging(true);
-        updateSlider(e.clientX);
-      }
-    },
-    [zoom, panOffset, activeMode]
-  );
-
   const updateSlider = useCallback(
     (clientX: number) => {
       const container = containerRef.current;
@@ -116,6 +102,32 @@ export function ComparisonSlider({
       setSliderPct(pct);
     },
     []
+  );
+
+  // Background canvas mouse down (pan if zoomed, or drag slider if 1x)
+  const handleCanvasMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      if (zoom > 1) {
+        setIsPanning(true);
+        setStartPan({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+      } else if (activeMode === "split") {
+        setIsDragging(true);
+        updateSlider(e.clientX);
+      }
+    },
+    [zoom, panOffset, activeMode, updateSlider]
+  );
+
+  // Split handle mouse down (always drags split slider regardless of zoom)
+  const handleHandleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      setIsDragging(true);
+      updateSlider(e.clientX);
+    },
+    [updateSlider]
   );
 
   useEffect(() => {
@@ -145,7 +157,7 @@ export function ComparisonSlider({
 
   const EASE = "var(--ease-spring)";
 
-  // Image style matrix with zoom and pan transform (no artificial CSS blur)
+  // Image style matrix with zoom and pan transform
   const imageStyle = (src: string): React.CSSProperties => ({
     position: "absolute",
     inset: 0,
@@ -163,7 +175,7 @@ export function ComparisonSlider({
     return (
       <div
         onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
+        onMouseDown={handleCanvasMouseDown}
         className="absolute inset-0 grid grid-cols-2 gap-0.5 bg-[var(--bg-base)] select-none"
         style={{ cursor: zoom > 1 ? (isPanning ? "grabbing" : "grab") : "default" }}
       >
@@ -188,7 +200,7 @@ export function ComparisonSlider({
     <div
       ref={containerRef}
       onWheel={handleWheel}
-      onMouseDown={handleMouseDown}
+      onMouseDown={handleCanvasMouseDown}
       className="absolute inset-0 overflow-hidden select-none"
       style={{ cursor: zoom > 1 ? (isPanning ? "grabbing" : "grab") : "ew-resize" }}
     >
@@ -208,25 +220,24 @@ export function ComparisonSlider({
         <div style={imageStyle(inputSrc)} />
       </div>
 
-      {/* Divider line */}
+      {/* Interactive Slider Divider Line & Hit Zone */}
       <div
-        className="absolute top-0 bottom-0 w-px bg-[var(--text-primary)] z-[6] pointer-events-none"
+        onMouseDown={handleHandleMouseDown}
+        className="absolute top-0 bottom-0 w-3 -ml-[6px] z-[20] cursor-ew-resize flex justify-center items-center pointer-events-auto"
         style={{
           left: `${isHolding ? 100 : sliderPct}%`,
           opacity: isHolding ? 0 : 1,
         }}
-      />
-
-      {/* Handle */}
-      <div
-        className="absolute top-1/2 w-7 h-7 rounded-full bg-[var(--text-primary)] flex items-center justify-center z-[7] cursor-ew-resize shadow-[0_4px_14px_rgba(0,0,0,.6)] pointer-events-none"
-        style={{
-          left: `${sliderPct}%`,
-          transform: "translate(-50%, -50%)",
-          opacity: isHolding ? 0 : 1,
-        }}
       >
-        <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--bg-base)] tracking-[0.04em]">◀▶</span>
+        <div className="w-px h-full bg-[var(--text-primary)] shadow-[0_0_8px_rgba(0,0,0,.8)]" />
+
+        {/* Handle */}
+        <div
+          className="absolute top-1/2 w-7 h-7 rounded-full bg-[var(--text-primary)] flex items-center justify-center cursor-ew-resize shadow-[0_4px_14px_rgba(0,0,0,.6)] transition-transform duration-150 hover:scale-110 active:scale-95 pointer-events-auto"
+          style={{ transform: "translateY(-50%)" }}
+        >
+          <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--bg-base)] tracking-[0.04em]">◀▶</span>
+        </div>
       </div>
 
       {/* Labels */}
