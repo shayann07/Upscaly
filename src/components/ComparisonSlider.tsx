@@ -145,15 +145,15 @@ export function ComparisonSlider({
 
   const EASE = "var(--ease-spring)";
 
-  // Image style matrix with zoom and pan transform
-  const imageStyle = (src: string, isBlurred?: boolean): React.CSSProperties => ({
+  // Image style matrix with zoom and pan transform (no artificial CSS blur)
+  const imageStyle = (src: string): React.CSSProperties => ({
     position: "absolute",
     inset: 0,
     backgroundImage: `url(${src})`,
     backgroundSize: "contain",
     backgroundPosition: "center",
     backgroundRepeat: "no-repeat",
-    filter: isBlurred ? "blur(2.4px) saturate(.82)" : "none",
+    filter: "none",
     transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
     transformOrigin: "center center",
     transition: isPanning ? "none" : `transform .22s ${EASE}`,
@@ -168,7 +168,7 @@ export function ComparisonSlider({
         style={{ cursor: zoom > 1 ? (isPanning ? "grabbing" : "grab") : "default" }}
       >
         <div className="relative overflow-hidden">
-          <div style={imageStyle(inputSrc, true)} />
+          <div style={imageStyle(inputSrc)} />
           <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] text-[var(--text-tertiary)] tracking-[0.06em]">
             ORIGINAL{inputDims ? ` · ${inputDims.w}×${inputDims.h}` : ""}
           </div>
@@ -205,7 +205,7 @@ export function ComparisonSlider({
           transition: "clip-path .08s linear",
         }}
       >
-        <div style={imageStyle(inputSrc, true)} />
+        <div style={imageStyle(inputSrc)} />
       </div>
 
       {/* Divider line */}
