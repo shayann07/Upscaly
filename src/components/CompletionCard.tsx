@@ -1,83 +1,96 @@
-import React from 'react';
-import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
-import { FolderOpen, ArrowSquareOut, ArrowsCounterClockwise, Sparkle } from '@phosphor-icons/react';
+import { motion } from "framer-motion";
 
 interface CompletionCardProps {
   outputPath: string;
-  onReset: () => void;
+  outputDims?: { w: number; h: number };
+  compareMode?: "split" | "side";
+  zoom?: number;
+  onSetSplit?: () => void;
+  onSetSide?: () => void;
+  onCycleZoom?: () => void;
+  onOpen?: () => void;
+  onReset?: () => void;
 }
 
-export const CompletionCard: React.FC<CompletionCardProps> = ({ outputPath, onReset }) => {
-  const fileName = outputPath.split(/[/\\]/).pop() || outputPath;
+export function CompletionCard({
+  outputPath,
+  outputDims = { w: 3840, h: 2160 },
+  compareMode = "split",
+  zoom = 1,
+  onSetSplit = () => {},
+  onSetSide = () => {},
+  onCycleZoom = () => {},
+  onOpen,
+  onReset,
+}: CompletionCardProps) {
+  const fileName = outputPath.split(/[\\/]/).pop() || "";
+  const outSize = ((outputDims.w * outputDims.h * 3) / 1048576).toFixed(1);
+  const handleOpen = onOpen || onReset || (() => {});
 
-  const handleOpenFile = async () => {
-    try {
-      await openPath(outputPath);
-    } catch (err) {
-      console.error('Failed to open file:', err);
-    }
-  };
-
-  const handleShowInExplorer = async () => {
-    try {
-      await revealItemInDir(outputPath);
-    } catch (err) {
-      console.error('Failed to reveal file in Explorer:', err);
-    }
-  };
+  const segStyle = (active: boolean) => ({
+    height: "26px",
+    padding: "0 11px",
+    border: "none",
+    borderRadius: "7px",
+    background: active ? "#2A2725" : "transparent",
+    color: active ? "var(--text-primary)" : "var(--text-tertiary)",
+    fontFamily: "Archivo, sans-serif",
+    fontSize: "11.5px",
+    fontWeight: 600 as const,
+    cursor: "pointer" as const,
+    transition: "all .16s",
+  });
 
   return (
-    <div className="w-full max-w-xl mx-auto rounded-3xl liquid-glass border border-[#F1FEC8]/30 p-6 space-y-6 select-none shadow-2xl relative overflow-hidden text-center">
-      {/* Background Sparkle Sheen */}
-      <div className="absolute -top-12 -right-12 w-40 h-40 bg-[#F1FEC8]/10 rounded-full blur-2xl pointer-events-none" />
+    <motion.div
+      initial={{ opacity: 0, y: 14, x: "-50%" }}
+      animate={{ opacity: 1, y: 0, x: "-50%" }}
+      exit={{ opacity: 0, y: 14, x: "-50%" }}
+      transition={{ duration: 0.32, ease: [0.22, 1.3, 0.36, 1] }}
+      className="absolute bottom-[78px] left-1/2 flex items-center gap-3.5 z-[35]"
+      style={{
+        padding: "10px 12px",
+        border: "1px solid var(--border-subtle)",
+        borderRadius: 12,
+        background: "rgba(11,10,9,.95)",
+        boxShadow: "0 18px 44px rgba(0,0,0,.65)",
+      }}
+    >
+      {/* Check icon */}
+      <div className="w-6 h-6 flex-none border border-[var(--success-border)] rounded-lg bg-[var(--success-bg)] flex items-center justify-center text-[var(--success)] text-xs">✓</div>
 
-      {/* Hero Icon */}
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#36255C] via-[#4A3078] to-[#D2C3F6] border border-[#F1FEC8]/40 flex items-center justify-center text-[#F1FEC8] mx-auto shadow-lg shadow-[#36255C]/50 relative z-10">
-        <Sparkle size={36} weight="fill" className="animate-pulse" />
+      {/* Output info */}
+      <div className="font-['Martian_Mono',monospace] text-[10px] text-[var(--text-secondary)] whitespace-nowrap max-w-[300px] overflow-hidden text-ellipsis">
+        {fileName}
       </div>
+      <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.05em] whitespace-nowrap">
+        {outSize} MB
+      </span>
 
-      {/* Header Text */}
-      <div className="space-y-1 relative z-10">
-        <h2 className="text-lg font-extrabold text-[#F1FEC8] tracking-wide">
-          Upscaling Successfully Completed!
-        </h2>
-        <p className="text-xs text-[#D2C3F6]/80 font-mono truncate max-w-md mx-auto">
-          {fileName}
-        </p>
-      </div>
+      <div className="w-px h-5 bg-[var(--border-default)]" />
 
-      {/* File Location Info Box */}
-      <div className="p-3 rounded-2xl bg-[#23212C]/80 border border-[#D2C3F6]/15 text-left space-y-1 text-xs font-mono">
-        <span className="text-[10px] uppercase font-bold text-[#D2C3F6]/60">Destination Path:</span>
-        <p className="text-[#F1FEC8] truncate text-[11px]">{outputPath}</p>
-      </div>
-
-      {/* Native OS File Action Buttons */}
-      <div className="grid grid-cols-3 gap-3 pt-2 relative z-10">
+      {/* Compare mode toggles */}
+      <div className="flex items-center gap-0.5">
+        <button onClick={onSetSplit} style={segStyle(compareMode === "split")}>Split</button>
+        <button onClick={onSetSide} style={segStyle(compareMode === "side")}>Side</button>
         <button
-          onClick={handleOpenFile}
-          className="flex items-center justify-center gap-2 py-3 px-3 rounded-2xl bg-gradient-to-r from-[#F1FEC8] to-[#D2C3F6] text-[#16141D] font-bold text-xs shadow-lg shadow-[#F1FEC8]/20 hover:scale-105 transition-all"
+          onClick={onCycleZoom}
+          className="h-[26px] px-2.5 border-none rounded-[7px] bg-transparent text-[var(--text-secondary)] font-['Martian_Mono',monospace] text-[10px] cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
         >
-          <ArrowSquareOut size={16} weight="bold" />
-          <span>Open File</span>
-        </button>
-
-        <button
-          onClick={handleShowInExplorer}
-          className="flex items-center justify-center gap-2 py-3 px-3 rounded-2xl bg-[#36255C] text-[#F1FEC8] border border-[#D2C3F6]/30 font-bold text-xs hover:bg-[#4A3078] hover:scale-105 transition-all"
-        >
-          <FolderOpen size={16} weight="bold" />
-          <span>In Explorer</span>
-        </button>
-
-        <button
-          onClick={onReset}
-          className="flex items-center justify-center gap-2 py-3 px-3 rounded-2xl bg-[#23212C] text-[#D2C3F6] border border-[#D2C3F6]/20 font-bold text-xs hover:bg-[#36255C]/50 hover:text-[#F1FEC8] hover:scale-105 transition-all"
-        >
-          <ArrowsCounterClockwise size={16} weight="bold" />
-          <span>Another File</span>
+          {zoom}×
         </button>
       </div>
-    </div>
+
+      {/* Open button */}
+      <button
+        onClick={handleOpen}
+        className="h-[26px] px-3 border-none rounded-lg bg-[var(--text-primary)] text-[var(--bg-base)] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-transform duration-200 hover:-translate-y-0.5"
+        style={{ transition: "transform .18s var(--ease-pop)" }}
+      >
+        Open
+      </button>
+    </motion.div>
   );
-};
+}
+
+export default CompletionCard;

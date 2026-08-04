@@ -1,82 +1,111 @@
 import React from 'react';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { X, Image as ImageIcon, Video as VideoIcon, ArrowRight, Sparkle } from '@phosphor-icons/react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 
 interface FilePreviewProps {
   filePath: string;
-  fileName: string;
-  fileSize: number;
-  isVideo: boolean;
-  scale: number;
-  onRemove: () => void;
+  fileName?: string;
+  fileSize?: number;
+  isVideo?: boolean;
+  scale?: number;
+  onRemove?: () => void;
+  isProcessing?: boolean;
 }
 
 export const FilePreview: React.FC<FilePreviewProps> = ({
   filePath,
   fileName,
-  fileSize,
-  isVideo,
-  scale,
+  fileSize = 0,
+  isVideo = false,
+  scale = 4,
   onRemove,
+  isProcessing = false,
 }) => {
+  const name = fileName || filePath.split(/[\\/]/).pop() || "";
+  const ext = filePath.split(".").pop()?.toLowerCase() || "";
+  const checkIsVideo = isVideo || ["mp4", "mkv", "mov", "avi", "webm"].includes(ext);
+
   const formatSize = (bytes: number) => {
     if (bytes === 0) return 'Local File';
     const mb = bytes / (1024 * 1024);
     return `${mb.toFixed(2)} MB`;
   };
 
-  return (
-    <div className="relative rounded-3xl bg-[#16141D]/40 border border-white/5 p-5 space-y-4 select-none shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-3xl overflow-hidden group">
-      {/* Ambient Inner Sheen */}
-      <div className="absolute -top-10 -right-10 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl pointer-events-none transition-opacity opacity-50 group-hover:opacity-100" />
+  const src = convertFileSrc(filePath);
 
-      {/* Quick Remove Button */}
-      <button
-        type="button"
-        onClick={onRemove}
-        className="absolute top-4 right-4 p-2 rounded-xl bg-black/40 text-white/50 hover:text-rose-400 hover:bg-rose-500/20 border border-white/5 hover:border-rose-500/30 transition-all z-10 cursor-pointer active:scale-95 shadow-sm"
-        title="Remove File"
-      >
-        <X size={15} weight="bold" />
-      </button>
-
-      {/* Media Info Strip */}
-      <div className="flex items-center gap-3.5 relative z-10">
-        <div className="w-14 h-14 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-center text-emerald-400 shadow-inner shrink-0 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/10 to-emerald-500/10" />
-          {isVideo ? <VideoIcon size={26} weight="duotone" className="relative z-10" /> : <ImageIcon size={26} weight="duotone" className="relative z-10" />}
+  // If used inside unified stage with filename/scale info:
+  if (fileName || onRemove) {
+    return (
+      <div className="w-full rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] px-4 py-2.5 flex items-center justify-between select-none shadow-lg shrink-0">
+        {/* Left: Media Icon & Filename */}
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="w-8 h-8 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-default)] flex items-center justify-center text-[var(--accent)] shrink-0">
+            {checkIsVideo ? <VideoIcon size={18} /> : <ImageIcon size={18} />}
+          </div>
+          <div className="min-w-0 flex-1 pr-4">
+            <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{name}</p>
+            <p className="text-[10px] text-[var(--text-dim)] font-mono font-medium uppercase">
+              {formatSize(fileSize)} &bull; {checkIsVideo ? 'Video' : 'Image'}
+            </p>
+          </div>
         </div>
-        <div className="flex-1 min-w-0 pr-10">
-          <p className="text-sm font-bold text-white truncate drop-shadow-md">{fileName}</p>
-          <p className="text-[10px] text-white/50 font-mono mt-1 font-semibold uppercase tracking-wider">
-            {formatSize(fileSize)} &bull; {isVideo ? 'Video' : 'Image'}
-          </p>
-        </div>
-      </div>
 
-      {/* Target Resolution Calculation Pill */}
-      <div className="flex items-center justify-between px-4 py-3 rounded-2xl bg-black/40 border border-white/5 text-xs relative z-10 shadow-inner">
-        <span className="text-white/50 text-[10px] font-bold uppercase tracking-widest">Target Resolution</span>
-        <div className="flex items-center gap-2 font-mono font-bold text-white">
-          <span className="text-white/40 text-[10px]">Source</span>
-          <ArrowRight size={12} className="text-white/30" />
-          <span className="px-3 py-1 rounded-full bg-gradient-to-r from-purple-500/20 to-emerald-500/20 text-white text-[10px] border border-white/10 flex items-center gap-1 shadow-[0_0_10px_rgba(255,255,255,0.05)]">
-            <Sparkle size={10} weight="fill" className="text-emerald-400" />
+        {/* Center: Target Scale Badge */}
+        <div className="flex items-center gap-1.5 font-mono font-medium text-xs text-[var(--text-primary)] bg-[var(--bg-elevated)] border border-[var(--border-default)] px-3 py-1 rounded-lg">
+          <span className="text-[var(--text-dim)] text-[10px]">Source</span>
+          <ArrowRight size={12} className="text-[var(--text-dim)]" />
+          <span className="px-2 py-0.5 rounded bg-[var(--accent-bg)] text-[var(--accent)] text-[10px] border border-[var(--border-subtle)] flex items-center gap-1">
+            <Sparkle size={10} weight="fill" className="text-[var(--accent)]" />
             {scale}x AI Enhanced
           </span>
         </div>
-      </div>
 
-      {/* Media Thumbnail Container */}
-      {!isVideo && (
-        <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-white/10 bg-black/60 shadow-inner relative z-10 flex items-center justify-center">
-          <img
-            src={convertFileSrc(filePath)}
-            alt={fileName}
-            className="w-full h-full object-contain"
-          />
-        </div>
+        {/* Right: Quick Remove Button */}
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="ml-4 p-1.5 rounded-lg bg-[var(--danger-bg)] text-[var(--danger-text)] hover:bg-[var(--danger-hover)] border border-[var(--border-danger)] transition-colors shrink-0 cursor-pointer"
+            title="Remove File"
+          >
+            <X size={14} weight="bold" />
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // Full-bleed preview background mode:
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      {checkIsVideo ? (
+        <video
+          src={src}
+          className="absolute inset-0 w-full h-full object-contain"
+          style={{
+            filter: isProcessing ? "saturate(.7) brightness(.86)" : "none",
+            transition: "filter .3s ease",
+          }}
+          autoPlay
+          loop
+          muted
+          playsInline
+        />
+      ) : (
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `url(${src})`,
+            backgroundSize: "contain",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+            filter: isProcessing ? "saturate(.7) brightness(.86)" : "none",
+            transition: "filter .3s ease",
+          }}
+        />
       )}
     </div>
   );
 };
+
+export default FilePreview;

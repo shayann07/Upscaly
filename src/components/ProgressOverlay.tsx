@@ -1,96 +1,82 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { CircleNotch, XCircle, Lightning, Timer } from '@phosphor-icons/react';
+import { motion } from "framer-motion";
 
 interface ProgressOverlayProps {
-  percentage: number;
-  statusText: string;
-  phase: string;
+  phase?: string;
+  eta?: string;
+  rate?: string;
+  vram?: string;
+  tileCount?: string;
+  onCancel?: () => void;
+  // Alternate prop names support
+  percentage?: number;
+  statusText?: string;
   fps?: number;
   etaSeconds?: number;
-  onCancel: () => void;
 }
 
-export const ProgressOverlay: React.FC<ProgressOverlayProps> = ({
+export function ProgressOverlay({
+  phase = "PREPARING",
+  eta = "--:--",
+  rate = "-- MP/s",
+  vram = "-- GB",
+  tileCount = "0/0",
+  onCancel = () => {},
   percentage,
   statusText,
-  phase,
-  fps,
   etaSeconds,
-  onCancel,
-}) => {
-  const formatEta = (seconds?: number) => {
-    if (!seconds || seconds <= 0) return 'Calculating...';
-    if (seconds < 60) return `~${seconds}s left`;
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `~${mins}m ${secs}s left`;
-  };
+}: ProgressOverlayProps) {
+  const displayEta = etaSeconds !== undefined ? `${Math.floor(etaSeconds / 60)}:${(etaSeconds % 60).toString().padStart(2, "0")}` : eta;
+  const displayPhase = statusText || phase;
 
   return (
-    <div className="w-full max-w-xl mx-auto rounded-3xl liquid-glass border border-[#D2C3F6]/25 p-6 space-y-5 select-none shadow-2xl relative overflow-hidden">
-      {/* Header & Status Indicator */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#36255C] to-[#4A3078] border border-[#D2C3F6]/30 flex items-center justify-center text-[#F1FEC8]">
-            <CircleNotch size={22} className="animate-spin text-[#F1FEC8]" />
-          </div>
-          <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#F1FEC8]">
-              {phase || 'GPU Upscaling in Progress'}
-            </h3>
-            <p className="text-xs text-[#D2C3F6]/80 mt-0.5">{statusText}</p>
-          </div>
-        </div>
-
-        {/* Percentage Display */}
-        <div className="text-right">
-          <span className="text-2xl font-mono font-black text-[#F1FEC8]">
-            {percentage.toFixed(1)}%
-          </span>
-        </div>
-      </div>
-
-      {/* Animated SVG Liquid Wave Fill Bar */}
-      <div className="w-full h-3 rounded-full bg-[#16141D] border border-[#D2C3F6]/20 overflow-hidden relative">
-        <motion.div
-          className="h-full bg-gradient-to-r from-[#36255C] via-[#D2C3F6] to-[#F1FEC8] rounded-full relative"
-          initial={{ width: 0 }}
-          animate={{ width: `${percentage}%` }}
-          transition={{ duration: 0.3, ease: 'easeOut' }}
-        >
-          {/* Shimmer Ray */}
-          <div className="absolute inset-0 bg-white/30 animate-pulse" />
-        </motion.div>
-      </div>
-
-      {/* Stats Counter Bar (ETA, FPS, GPU mode) */}
-      <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-[#23212C]/60 border border-[#D2C3F6]/10 text-xs font-mono text-[#D2C3F6]/80">
-        <div className="flex items-center gap-1.5">
-          <Timer size={14} className="text-[#F1FEC8]" />
-          <span>{formatEta(etaSeconds)}</span>
-        </div>
-        {fps && fps > 0 && (
-          <div className="flex items-center gap-1.5">
-            <Lightning size={14} className="text-yellow-300" />
-            <span>{fps} FPS</span>
-          </div>
-        )}
-        <span className="text-[10px] text-[#F1FEC8] px-2 py-0.5 rounded-full bg-[#36255C]">
-          NCNN Vulkan
+    <motion.div
+      initial={{ opacity: 0, y: 14, x: "-50%" }}
+      animate={{ opacity: 1, y: 0, x: "-50%" }}
+      exit={{ opacity: 0, y: 14, x: "-50%" }}
+      transition={{ duration: 0.3, ease: [0.22, 1.3, 0.36, 1] }}
+      className="absolute bottom-[78px] left-1/2 flex items-center gap-4 z-[35]"
+      style={{
+        padding: "11px 14px",
+        border: "1px solid var(--border-subtle)",
+        borderRadius: 12,
+        background: "rgba(11,10,9,.95)",
+        boxShadow: "0 18px 44px rgba(0,0,0,.65)",
+      }}
+    >
+      {/* Phase label */}
+      <div className="flex items-center gap-2">
+        <span className="font-['Martian_Mono',monospace] text-[10px] tracking-[0.08em] text-[var(--accent)] whitespace-nowrap">
+          {displayPhase} {percentage !== undefined ? `${percentage.toFixed(1)}%` : ""}
         </span>
       </div>
 
-      {/* Cancel Button */}
-      <div className="pt-1 flex justify-end">
-        <button
-          onClick={onCancel}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-950/50 hover:bg-red-950/80 text-red-300 border border-red-500/30 text-xs font-bold transition-all hover:scale-105"
-        >
-          <XCircle size={16} />
-          <span>Cancel Upscale</span>
-        </button>
+      <div className="w-px h-5 bg-[var(--border-default)]" />
+
+      {/* Telemetry stats */}
+      <div className="flex items-center gap-3.5 font-['Martian_Mono',monospace] text-[10px] whitespace-nowrap">
+        <span className="text-[var(--text-dim)]">
+          ETA <span className="text-[var(--text-primary)]">{displayEta}</span>
+        </span>
+        <span className="text-[var(--text-dim)]">
+          RATE <span className="text-[var(--text-primary)]">{rate}</span>
+        </span>
+        <span className="text-[var(--text-dim)]">
+          VRAM <span className="text-[var(--text-primary)]">{vram}</span>
+        </span>
+        <span className="text-[var(--text-dim)]">
+          TILE <span className="text-[var(--text-primary)]">{tileCount}</span>
+        </span>
       </div>
-    </div>
+
+      {/* Cancel button */}
+      <button
+        onClick={onCancel}
+        className="h-[26px] px-3 border border-[var(--border-danger)] rounded-lg bg-[var(--danger-bg)] text-[var(--danger-text)] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--danger-hover)] hover:text-[#F2C4BE]"
+      >
+        Cancel
+      </button>
+    </motion.div>
   );
-};
+}
+
+export default ProgressOverlay;

@@ -1,5 +1,4 @@
-import React, { useRef } from 'react';
-import { motion, useMotionValue, useSpring } from 'framer-motion';
+import React from 'react';
 import { Play, Sparkle } from '@phosphor-icons/react';
 
 interface UpscaleButtonProps {
@@ -13,78 +12,25 @@ export const UpscaleButton: React.FC<UpscaleButtonProps> = ({
   onClick,
   isProcessing,
 }) => {
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
-
-  // Magnetic Pull Coordinates
-  const x = useMotionValue(0);
-  const y = useMotionValue(0);
-
-  const springConfig = { damping: 15, stiffness: 150 };
-  const dx = useSpring(x, springConfig);
-  const dy = useSpring(y, springConfig);
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (!buttonRef.current || disabled) return;
-
-    const rect = buttonRef.current.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-
-    const distanceX = e.clientX - centerX;
-    const distanceY = e.clientY - centerY;
-
-    if (Math.abs(distanceX) < 100 && Math.abs(distanceY) < 100) {
-      x.set(distanceX * 0.2);
-      y.set(distanceY * 0.2);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    x.set(0);
-    y.set(0);
-  };
-
   return (
-    <motion.button
-      ref={buttonRef}
-      style={{
-        x: dx,
-        y: dy,
-        boxShadow: disabled
-          ? 'none'
-          : '0 12px 35px -5px rgba(168, 85, 247, 0.45), 0 0 20px rgba(52, 211, 153, 0.3)',
-      }}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
+    <button
+      type="button"
       disabled={disabled || isProcessing}
       onClick={onClick}
-      className={`w-full relative py-4 px-6 rounded-2xl font-extrabold text-sm tracking-widest uppercase select-none transition-all duration-500 flex items-center justify-center gap-2.5 overflow-hidden ${
+      className={`h-[42px] px-6 rounded-xl font-semibold text-xs tracking-wide select-none transition-all flex items-center justify-center gap-2 border ${
         disabled
-          ? 'bg-black/40 text-white/20 border border-white/5 cursor-not-allowed'
-          : 'bg-gradient-to-r from-purple-600 via-emerald-500 to-purple-600 text-white border border-white/20 hover:scale-[1.02] active:scale-[0.98] cursor-pointer'
+          ? 'bg-[#181820] text-zinc-600 border-[#272730] cursor-not-allowed'
+          : 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500/50 shadow-sm active:scale-98 cursor-pointer'
       }`}
     >
-      {/* Dynamic Animated Gradient Background */}
-      {!disabled && (
-        <div 
-          className="absolute inset-0 bg-[linear-gradient(90deg,rgba(168,85,247,1)_0%,rgba(52,211,153,1)_50%,rgba(168,85,247,1)_100%)] bg-[length:200%_auto] animate-shimmer pointer-events-none opacity-80"
-          style={{ mixBlendMode: 'overlay' }}
-        />
-      )}
-
-      {/* Specular Edge Glow Overlay */}
-      {!disabled && (
-        <div className="absolute inset-0 bg-gradient-to-b from-white/40 to-transparent pointer-events-none mix-blend-overlay" />
-      )}
-
       {isProcessing ? (
-        <Sparkle size={20} weight="fill" className="text-white animate-spin z-10 relative" />
+        <Sparkle size={16} weight="fill" className="text-white animate-spin" />
       ) : (
-        <Play size={20} weight="fill" className={`z-10 relative ${disabled ? 'text-white/20' : 'text-white drop-shadow-md'}`} />
+        <Play size={15} weight="fill" className={disabled ? 'text-zinc-600' : 'text-white'} />
       )}
-      <span className="z-10 relative drop-shadow-md">
-        {isProcessing ? 'Processing Upscale...' : 'Upscale Media'}
+      <span>
+        {isProcessing ? 'Processing...' : 'Upscale Media'}
       </span>
-    </motion.button>
+    </button>
   );
 };

@@ -1,124 +1,189 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { Cpu, Sparkle, Image as ImageIcon, Video as VideoIcon, Palette } from '@phosphor-icons/react';
-import { CustomSelect } from './CustomSelect';
+import { useState } from "react";
+import { SUPPORTED_MODELS, ModelInfo } from "../lib/types";
 
 interface SettingsPanelProps {
-  category: 'photos' | 'anime' | 'video';
-  onSelectCategory: (cat: 'photos' | 'anime' | 'video') => void;
-  installedModels: string[];
+  modelCategory?: "photo" | "anime" | "video";
+  onSetCategory?: (cat: "photo" | "anime" | "video") => void;
+  category?: "photos" | "anime" | "video";
+  onSelectCategory?: (cat: "photos" | "anime" | "video") => void;
   selectedModel: string;
-  onSelectModel: (m: string) => void;
-  scale: number;
+  onSelectModel: (id: string) => void;
+  selectedScale?: number;
+  scale?: number;
   onSelectScale: (s: number) => void;
+  isProcessing?: boolean;
+  hasFiles?: boolean;
+  isBatchMode?: boolean;
+  onRun?: () => void;
+  onCancel?: () => void;
+  onOpenCatalog?: () => void;
+  accentColor?: string;
+  installedModels?: string[];
 }
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({
-  category,
+export function SettingsPanel({
+  modelCategory = "photo",
+  onSetCategory,
+  category = "photos",
   onSelectCategory,
-  installedModels,
   selectedModel,
   onSelectModel,
-  scale,
+  selectedScale,
+  scale = 4,
   onSelectScale,
-}) => {
-  const categories = [
-    { id: 'photos', label: 'Photos', icon: <ImageIcon size={14} weight="duotone" /> },
-    { id: 'anime', label: 'Anime & Art', icon: <Palette size={14} weight="duotone" /> },
-    { id: 'video', label: 'Video', icon: <VideoIcon size={14} weight="duotone" /> },
-  ] as const;
+  isProcessing = false,
+  hasFiles = true,
+  isBatchMode = false,
+  onRun = () => {},
+  onCancel = () => {},
+  onOpenCatalog = () => {},
+  accentColor = "var(--accent)",
+}: SettingsPanelProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
 
-  const modelOptions = installedModels.map((m) => ({
-    value: m,
-    label: m,
-    sublabel: m.includes('anime') ? 'Optimized for 2D Art & Anime' : 'Photorealistic ESRGAN Model',
-  }));
+  const activeCategory = category === "photos" ? "photo" : category === "anime" ? "anime" : category === "video" ? "video" : modelCategory;
+  const activeScale = selectedScale !== undefined ? selectedScale : scale;
+
+  const handleCategory = (cat: "photo" | "anime" | "video") => {
+    if (onSetCategory) onSetCategory(cat);
+    if (onSelectCategory) {
+      const altCat = cat === "photo" ? "photos" : cat;
+      onSelectCategory(altCat);
+    }
+  };
+
+  const big = isHovered;
+  const EASE = "var(--ease-spring)";
+
+  const model = SUPPORTED_MODELS.find((m: ModelInfo) => m.id === selectedModel) || SUPPORTED_MODELS[0];
+  const filteredModels = SUPPORTED_MODELS.filter((m: ModelInfo) => m.cat === activeCategory);
+
+  const pill = (active: boolean, isBig: boolean) => ({
+    height: isBig ? 32 : 26,
+    padding: `0 ${isBig ? 14 : 11}px`,
+    borderRadius: 10,
+    border: `1px solid ${active ? accentColor : "transparent"}`,
+    background: active ? "var(--accent-bg)" : "transparent",
+    color: active ? "var(--text-primary)" : "var(--text-dim)",
+    fontFamily: "Archivo, sans-serif",
+    fontSize: isBig ? "12.5px" : "11.5px",
+    fontWeight: 600 as const,
+    cursor: "pointer" as const,
+    whiteSpace: "nowrap" as const,
+    transition: `all .22s ${EASE}`,
+  });
 
   return (
-    <div className="space-y-6 select-none bg-[#16141D]/40 rounded-3xl border border-white/5 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-3xl relative overflow-hidden">
-      {/* Subtle glowing accent inside the card */}
-      <div className="absolute top-0 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-purple-500/50 to-transparent" />
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className="flex items-center"
+      style={{
+        gap: big ? 8 : 6,
+        padding: big ? 6 : 5,
+        border: "1px solid var(--border-subtle)",
+        borderRadius: 16,
+        background: "rgba(13,12,11,.96)",
+        boxShadow: `0 ${big ? 22 : 14}px ${big ? 50 : 34}px rgba(0,0,0,.6)`,
+        transition: `all .24s ${EASE}`,
+      }}
+    >
+      {/* Category tabs */}
+      <div className="flex gap-0.5 p-0.5 border border-[var(--border-default)] rounded-xl bg-[var(--bg-elevated)]">
+        <button onClick={() => handleCategory("photo")} style={pill(activeCategory === "photo", big)}>Photo</button>
+        <button onClick={() => handleCategory("anime")} style={pill(activeCategory === "anime", big)}>Anime</button>
+        <button onClick={() => handleCategory("video")} style={pill(activeCategory === "video", big)}>Video</button>
+      </div>
 
-      {/* Category Tabs */}
-      <div className="space-y-3">
-        <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 flex items-center justify-between">
-          <span>Preset Category</span>
-          <span className="text-emerald-400 font-mono capitalize">{category} Mode</span>
-        </label>
-        <div className="flex bg-black/40 p-1 rounded-2xl border border-white/5 relative shadow-inner">
-          {categories.map((cat) => {
-            const isActive = category === cat.id;
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => onSelectCategory(cat.id)}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold transition-all z-10 cursor-pointer rounded-xl ${
-                  isActive ? 'text-white drop-shadow-md' : 'text-white/40 hover:text-white/80'
-                }`}
+      {/* Model selector */}
+      <div className="relative flex-none" style={{ width: big ? 206 : 162, transition: `width .24s ${EASE}` }}>
+        <button
+          onClick={() => setModelMenuOpen((prev) => !prev)}
+          className="w-full flex items-center gap-[9px] border border-[var(--border-default)] rounded-[11px] bg-[var(--bg-elevated)] cursor-pointer transition-all duration-300 hover:border-[#454138]"
+          style={{ height: big ? 36 : 30, padding: "0 11px", transition: `all .24s ${EASE}` }}
+        >
+          <div className="flex-1 min-w-0 text-left">
+            <div className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis">{model.name}</div>
+            {big && (
+              <div className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.04em] mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis">
+                {model.id.toUpperCase()} · {model.size}
+              </div>
+            )}
+          </div>
+          <span className="flex-none text-[var(--text-dim)] text-[9px]">▲</span>
+        </button>
+
+        {/* Model dropdown */}
+        {modelMenuOpen && (
+          <div className="absolute bottom-[calc(100%+10px)] left-0 w-[376px] border border-[var(--border-subtle)] rounded-[14px] bg-[var(--bg-surface)] shadow-[0_24px_60px_rgba(0,0,0,.7)] p-2 z-[80]" style={{ animation: "pop .2s var(--ease-bounce) both" }}>
+            {filteredModels.map((m: ModelInfo) => (
+              <div
+                key={m.id}
+                onClick={() => {
+                  onSelectModel(m.id);
+                  setModelMenuOpen(false);
+                }}
+                className="flex items-start gap-3 p-3 rounded-[10px] cursor-pointer transition-colors duration-150"
+                style={{ background: m.id === selectedModel ? "var(--bg-active)" : "transparent" }}
               >
-                {isActive && (
-                  <motion.div
-                    layoutId="active-category"
-                    className="absolute inset-y-1 rounded-xl bg-gradient-to-b from-purple-500/80 to-purple-700/80 shadow-[0_0_12px_rgba(168,85,247,0.4)] border border-purple-400/30 -z-10"
-                    style={{ width: 'calc(33.333% - 5px)', left: cat.id === 'photos' ? '4px' : cat.id === 'anime' ? 'calc(33.333% + 2px)' : 'calc(66.666%)' }}
-                    transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-                  />
-                )}
-                {cat.icon}
-                {cat.label}
-              </button>
-            );
-          })}
-        </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-[7px]">
+                    <span className="text-[12.5px] font-semibold text-[var(--text-primary)]">{m.name}</span>
+                    <span className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.05em] px-1.5 py-[3px] rounded-[6px] border border-[var(--border-subtle)] text-[var(--text-tertiary)]">
+                      {m.scale}×
+                    </span>
+                  </div>
+                  <div className="text-[11.5px] text-[var(--text-muted)] mt-[3px] leading-[1.4]">{m.note}</div>
+                </div>
+                {m.id === selectedModel && <span className="flex-none w-3 text-[11px]" style={{ color: accentColor }}>✓</span>}
+              </div>
+            ))}
+            <div
+              onClick={() => {
+                setModelMenuOpen(false);
+                onOpenCatalog();
+              }}
+              className="mt-1 px-2.5 py-[9px] border-t border-[var(--border-default)] font-['Martian_Mono',monospace] text-[10px] tracking-[0.06em] text-[var(--accent)] cursor-pointer"
+            >
+              BROWSE FULL CATALOG →
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Model Selection */}
-      <div className="space-y-3">
-        <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">
-          AI Model Weights
-        </label>
-        <CustomSelect
-          options={modelOptions}
-          value={selectedModel}
-          onChange={(val) => onSelectModel(String(val))}
-          placeholder={installedModels.length === 0 ? 'No Models Installed' : 'Select AI Model...'}
-          icon={<Cpu size={16} className="text-purple-400" />}
-          width="100%"
-        />
+      {/* Scale buttons */}
+      <div className="flex gap-0.5 p-0.5 border border-[var(--border-default)] rounded-xl bg-[var(--bg-elevated)]">
+        <button onClick={() => onSelectScale(2)} style={pill(activeScale === 2, big)}>2×</button>
+        <button onClick={() => onSelectScale(3)} style={pill(activeScale === 3, big)}>3×</button>
+        <button onClick={() => onSelectScale(4)} style={pill(activeScale === 4, big)}>4×</button>
       </div>
 
-      {/* Scale Factor */}
-      <div className="space-y-3">
-        <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">
-          Resolution Multiplier
-        </label>
-        <div className="grid grid-cols-3 gap-3">
-          {[2, 3, 4].map((s) => {
-            const isSelected = scale === s;
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={() => onSelectScale(s)}
-                className={`relative group overflow-hidden py-3 text-sm font-bold rounded-2xl border transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 ${
-                  isSelected
-                    ? 'bg-gradient-to-b from-purple-500/20 to-purple-900/40 text-white border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.3)]'
-                    : 'bg-black/20 text-white/40 border-white/5 hover:text-white hover:bg-white/5 hover:border-white/10'
-                }`}
-              >
-                {/* Hover gradient sweep */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out" />
-                
-                {isSelected && (
-                  <Sparkle size={14} weight="fill" className="text-purple-300 animate-pulse drop-shadow-[0_0_5px_rgba(216,180,254,0.8)]" />
-                )}
-                <span>{s}x <span className={isSelected ? 'text-purple-200/80 font-medium text-xs' : 'text-white/30 font-medium text-xs'}>Scale</span></span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* Primary action button */}
+      <button
+        onClick={isProcessing ? onCancel : onRun}
+        className="flex-none flex items-center gap-2 font-['Archivo',sans-serif] font-semibold whitespace-nowrap transition-all duration-300 hover:-translate-y-0.5"
+        style={{
+          height: big ? 36 : 30,
+          padding: `0 ${big ? 18 : 14}px`,
+          border: isProcessing ? "1px solid var(--border-danger)" : "none",
+          borderRadius: 11,
+          background: isProcessing ? "var(--danger-bg)" : hasFiles ? "var(--text-primary)" : "#1B1917",
+          color: isProcessing ? "var(--danger-text)" : hasFiles ? "var(--bg-base)" : "var(--text-dim)",
+          fontSize: big ? "13px" : "12px",
+          cursor: hasFiles ? "pointer" : "not-allowed",
+          transition: `all .24s ${EASE}`,
+        }}
+      >
+        <span>{isProcessing ? "Cancel" : isBatchMode ? "Run queue" : "Upscale"}</span>
+        {big && (
+          <span className="font-['Martian_Mono',monospace] text-[9px] opacity-50 tracking-[0.04em]">
+            {isProcessing ? "ESC" : "⌘↩"}
+          </span>
+        )}
+      </button>
     </div>
   );
-};
+}
+
+export default SettingsPanel;

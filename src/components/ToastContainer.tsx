@@ -1,85 +1,101 @@
-import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, Warning, XCircle, Info, X } from '@phosphor-icons/react';
+import { Toast } from "../lib/types";
 
 export interface ToastItem {
   id: string;
-  type: 'success' | 'error' | 'warning' | 'info';
-  message: string;
-  suggestion?: string;
-  onAutoFix?: () => void;
+  type?: "success" | "error" | "info" | "warning";
+  kind?: string;
+  text?: string;
+  message?: string;
 }
 
 interface ToastContainerProps {
-  toasts: ToastItem[];
+  toasts: Toast[] | ToastItem[];
   onDismiss: (id: string) => void;
+  settingsOpen?: boolean;
 }
 
-export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onDismiss }) => {
+export function ToastContainer({ toasts, onDismiss, settingsOpen = false }: ToastContainerProps) {
+  const EASE = "var(--ease-spring)";
+  const visible = toasts.slice(-3);
+
+  const getToastColors = (type?: string, kind?: string) => {
+    const k = (kind || type || "").toLowerCase();
+    if (k.includes("success") || k === "done" || k === "complete") {
+      return {
+        badgeColor: "#86AE8D",
+        borderColor: "#3A5A3E",
+        bgColor: "rgba(19,32,21,.97)",
+      };
+    }
+    if (k.includes("error") || k.includes("fail") || k === "danger") {
+      return {
+        badgeColor: "#E88A80",
+        borderColor: "#4A211C",
+        bgColor: "rgba(26,16,14,.97)",
+      };
+    }
+    if (k.includes("warn")) {
+      return {
+        badgeColor: "#E8BC80",
+        borderColor: "#4A3A21",
+        bgColor: "rgba(26,22,14,.97)",
+      };
+    }
+    // Info / default
+    return {
+      badgeColor: "#A80B24",
+      borderColor: "#34312D",
+      bgColor: "rgba(13,12,11,.97)",
+    };
+  };
+
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 max-w-sm w-full pointer-events-none select-none">
-      <AnimatePresence>
-        {toasts.map((toast) => (
-          <motion.div
-            key={toast.id}
-            initial={{ opacity: 0, y: 30, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 100, scale: 0.8 }}
-            transition={{ type: 'spring', stiffness: 350, damping: 25 }}
-            className="pointer-events-auto p-4 rounded-3xl liquid-glass border border-[#D2C3F6]/30 shadow-2xl backdrop-blur-2xl flex gap-3.5 relative overflow-hidden"
+    <div
+      className="absolute bottom-[132px] flex flex-col gap-2 z-[90] w-[296px] pointer-events-none"
+      style={{
+        right: settingsOpen ? 336 : 12,
+        transition: `right .28s ${EASE}`,
+      }}
+    >
+      {visible.map((t) => {
+        const kind = t.kind || (t.type ? t.type.toUpperCase() : "INFO");
+        const text = t.text || t.message || "";
+        const colors = getToastColors(t.type, t.kind);
+
+        return (
+          <div
+            key={t.id}
+            className="flex gap-[11px] pointer-events-auto transition-all duration-200"
             style={{
-              boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.8), 0 0 25px rgba(210, 195, 246, 0.15)',
+              padding: "12px 13px",
+              border: `1px solid ${colors.borderColor}`,
+              borderRadius: 12,
+              background: colors.bgColor,
+              boxShadow: "var(--shadow-toast)",
+              pointerEvents: "auto",
+              animation: `toastin .32s ${EASE} both`,
             }}
           >
-            {/* Ambient Type Glow */}
-            <div
-              className={`absolute -left-12 -top-12 w-24 h-24 rounded-full blur-xl pointer-events-none opacity-30 ${
-                toast.type === 'success'
-                  ? 'bg-emerald-400'
-                  : toast.type === 'error'
-                  ? 'bg-rose-500'
-                  : toast.type === 'warning'
-                  ? 'bg-amber-400'
-                  : 'bg-indigo-400'
-              }`}
-            />
-
-            {/* Icon Column */}
-            <div className="pt-0.5 shrink-0 relative z-10">
-              {toast.type === 'success' && <CheckCircle size={22} className="text-emerald-400 drop-shadow" weight="fill" />}
-              {toast.type === 'error' && <XCircle size={22} className="text-rose-400 drop-shadow" weight="fill" />}
-              {toast.type === 'warning' && <Warning size={22} className="text-amber-400 drop-shadow" weight="fill" />}
-              {toast.type === 'info' && <Info size={22} className="text-indigo-400 drop-shadow" weight="fill" />}
+            <div className="flex-1 min-w-0">
+              <div
+                className="font-['Martian_Mono',monospace] text-[9.5px] font-bold tracking-[0.08em] mb-[3px]"
+                style={{ color: colors.badgeColor }}
+              >
+                {kind}
+              </div>
+              <div className="text-[11.5px] text-[#EDEAE6] leading-[1.45] font-medium">{text}</div>
             </div>
-
-            {/* Message Body */}
-            <div className="flex-1 min-w-0 pr-4 relative z-10">
-              <p className="text-xs font-extrabold text-[#F1FEC8] leading-tight drop-shadow-sm">{toast.message}</p>
-              {toast.suggestion && (
-                <p className="text-[11px] text-[#D2C3F6]/80 mt-1 leading-snug font-medium">{toast.suggestion}</p>
-              )}
-              {toast.onAutoFix && (
-                <button
-                  type="button"
-                  onClick={toast.onAutoFix}
-                  className="mt-2 text-[10px] font-extrabold px-3 py-1 rounded-xl bg-gradient-to-r from-[#36255C] to-[#4A3078] text-[#F1FEC8] border border-[#D2C3F6]/40 hover:scale-105 transition-all shadow cursor-pointer"
-                >
-                  Auto-Fix Issue
-                </button>
-              )}
-            </div>
-
-            {/* Close Button */}
             <button
-              type="button"
-              onClick={() => onDismiss(toast.id)}
-              className="absolute top-3.5 right-3.5 text-[#D2C3F6]/60 hover:text-[#F1FEC8] transition-colors cursor-pointer relative z-10"
+              onClick={() => onDismiss(t.id)}
+              className="w-[18px] h-[18px] flex-none border-none bg-transparent text-[var(--text-muted)] text-[13px] leading-none cursor-pointer pointer-events-auto transition-colors hover:text-[var(--text-primary)]"
             >
-              <X size={14} weight="bold" />
+              ×
             </button>
-          </motion.div>
-        ))}
-      </AnimatePresence>
+          </div>
+        );
+      })}
     </div>
   );
-};
+}
+
+export default ToastContainer;

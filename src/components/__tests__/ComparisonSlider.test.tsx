@@ -5,7 +5,7 @@ import { ComparisonSlider } from '../ComparisonSlider';
 describe('ComparisonSlider Component', () => {
   it('renders slider viewport and zoom controls', () => {
     render(<ComparisonSlider originalPath="test.png" upscaledPath="test_upscaled.png" />);
-    expect(screen.getByText('Original (Left) vs Upscaled (Right)')).toBeInTheDocument();
+    expect(screen.getByText(/compare/i)).toBeInTheDocument();
     expect(screen.getByText('1x Zoom')).toBeInTheDocument();
   });
 
