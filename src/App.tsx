@@ -735,6 +735,8 @@ export default function App() {
       <Titlebar
         hasFiles={Boolean(filePath || batchItems.length > 0)}
         currentFile={filePath || (batchItems.length > 0 ? batchItems[0].fileName : null)}
+        originalDims={currentFileDims}
+        outputDims={currentFileDims ? { w: currentFileDims.w * scale, h: currentFileDims.h * scale } : null}
         isDone={jobStatus === "completed"}
         selectedGpu={selectedGpu}
         availableGpus={gpus.map((g) => ({ id: g.id, name: g.name, detail: g.detail || (g.id === 0 ? "Default GPU" : "Vulkan Device") }))}

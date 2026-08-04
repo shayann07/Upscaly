@@ -1,6 +1,6 @@
-import { GpuInfo } from "../lib/types";
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { GpuInfo } from "../lib/types";
 
 interface TitlebarProps {
   hasFiles?: boolean;
@@ -10,7 +10,7 @@ interface TitlebarProps {
   isDone?: boolean;
   selectedGpu?: number;
   availableGpus?: GpuInfo[];
-  onSelectGpu?: (id: number) => void;
+  onSelectGpu?: (gpuId: number) => void;
   settingsOpen?: boolean;
   onToggleSettings?: () => void;
   onOpenCatalog?: () => void;
@@ -18,7 +18,7 @@ interface TitlebarProps {
   onOpenAbout?: () => void;
   onRemoveFile?: () => void;
   accentColor?: string;
-  // Legacy / alternate props support
+  // Alternate prop names support
   onShowModelCatalog?: () => void;
   onShowSettings?: () => void;
   onShowAbout?: () => void;
@@ -48,7 +48,6 @@ export function Titlebar({
   onShowAbout,
   onShowHistory,
   onToggleInspector,
-  isInspectorOpen,
 }: TitlebarProps) {
   const [gpuMenuOpen, setGpuMenuOpen] = useState(false);
 
@@ -70,7 +69,8 @@ export function Titlebar({
   };
 
   const fileName = currentFile?.split(/[\\/]/).pop() || "";
-  const kindTag = originalDims ? `IMG · ${originalDims.w}×${originalDims.h}` : "";
+  const isVid = /\.(mp4|mkv|mov|avi)$/i.test(fileName);
+  const kindTag = originalDims ? `${isVid ? 'VID' : 'IMG'} · ${originalDims.w}×${originalDims.h}` : isVid ? 'VID' : 'IMG';
   const outDims = outputDims ? `${outputDims.w}×${outputDims.h}` : "";
   const gpuLabel = (availableGpus.find((g) => g.id === selectedGpu) || availableGpus[0])?.name?.replace("NVIDIA ", "") || "CPU";
 
@@ -108,23 +108,22 @@ export function Titlebar({
           </div>
           <div className="w-px h-[15px] bg-[var(--border-default)]" />
           <span className="font-bold text-[12.5px] tracking-[-0.01em]">Upscaly</span>
-          <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-muted)] tracking-[0.06em]">0.1.0</span>
+          <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.06em]">0.1.0</span>
         </div>
       </div>
 
-      {/* File chip (center top) */}
-      {hasFiles && currentFile && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 max-w-[calc(100%-470px)] z-[41] flex">
+      {/* File Chip (shown when file is loaded) */}
+      {hasFiles && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40">
           <div
-            className="flex items-center gap-[11px] h-[34px] px-3 pr-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] hover:scale-[1.05] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
+            className="flex items-center gap-[11px] h-[34px] pl-3 pr-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] hover:scale-[1.05] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
             style={{ transition: "transform .24s var(--ease-spring), border-color .24s ease, box-shadow .24s ease" }}
           >
             <span className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis min-w-0 max-w-[230px]">{fileName}</span>
             <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.05em] whitespace-nowrap">{kindTag}</span>
-            {isDone && (
+            {isDone && outDims && (
               <span
-                className="inline-block px-[7px] py-[3px] rounded-[6px] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] font-semibold whitespace-nowrap"
-                style={{ background: accentColor, color: "#0B0A09" }}
+                className="inline-block px-[7px] py-[3px] rounded-[6px] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] font-semibold whitespace-nowrap bg-[var(--accent-bg)] text-[var(--text-primary)] border border-[var(--border-subtle)]"
               >
                 {outDims}
               </span>
@@ -181,14 +180,14 @@ export function Titlebar({
                     onSelectGpu(gpu.id);
                     setGpuMenuOpen(false);
                   }}
-                  className="flex items-center gap-[11px] p-[11px] cursor-pointer rounded-[10px] transition-colors duration-150"
-                  style={{ background: selectedGpu === gpu.id ? "var(--bg-active)" : "transparent" }}
+                  className="flex items-center gap-[9px] p-2 rounded-[9px] cursor-pointer transition-colors duration-150 hover:bg-[var(--bg-elevated)]"
+                  style={{ background: gpu.id === selectedGpu ? "var(--bg-active)" : "transparent" }}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis">{gpu.name}</div>
                     <div className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.04em] mt-0.5">{gpu.detail}</div>
                   </div>
-                  {selectedGpu === gpu.id && <span className="flex-none w-3 text-[11px]" style={{ color: accentColor }}>✓</span>}
+                  {gpu.id === selectedGpu && <span className="flex-none w-3 text-[11px]" style={{ color: accentColor }}>✓</span>}
                 </div>
               ))}
             </div>
@@ -196,28 +195,40 @@ export function Titlebar({
         </div>
       )}
 
-      {/* Right nav buttons */}
+      {/* Right navigation pill */}
       <div
-        className="absolute top-3 right-3 flex items-center gap-[3px] h-[34px] px-[5px] border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] z-40 hover:scale-[1.06] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
-        style={{ transformOrigin: "right center", transition: "transform .24s var(--ease-spring), border-color .24s ease, box-shadow .24s ease" }}
+        className="absolute top-3 right-3 flex items-center gap-[3px] h-[34px] px-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] z-40 hover:scale-[1.06] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
+        style={{
+          transformOrigin: "right center",
+          transition: "transform .24s var(--ease-spring), border-color .24s ease, box-shadow .24s ease",
+        }}
       >
-        <button onClick={handleOpenCatalog} className="h-6 px-[9px] border-none rounded-[7px] bg-transparent text-[var(--text-secondary)] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">
+        <button
+          onClick={handleOpenCatalog}
+          className="h-6 px-2 border-none rounded-[7px] bg-transparent text-[var(--text-secondary)] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+        >
           Models
         </button>
-        <button onClick={handleOpenHistory} className="h-6 px-[9px] border-none rounded-[7px] bg-transparent text-[var(--text-secondary)] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">
+        <button
+          onClick={handleOpenHistory}
+          className="h-6 px-2 border-none rounded-[7px] bg-transparent text-[var(--text-secondary)] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+        >
           History
         </button>
         <button
           onClick={handleOpenSettings}
-          className="h-6 px-[9px] border-none rounded-[7px] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:text-[var(--text-primary)]"
+          className="h-6 px-2 border-none rounded-[7px] bg-transparent font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150"
           style={{
-            background: settingsOpen || isInspectorOpen ? "#2A2725" : "transparent",
-            color: settingsOpen || isInspectorOpen ? "var(--text-primary)" : "var(--text-secondary)",
+            background: settingsOpen ? "var(--accent-bg)" : "transparent",
+            color: settingsOpen ? "var(--text-primary)" : "var(--text-secondary)",
           }}
         >
           Settings
         </button>
-        <button onClick={handleOpenAbout} className="w-6 h-6 flex items-center justify-center border-none rounded-[7px] bg-transparent text-[var(--text-muted)] font-['Martian_Mono',monospace] text-[11px] cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">
+        <button
+          onClick={handleOpenAbout}
+          className="w-6 h-6 flex items-center justify-center border-none rounded-[7px] bg-transparent text-[var(--text-dim)] font-['Martian_Mono',monospace] text-[11px] cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+        >
           ?
         </button>
       </div>
