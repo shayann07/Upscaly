@@ -662,7 +662,32 @@ export default function App() {
     });
   };
 
-  const handleLoadHistoryItem = (item: HistoryItem) => {
+  const handleLoadHistoryItem = async (item: HistoryItem) => {
+    const origExists = await invoke<boolean>("check_file_exists", { path: item.originalPath }).catch(() => false);
+    const upscaledExists = item.upscaledPath
+      ? await invoke<boolean>("check_file_exists", { path: item.upscaledPath }).catch(() => false)
+      : false;
+
+    if (!origExists) {
+      addToast("error", "Original File Missing", `Original file no longer exists on disk.`);
+      setIsHistoryOpen(false);
+      return;
+    }
+
+    if (!upscaledExists) {
+      addToast("error", "Upscaled File Missing", `Upscaled file no longer exists on disk. Original loaded into workspace.`);
+      setFilePath(item.originalPath);
+      setFileName(item.fileName);
+      setUpscaledPath("");
+      setIsVideo(item.isVideo);
+      setScale(item.scale);
+      setJobStatus("idle");
+      setIsHistoryOpen(false);
+      setBatchItems([]);
+      setZoomLevel(1);
+      return;
+    }
+
     setFilePath(item.originalPath);
     setFileName(item.fileName);
     setUpscaledPath(item.upscaledPath);

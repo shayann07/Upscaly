@@ -305,6 +305,12 @@ async fn get_default_output_dir(app_handle: tauri::AppHandle) -> Result<String, 
     Ok(pic_dir.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+async fn check_file_exists(path: String) -> Result<bool, String> {
+    let p = std::path::Path::new(&path);
+    Ok(p.exists() && p.is_file())
+}
+
 // Native file launcher commands
 #[tauri::command]
 async fn open_file_native(path: String) -> Result<(), String> {
@@ -380,6 +386,7 @@ pub fn run() {
             get_app_settings,
             update_app_settings,
             get_default_output_dir,
+            check_file_exists,
             open_file_native,
             show_in_explorer_native,
             close_window,
