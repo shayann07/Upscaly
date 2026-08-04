@@ -38,31 +38,35 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     let fps_string = get_video_framerate(app, &job.input_path);
 
     // 3. Extract video frames using ffmpeg
-    update_progress(app, &job.id, 5.0, "Extracting Video Frames (FFmpeg)...");
+    update_progress(app, &job.id, 2.0, "Extracting Video Frames (FFmpeg)...");
     
     let ffmpeg_binary = resolve_ffmpeg_binary(app)?;
-    let extract_status = Command::new(&ffmpeg_binary)
+
+    let input_frame_pattern = frames_in_dir.join("frame_%08d.png");
+
+    let extract_output = Command::new(&ffmpeg_binary)
         .args(&[
             "-y",
             "-i", &job.input_path,
-            "-q:v", "2", // High quality JPEG
-            "-pix_fmt", "yuvj420p",
-            frames_in_dir.join("frame_%08d.jpg").to_str().unwrap()
+            "-q:v", "2", // High quality JPEG/PNG
+            "-pix_fmt", "rgb24",
+            input_frame_pattern.to_str().unwrap()
         ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
         .map_err(|e| format!("Failed to run ffmpeg frame extractor: {}", e))?;
 
-    if !extract_status.success() {
-        return Err("ffmpeg failed to extract video frames. Please ensure FFmpeg is installed on system PATH.".to_string());
+    if !extract_output.status.success() {
+        let err_log = String::from_utf8_lossy(&extract_output.stderr);
+        return Err(format!("ffmpeg failed to extract video frames: {}", err_log.lines().last().unwrap_or("Unknown error")));
     }
 
     // 4. Count the extracted frames
     let total_frames = fs::read_dir(&frames_in_dir)
         .map_err(|e| e.to_string())?
         .filter_map(Result::ok)
-        .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "jpg"))
+        .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "png" || ext == "jpg"))
         .count();
 
     if total_frames == 0 {
@@ -84,6 +88,8 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
         "-g", &job.gpu_id.to_string(),
         "-s", &job.scale.to_string(),
         "-t", &job.tile_size.to_string(),
+        "-f", "png",
+        "-j", "2:2:2",
         "-v"
     ]);
 
@@ -138,7 +144,7 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
                 }
             }
 
-            thread::sleep(Duration::from_millis(350));
+            thread::sleep(Duration::from_millis(300));
         }
     });
 
@@ -151,14 +157,35 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
         return Err("NCNN upscale engine failed during frame upscaling".to_string());
     }
 
-    // 6. Reassemble frames into output video using ffmpeg
-    update_progress(app, &job.id, 90.0, "Reassembling Video & Merging Audio (FFmpeg)...");
+    // 6. Detect exact output frame extension & pattern in frames_out_dir
+    let sample_ext = fs::read_dir(&frames_out_dir)
+        .ok()
+        .and_then(|mut entries| {
+            entries.find_map(|e| {
+                if let Ok(entry) = e {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if name.starts_with("frame_") {
+                        if name.ends_with(".png") {
+                            return Some("png");
+                        } else if name.ends_with(".jpg") {
+                            return Some("jpg");
+                        }
+                    }
+                }
+                None
+            })
+        })
+        .unwrap_or("png");
 
-    let reassemble_status = Command::new(&ffmpeg_binary)
+    let out_frame_pattern = frames_out_dir.join(format!("frame_%08d.{}", sample_ext));
+
+    update_progress(app, &job.id, 92.0, "Reassembling Video & Merging Audio (FFmpeg)...");
+
+    let reassemble_output = Command::new(&ffmpeg_binary)
         .args(&[
             "-y",
             "-framerate", &fps_string,
-            "-i", frames_out_dir.join("frame_%08d.jpg").to_str().unwrap(),
+            "-i", out_frame_pattern.to_str().unwrap(),
             "-i", &job.input_path,
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
@@ -167,13 +194,15 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
             "-map", "1:a:0?", // optional audio map
             &job.output_path
         ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
         .map_err(|e| format!("Failed to run ffmpeg frame reassembler: {}", e))?;
 
-    if !reassemble_status.success() {
-        return Err("ffmpeg failed to reassemble output video".to_string());
+    if !reassemble_output.status.success() {
+        let err_log = String::from_utf8_lossy(&reassemble_output.stderr);
+        let last_line = err_log.lines().last().unwrap_or("Video encoding error");
+        return Err(format!("ffmpeg reassemble failed: {}", last_line));
     }
 
     // 7. Clean up scratch temporary directories

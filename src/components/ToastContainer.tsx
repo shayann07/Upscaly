@@ -51,7 +51,7 @@ export function ToastContainer({ toasts, onDismiss, settingsOpen = false }: Toas
 
   return (
     <div
-      className="absolute bottom-[132px] flex flex-col gap-2 z-[90] w-[296px] pointer-events-none"
+      className="absolute bottom-[132px] flex flex-col gap-2 z-[90] w-[310px] pointer-events-none"
       style={{
         right: settingsOpen ? 336 : 12,
         transition: `right .28s ${EASE}`,
@@ -65,15 +65,14 @@ export function ToastContainer({ toasts, onDismiss, settingsOpen = false }: Toas
         return (
           <div
             key={t.id}
-            className="flex gap-[11px] pointer-events-auto transition-all duration-200"
+            className="group flex gap-[11px] pointer-events-auto transition-all duration-300 max-h-[72px] overflow-hidden hover:max-h-[400px] hover:w-[360px] hover:-ml-[50px] shadow-[var(--shadow-toast)]"
             style={{
               padding: "12px 13px",
               border: `1px solid ${colors.borderColor}`,
               borderRadius: 12,
               background: colors.bgColor,
-              boxShadow: "var(--shadow-toast)",
-              pointerEvents: "auto",
               animation: `toastin .32s ${EASE} both`,
+              transition: `max-height .3s ${EASE}, width .3s ${EASE}, margin-left .3s ${EASE}`,
             }}
           >
             <div className="flex-1 min-w-0">
@@ -83,7 +82,9 @@ export function ToastContainer({ toasts, onDismiss, settingsOpen = false }: Toas
               >
                 {kind}
               </div>
-              <div className="text-[11.5px] text-[#EDEAE6] leading-[1.45] font-medium">{text}</div>
+              <div className="text-[11.5px] text-[#EDEAE6] leading-[1.45] font-medium transition-all duration-200 line-clamp-2 group-hover:line-clamp-none group-hover:whitespace-normal group-hover:overflow-visible">
+                {text}
+              </div>
             </div>
             <button
               onClick={() => onDismiss(t.id)}
