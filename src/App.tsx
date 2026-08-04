@@ -438,6 +438,11 @@ export default function App() {
     }
   };
 
+  const joinPath = (dir: string, filename: string): string => {
+    const cleanDir = dir.replace(/[/\\]+$/, "");
+    return `${cleanDir}\\${filename}`;
+  };
+
   const handleSelectDestinationFolder = async () => {
     try {
       const selected = await open({
@@ -445,8 +450,9 @@ export default function App() {
         multiple: false,
       });
       if (selected && typeof selected === "string") {
-        setCustomOutputPath(selected);
-        addToast("info", "Output Folder Set", selected);
+        const normalized = selected.replace(/\//g, "\\");
+        setCustomOutputPath(normalized);
+        addToast("info", "Output Folder Set", normalized);
       }
     } catch (err) {
       console.error("Failed to pick folder:", err);
@@ -507,11 +513,11 @@ export default function App() {
 
       let outPath = "";
       if (customOutputPath) {
-        outPath = `${customOutputPath}/${outputFilename}`;
+        outPath = joinPath(customOutputPath, outputFilename);
       } else {
         const lastSlash = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
         const parentDir = filePath.substring(0, lastSlash);
-        outPath = `${parentDir}/${outputFilename}`;
+        outPath = joinPath(parentDir, outputFilename);
       }
 
       pendingOutputPath.current = outPath;
@@ -563,11 +569,11 @@ export default function App() {
 
         let outPath = "";
         if (customOutputPath) {
-          outPath = `${customOutputPath}/${outputFilename}`;
+          outPath = joinPath(customOutputPath, outputFilename);
         } else {
           const lastSlash = Math.max(item.filePath.lastIndexOf("/"), item.filePath.lastIndexOf("\\"));
           const parentDir = item.filePath.substring(0, lastSlash);
-          outPath = `${parentDir}/${outputFilename}`;
+          outPath = joinPath(parentDir, outputFilename);
         }
 
         pendingOutputPath.current = outPath;
