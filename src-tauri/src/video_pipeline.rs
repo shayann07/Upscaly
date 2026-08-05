@@ -145,6 +145,7 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
                     phase: Some(format!("Upscaling Video Frames ({} / {})", completed, total_frames)),
                     eta_seconds: eta_sec,
                     fps: current_fps,
+                    output_path: None,
                 });
 
                 if completed >= total_frames {
@@ -371,5 +372,6 @@ fn update_progress(app: &AppHandle, job_id: &str, percentage: f64, phase_text: &
         phase: Some(phase_text.to_string()),
         eta_seconds: None,
         fps: None,
+        output_path: None,
     });
 }

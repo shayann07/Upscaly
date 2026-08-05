@@ -33,7 +33,9 @@ pub struct JobProgress {
     pub phase: Option<String>,
     pub eta_seconds: Option<u64>,
     pub fps: Option<f64>,
+    pub output_path: Option<String>,
 }
+
 
 pub struct JobControl {
     pub cancel_requested: Arc<AtomicBool>,
@@ -104,6 +106,7 @@ pub fn add_job_to_queue(app: AppHandle, mut job: Job) {
         phase: Some("Queued in GPU worker pool".to_string()),
         eta_seconds: None,
         fps: None,
+        output_path: Some(job.output_path.clone()),
     });
 
     process_next_job(app);
@@ -156,6 +159,7 @@ fn process_next_job(app: AppHandle) {
                     phase: Some("Cancelled while queued".to_string()),
                     eta_seconds: None,
                     fps: None,
+                    output_path: Some(job.output_path.clone()),
                 });
                 continue;
             }
@@ -168,6 +172,7 @@ fn process_next_job(app: AppHandle) {
                 phase: Some("Initializing GPU Pipeline...".to_string()),
                 eta_seconds: None,
                 fps: None,
+                output_path: Some(job.output_path.clone()),
             });
 
             let res = if job.is_video {
@@ -188,6 +193,7 @@ fn process_next_job(app: AppHandle) {
                     phase: Some("Cancelled by user".to_string()),
                     eta_seconds: None,
                     fps: None,
+                    output_path: Some(job.output_path.clone()),
                 });
             } else {
                 match res {
@@ -203,6 +209,7 @@ fn process_next_job(app: AppHandle) {
                                 phase: Some("Complete".to_string()),
                                 eta_seconds: Some(0),
                                 fps: None,
+                                output_path: Some(job.output_path.clone()),
                             });
                         } else {
                             let _ = app.emit("job-status-changed", JobProgress {
@@ -213,6 +220,7 @@ fn process_next_job(app: AppHandle) {
                                 phase: Some("Failed".to_string()),
                                 eta_seconds: None,
                                 fps: None,
+                                output_path: Some(job.output_path.clone()),
                             });
                         }
                     }
@@ -225,6 +233,7 @@ fn process_next_job(app: AppHandle) {
                             phase: Some("Failed".to_string()),
                             eta_seconds: None,
                             fps: None,
+                            output_path: Some(job.output_path.clone()),
                         });
                     }
                 }
@@ -368,6 +377,7 @@ fn run_single_image_job(
             phase: Some(format!("GPU Accelerated Upscaling ({:.1}%)", current_pct)),
             eta_seconds: None,
             fps: None,
+            output_path: Some(job.output_path.clone()),
         });
 
         thread::sleep(std::time::Duration::from_millis(150));

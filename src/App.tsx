@@ -267,7 +267,7 @@ export default function App() {
   // Job and download event listeners
   useEffect(() => {
     const unlistenJob = listen<JobProgress>("job-status-changed", (event) => {
-      const { job_id, percentage, status, error, phase, eta_seconds, fps: jobFps } = event.payload;
+      const { job_id, percentage, status, error, phase, eta_seconds, fps: jobFps, output_path: eventOutPath } = event.payload;
 
       // Update single studio job
       if (activeJobId && job_id === activeJobId) {
@@ -284,7 +284,7 @@ export default function App() {
           setStatusMessage("Queued in GPU worker thread...");
         } else if (status === "succeeded" || status === "completed") {
           setStatusMessage("Upscaling Completed Successfully!");
-          const finalPath = pendingOutputPath.current || upscaledPath;
+          const finalPath = eventOutPath || pendingOutputPath.current || upscaledPath;
           if (finalPath) {
             setUpscaledPath(finalPath);
             const meta = getModelMetadata(selectedModel);
@@ -781,7 +781,7 @@ export default function App() {
                   loop
                   muted
                   className={`max-h-full max-w-full object-contain rounded-xl transition-all ${
-                    jobStatus === "processing" || jobStatus === "queued" ? "opacity-30 blur-[2px]" : ""
+                    jobStatus === "processing" || jobStatus === "queued" ? "opacity-90 blur-[1px]" : ""
                   }`}
                 />
               ) : (
@@ -789,12 +789,12 @@ export default function App() {
                   src={getMediaSrc(filePath)}
                   alt={fileName}
                   className={`max-h-full max-w-full object-contain rounded-xl transition-all ${
-                    jobStatus === "processing" || jobStatus === "queued" ? "opacity-30 blur-[2px]" : ""
+                    jobStatus === "processing" || jobStatus === "queued" ? "opacity-90 blur-[1px]" : ""
                   }`}
                 />
               )}
 
-              {/* 8x6 Tile Grid Overlay during Processing matching HTML handoff */}
+              {/* 8x6 Tile Grid Scanning Overlay during Processing */}
               {(jobStatus === "processing" || jobStatus === "queued") && (
                 <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gridTemplateRows: "repeat(6, 1fr)", gap: "1px", pointerEvents: "none" }}>
                   {Array.from({ length: 48 }).map((_, i) => {
@@ -804,9 +804,10 @@ export default function App() {
                       <div
                         key={i}
                         style={{
-                          background: state === "done" ? "transparent" : state === "active" ? "rgba(168,11,36,.16)" : "rgba(9,8,8,.72)",
-                          boxShadow: state === "active" ? "inset 0 0 0 1px #A80B24" : "none",
-                          transition: "background .3s ease",
+                          background: state === "done" ? "rgba(0,0,0,0)" : state === "active" ? "rgba(224, 30, 60, 0.3)" : "rgba(13, 12, 11, 0.15)",
+                          border: state === "active" ? "1px solid #FF3B5C" : "1px solid rgba(255, 255, 255, 0.08)",
+                          boxShadow: state === "active" ? "0 0 12px rgba(255, 59, 92, 0.6), inset 0 0 8px rgba(255, 59, 92, 0.4)" : "none",
+                          transition: "all .2s ease",
                         }}
                       />
                     );
