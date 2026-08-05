@@ -271,8 +271,9 @@ export default function App() {
 
       // Update single studio job
       if (activeJobId && job_id === activeJobId) {
+        const effectiveStatus = (status === "succeeded" || status === "completed") ? "completed" : status;
         setProgressVal(percentage);
-        setJobStatus(status);
+        setJobStatus(effectiveStatus);
         if (phase) setJobPhase(phase);
         if (eta_seconds !== undefined) setEtaSeconds(eta_seconds);
         if (jobFps !== undefined) setFps(jobFps);
