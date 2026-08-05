@@ -121,6 +121,17 @@ export const SUPPORTED_MODELS: ModelInfo[] = [
 
 export const SUPPORTED_SCALES = [2, 3, 4];
 
+export interface JobProgress {
+  job_id: string;
+  percentage: number;
+  status: string;
+  error?: string;
+  phase?: string;
+  eta_seconds?: number;
+  fps?: number;
+  output_path?: string;
+}
+
 export type JobState = "ready" | "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
 export function isTerminalState(state: JobState | string): boolean {
@@ -135,4 +146,5 @@ export function isValidStateTransition(from: JobState, to: JobState): boolean {
   if (from === "running") return to === "succeeded" || to === "failed" || to === "cancelled";
   return false;
 }
+
 
