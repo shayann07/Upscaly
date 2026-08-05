@@ -1,17 +1,23 @@
 # GSD Application State
 
 > **Project**: Upscaly
-> **Status**: Milestone Planned ⬜
+> **Status**: Phase 1 Planned ⬜
 
 ## Current Position
 - **Milestone**: `v2.0-win-gpu-reliability`
-- **Phase**: Phase 1: Regression Corpus, Benchmark Runner & Test Infrastructure
-- **Status**: Milestone planned and ready for phase planning
+- **Phase**: Phase 1: Establish regression and benchmark evidence first
+- **Status**: Phase 1 planned and ready for execution
 
 ## Last Session Summary
-Created milestone `v2.0-win-gpu-reliability` based on the Windows/GPU Reliability and Performance Plan.
-- **Phases Defined**: 6 executable phases covering regression/benchmark suite, cancellable job runtime, truthful GPU discovery, LGPL FFmpeg + hardware H.264 encoders, workload thread profiling, and end-to-end matrix verification.
-- **Roadmap Updated**: `.gsd/ROADMAP.md` updated with must-haves and phase breakdown.
+Defined Phase 1 execution plan in `.gsd/phases/phase-1-plan.md`.
+- **Reference Corpus & Manifest**: Specified 1080p/12MP/24MP image & 1080p/4K video test corpus with decoded RGBA pixel hashing.
+- **Benchmark Runner**: Specified `npm.cmd run benchmark` Node script recording device fingerprint, sidecar version, throughput, and output checks.
+- **ProcessRunner Abstraction**: Designed Rust `ProcessRunner` trait with `StdProcessRunner` and `MockProcessRunner` for GPU-less testing.
+- **Frontend Test Repairs**: Planned fixes for Vitest UI text mismatches (`Photo`, `Anime`, `2×`) and addition of `JobStateLifecycle.test.tsx`.
 
 ## Next Steps
-- Run `/plan 1` to create Phase 1 execution plan.
+- Execute Phase 1 tasks:
+  1. Setup reference corpus and manifest.
+  2. Implement `scripts/benchmark.ts` & decoded RGBA pixel hasher.
+  3. Implement Rust `ProcessRunner` trait & `MockProcessRunner`.
+  4. Fix Vitest suite & add job state lifecycle tests.
