@@ -108,9 +108,15 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     let frames_out_clone = frames_out_dir.clone();
     let total_frames_f = total_frames as f64;
     let start_time = std::time::Instant::now();
+    let stop_monitor = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stop_monitor_clone = std::sync::Arc::clone(&stop_monitor);
 
     let monitor_handle = thread::spawn(move || {
         loop {
+            if stop_monitor_clone.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+
             if let Ok(entries) = fs::read_dir(&frames_out_clone) {
                 let completed = entries
                     .filter_map(Result::ok)
@@ -134,7 +140,7 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
                 let _ = app_clone.emit("job-status-changed", JobProgress {
                     job_id: job_id_clone.clone(),
                     percentage: current_progress.min(90.0),
-                    status: "processing".to_string(),
+                    status: "running".to_string(),
                     error: None,
                     phase: Some(format!("Upscaling Video Frames ({} / {})", completed, total_frames)),
                     eta_seconds: eta_sec,
@@ -152,12 +158,14 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
 
     let status = child.wait().map_err(|e| e.to_string())?;
     
-    // Ensure monitor thread completes
+    // Stop and join monitor thread cleanly
+    stop_monitor.store(true, std::sync::atomic::Ordering::SeqCst);
     let _ = monitor_handle.join();
 
     if !status.success() {
         return Err("NCNN upscale engine failed during frame upscaling".to_string());
     }
+
 
     // 6. Detect exact output frame extension & pattern in frames_out_dir
     let sample_ext = fs::read_dir(&frames_out_dir)
