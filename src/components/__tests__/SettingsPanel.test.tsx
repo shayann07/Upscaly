@@ -15,8 +15,8 @@ describe('SettingsPanel Component', () => {
 
   it('renders category options and models', () => {
     render(<SettingsPanel {...defaultProps} />);
-    expect(screen.getByText('Photos')).toBeInTheDocument();
-    expect(screen.getByText('Anime & Art')).toBeInTheDocument();
+    expect(screen.getByText('Photo')).toBeInTheDocument();
+    expect(screen.getByText('Anime')).toBeInTheDocument();
     expect(screen.getByText('Video')).toBeInTheDocument();
     expect(screen.getByText(/RealESRGAN/i)).toBeInTheDocument();
   });
@@ -24,8 +24,9 @@ describe('SettingsPanel Component', () => {
   it('fires scale selection callback on click', () => {
     const onSelectScale = vi.fn();
     render(<SettingsPanel {...defaultProps} onSelectScale={onSelectScale} />);
-    const scale2xBtn = screen.getByText(/2x/);
+    const scale2xBtn = screen.getByText('2×');
     fireEvent.click(scale2xBtn);
     expect(onSelectScale).toHaveBeenCalledWith(2);
   });
 });
+

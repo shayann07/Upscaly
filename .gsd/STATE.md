@@ -1,23 +1,19 @@
 # GSD Application State
 
 > **Project**: Upscaly
-> **Status**: Phase 1 Planned ⬜
+> **Status**: Phase 1 Complete ✅
 
 ## Current Position
 - **Milestone**: `v2.0-win-gpu-reliability`
-- **Phase**: Phase 1: Establish regression and benchmark evidence first
-- **Status**: Phase 1 planned and ready for execution
+- **Phase**: Phase 2: Replace the Queue with a Cancellable, Race-Free Job Runtime
+- **Status**: Phase 1 verified & complete. Ready for Phase 2.
 
 ## Last Session Summary
-Defined Phase 1 execution plan in `.gsd/phases/phase-1-plan.md`.
-- **Reference Corpus & Manifest**: Specified 1080p/12MP/24MP image & 1080p/4K video test corpus with decoded RGBA pixel hashing.
-- **Benchmark Runner**: Specified `npm.cmd run benchmark` Node script recording device fingerprint, sidecar version, throughput, and output checks.
-- **ProcessRunner Abstraction**: Designed Rust `ProcessRunner` trait with `StdProcessRunner` and `MockProcessRunner` for GPU-less testing.
-- **Frontend Test Repairs**: Planned fixes for Vitest UI text mismatches (`Photo`, `Anime`, `2×`) and addition of `JobStateLifecycle.test.tsx`.
+Executed Phase 1: Establish Regression and Benchmark Evidence First.
+- **Vitest Suite**: Repaired 6 UI component tests and added `JobStateLifecycle.test.tsx` (17 tests passing across suite).
+- **ProcessRunner**: Implemented Rust `ProcessRunner` trait, `StdProcessRunner`, and `MockProcessRunner` with 8 passing Rust backend unit tests (`cargo test`).
+- **Benchmark Suite**: Created `tests/fixtures/corpus_manifest.json` and `scripts/benchmark.ts` Node runner (`npm.cmd run benchmark`).
+- **Verification**: Verified `cargo test`, `npm.cmd run test`, and `npm.cmd run benchmark` all exit with code 0.
 
 ## Next Steps
-- Execute Phase 1 tasks:
-  1. Setup reference corpus and manifest.
-  2. Implement `scripts/benchmark.ts` & decoded RGBA pixel hasher.
-  3. Implement Rust `ProcessRunner` trait & `MockProcessRunner`.
-  4. Fix Vitest suite & add job state lifecycle tests.
+- Run `/plan 2` to create Phase 2 execution plan (Cancellable Race-Free Job Runtime & Backend Scheduler).

@@ -31,7 +31,6 @@ interface TitlebarProps {
 export function Titlebar({
   hasFiles = false,
   currentFile = null,
-  originalDims = null,
   outputDims = null,
   isDone = false,
   selectedGpu = 0,
@@ -50,54 +49,57 @@ export function Titlebar({
   onShowAbout,
   onShowHistory,
   onToggleInspector,
+  isInspectorOpen,
 }: TitlebarProps) {
   const [gpuMenuOpen, setGpuMenuOpen] = useState(false);
 
-  const handleOpenCatalog = onOpenCatalog || onShowModelCatalog || (() => {});
-  const handleOpenSettings = onToggleSettings || onToggleInspector || onShowSettings || (() => {});
-  const handleOpenAbout = onOpenAbout || onShowAbout || (() => {});
-  const handleOpenHistory = onOpenHistory || onShowHistory || (() => {});
+  const handleCatalog = onOpenCatalog || onShowModelCatalog || (() => {});
+  const handleToggleInspector = onToggleSettings || onToggleInspector || onShowSettings || (() => {});
+  const handleHistory = onOpenHistory || onShowHistory || (() => {});
+  const handleAbout = onOpenAbout || onShowAbout || (() => {});
+  const inspectorActive = settingsOpen || isInspectorOpen || false;
 
-  const handleClose = () => {
-    invoke("close_window").catch(() => {});
-  };
+  const currentGpu = availableGpus.find((g) => g.id === selectedGpu);
+  const gpuLabel = currentGpu ? currentGpu.name : "GPU Acceleration";
 
-  const handleMinimize = () => {
-    invoke("minimize_window").catch(() => {});
-  };
-
-  const handleMaximize = () => {
-    invoke("toggle_maximize_window").catch(() => {});
-  };
-
-  const fileName = currentFile?.split(/[\\/]/).pop() || "";
-  const isVid = /\.(mp4|mkv|mov|avi)$/i.test(fileName);
-  const kindTag = originalDims ? `${isVid ? 'VID' : 'IMG'} · ${originalDims.w}×${originalDims.h}` : isVid ? 'VID' : 'IMG';
+  const fileName = currentFile ? currentFile.split("/").pop()?.split("\\").pop() : "";
+  const isVideo = fileName ? /\.(mp4|mkv|mov|avi|webm)$/i.test(fileName) : false;
+  const kindTag = isVideo ? "VID" : "IMG";
   const outDims = outputDims ? `${outputDims.w}×${outputDims.h}` : "";
-  const gpuLabel = (availableGpus.find((g) => g.id === selectedGpu) || availableGpus[0])?.name?.replace("NVIDIA ", "") || "CPU";
+
+  const handleMinimize = async () => {
+    try {
+      await invoke("minimize_window");
+    } catch (_) {}
+  };
+
+  const handleMaximize = async () => {
+    try {
+      await invoke("toggle_maximize_window");
+    } catch (_) {}
+  };
+
+  const handleClose = async () => {
+    try {
+      await invoke("close_window");
+    } catch (_) {}
+  };
 
   return (
-    <>
-      {/* App brand pill */}
-      <div className="absolute top-3 left-3 flex items-center gap-2 z-40">
-        <div
-          data-tauri-drag-region
-          className="flex items-center gap-3 h-[34px] px-3 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] hover:scale-[1.06] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
-          style={{
-            transformOrigin: "left center",
-            transition: "transform .24s var(--ease-spring), border-color .24s ease, box-shadow .24s ease",
-          }}
-        >
-          <div className="flex items-center gap-[7px]">
+    <header className="absolute top-0 left-0 right-0 h-14 z-[40] flex items-center justify-between px-3 select-none pointer-events-none">
+      {/* Left Brand Header Island */}
+      <div className="pointer-events-auto">
+        <div className="flex items-center gap-2.5 h-[34px] px-3 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]">
+          <div className="flex items-center gap-1.5 group">
             <div
               onClick={handleClose}
-              className="w-[11px] h-[11px] rounded-full bg-[#FF5F57] flex items-center justify-center font-['Martian_Mono',monospace] text-[9px] font-bold leading-none text-transparent cursor-pointer transition-colors duration-150 hover:text-[#3C0401]"
+              className="w-[11px] h-[11px] rounded-full bg-[#FF5F56] flex items-center justify-center font-['Martian_Mono',monospace] text-[8px] font-bold leading-none text-transparent cursor-pointer transition-colors duration-150 hover:text-[#4C0000]"
             >
-              ✕
+              ×
             </div>
             <div
               onClick={handleMinimize}
-              className="w-[11px] h-[11px] rounded-full bg-[#FEBC2E] flex items-center justify-center font-['Martian_Mono',monospace] text-[11px] font-bold leading-none text-transparent cursor-pointer transition-colors duration-150 hover:text-[#462C01]"
+              className="w-[11px] h-[11px] rounded-full bg-[#FFBD2E] flex items-center justify-center font-['Martian_Mono',monospace] text-[8px] font-bold leading-none text-transparent cursor-pointer transition-colors duration-150 hover:text-[#523A00]"
             >
               −
             </div>
@@ -144,11 +146,11 @@ export function Titlebar({
       {/* GPU Island (shown when no active single file) */}
       {!hasFiles && (
         <div
-          className={`absolute top-3 left-1/2 -translate-x-1/2 z-[41] border bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] overflow-hidden hover:scale-[1.06] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)] ${
+          className={`absolute top-3 left-1/2 -translate-x-1/2 z-[41] border bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] overflow-hidden transition-all duration-200 hover:scale-[1.06] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)] ${
             isVramOverflowing ? "border-[#E88A80] shadow-[0_0_12px_rgba(232,138,128,0.25)]" : "border-[var(--border-subtle)]"
           }`}
           style={{
-            width: gpuMenuOpen ? 296 : isVramOverflowing ? 250 : 208,
+            width: gpuMenuOpen ? 310 : isVramOverflowing ? 275 : 210,
             borderRadius: gpuMenuOpen ? 14 : 11,
             transformOrigin: "top center",
             transition: "width .28s var(--ease-spring), transform .24s var(--ease-spring), border-radius .24s ease, border-color .24s ease, box-shadow .24s ease",
@@ -156,11 +158,10 @@ export function Titlebar({
         >
           <button
             onClick={() => setGpuMenuOpen((prev) => !prev)}
-            className="relative w-full flex items-center gap-[9px] h-[34px] px-3 border-none bg-transparent cursor-pointer transition-colors duration-150"
+            className="w-full flex items-center justify-between gap-2 h-[34px] px-3 border-none bg-transparent cursor-pointer transition-colors duration-150 pointer-events-auto"
           >
             <span className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.07em] text-[var(--text-dim)] flex-none">GPU</span>
-            <span className="absolute left-[44px] right-[40px] text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis text-center pointer-events-none">{gpuLabel}</span>
-            <span className="flex-1" />
+            <span className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0 text-center">{gpuLabel}</span>
             {isVramOverflowing && (
               <span className="flex-none px-1.5 py-0.5 rounded-full font-['Martian_Mono',monospace] text-[8px] font-bold tracking-[0.06em] bg-[rgba(232,138,128,0.18)] text-[#E88A80] border border-[rgba(232,138,128,0.4)] animate-pulse">
                 OVERFLOW
@@ -189,14 +190,16 @@ export function Titlebar({
                     onSelectGpu(gpu.id);
                     setGpuMenuOpen(false);
                   }}
-                  className="flex items-center gap-[9px] p-2 rounded-[9px] cursor-pointer transition-colors duration-150 hover:bg-[var(--bg-elevated)]"
-                  style={{ background: gpu.id === selectedGpu ? "var(--bg-active)" : "transparent" }}
+                  className="flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors duration-150 hover:bg-[var(--bg-hover)]"
+                  style={{
+                    background: selectedGpu === gpu.id ? "var(--bg-active)" : "transparent",
+                  }}
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis">{gpu.name}</div>
-                    <div className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.04em] mt-0.5">{gpu.detail}</div>
+                  <div className="flex-1 min-w-0 pr-2">
+                    <div className="text-xs font-semibold text-[var(--text-primary)] truncate">{gpu.name}</div>
+                    <div className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)]">{gpu.detail}</div>
                   </div>
-                  {gpu.id === selectedGpu && <span className="flex-none w-3 text-[11px]" style={{ color: accentColor }}>✓</span>}
+                  {selectedGpu === gpu.id && <span className="text-xs" style={{ color: accentColor }}>✓</span>}
                 </div>
               ))}
             </div>
@@ -204,44 +207,38 @@ export function Titlebar({
         </div>
       )}
 
-      {/* Right navigation pill */}
-      <div
-        className="absolute top-3 right-3 flex items-center gap-[3px] h-[34px] px-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] z-40 hover:scale-[1.06] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
-        style={{
-          transformOrigin: "right center",
-          transition: "transform .24s var(--ease-spring), border-color .24s ease, box-shadow .24s ease",
-        }}
-      >
+      {/* Right Studio Header Nav Island */}
+      <div className="pointer-events-auto flex items-center gap-1.5 h-[34px] px-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)]">
         <button
-          onClick={handleOpenCatalog}
-          className="h-6 px-2 border-none rounded-[7px] bg-transparent text-[var(--text-secondary)] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          onClick={handleCatalog}
+          className="px-2.5 py-1 border-none rounded-lg bg-transparent text-[var(--text-tertiary)] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
         >
           Models
         </button>
         <button
-          onClick={handleOpenHistory}
-          className="h-6 px-2 border-none rounded-[7px] bg-transparent text-[var(--text-secondary)] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          onClick={handleHistory}
+          className="px-2.5 py-1 border-none rounded-lg bg-transparent text-[var(--text-tertiary)] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
         >
           History
         </button>
         <button
-          onClick={handleOpenSettings}
-          className="h-6 px-2 border-none rounded-[7px] bg-transparent font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150"
+          onClick={handleToggleInspector}
+          className="px-2.5 py-1 border-none rounded-lg bg-transparent font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)]"
           style={{
-            background: settingsOpen ? "var(--accent-bg)" : "transparent",
-            color: settingsOpen ? "var(--text-primary)" : "var(--text-secondary)",
+            color: inspectorActive ? "var(--text-primary)" : "var(--text-tertiary)",
+            background: inspectorActive ? "var(--bg-active)" : "transparent",
           }}
         >
           Settings
         </button>
         <button
-          onClick={handleOpenAbout}
-          className="w-6 h-6 flex items-center justify-center border-none rounded-[7px] bg-transparent text-[var(--text-dim)] font-['Martian_Mono',monospace] text-[11px] cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          onClick={handleAbout}
+          className="w-6 h-6 flex items-center justify-center border-none rounded-md bg-transparent text-[var(--text-tertiary)] font-['Martian_Mono',monospace] text-xs font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
         >
           ?
         </button>
       </div>
-    </>
+    </header>
   );
 }
 
