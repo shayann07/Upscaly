@@ -34,8 +34,8 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     fs::create_dir_all(&frames_in_dir).map_err(|e| format!("Failed to create input frames folder: {}", e))?;
     fs::create_dir_all(&frames_out_dir).map_err(|e| format!("Failed to create output frames folder: {}", e))?;
 
-    // 2. Query original video framerate (with safe fallback)
-    let fps_string = get_video_framerate(app, &job.input_path);
+    // 2. Query original video framerate and check for VFR rejection
+    let fps_string = check_and_get_framerate(app, &job.input_path)?;
 
     // 3. Extract video frames using multi-threaded FFmpeg
     update_progress(app, &job.id, 2.0, "Extracting Video Frames (FFmpeg Multi-Thread)...");
@@ -166,7 +166,6 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
         return Err("NCNN upscale engine failed during frame upscaling".to_string());
     }
 
-
     // 6. Detect exact output frame extension & pattern in frames_out_dir
     let sample_ext = fs::read_dir(&frames_out_dir)
         .ok()
@@ -189,60 +188,68 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
 
     let out_frame_pattern = frames_out_dir.join(format!("frame_%08d.{}", sample_ext));
 
-    update_progress(app, &job.id, 92.0, "Reassembling Video & Merging Audio (FFmpeg NVENC/Fast)...");
+    update_progress(app, &job.id, 92.0, "Reassembling Video & Merging Audio...");
 
-    // Try hardware-accelerated re-encoding (NVENC or QSV) with CPU fallback
-    let hw_result = Command::new(&ffmpeg_binary)
-        .args(&[
-            "-y",
-            "-framerate", &fps_string,
-            "-i", out_frame_pattern.to_str().unwrap(),
-            "-i", &job.input_path,
-            "-c:v", "h264_nvenc",
-            "-preset", "p2",
-            "-cq", "20",
-            "-pix_fmt", "yuv420p",
-            "-c:a", "copy",
-            "-map", "0:v:0",
-            "-map", "1:a:0?",
-            &job.output_path
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output();
+    // LGPL Vendor H.264 Encoder Fallback Chain: NVENC -> QSV -> AMF -> MF
+    const H264_ENCODERS: &[&str] = &["h264_nvenc", "h264_qsv", "h264_amf", "h264_mf"];
+    let mut reassemble_success = false;
 
-    let reassemble_success = match hw_result {
-        Ok(out) if out.status.success() => true,
-        _ => {
-            // Fallback to fast CPU x264 re-encoding
-            let cpu_out = Command::new(&ffmpeg_binary)
-                .args(&[
-                    "-y",
-                    "-framerate", &fps_string,
-                    "-i", out_frame_pattern.to_str().unwrap(),
-                    "-i", &job.input_path,
-                    "-c:v", "libx264",
-                    "-preset", "superfast",
-                    "-crf", "18",
-                    "-pix_fmt", "yuv420p",
-                    "-c:a", "copy",
-                    "-map", "0:v:0",
-                    "-map", "1:a:0?",
-                    &job.output_path
-                ])
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .output();
+    for &encoder in H264_ENCODERS {
+        // 1. Try audio pass-through (-c:a copy)
+        let copy_res = Command::new(&ffmpeg_binary)
+            .args(&[
+                "-y",
+                "-framerate", &fps_string,
+                "-i", out_frame_pattern.to_str().unwrap(),
+                "-i", &job.input_path,
+                "-c:v", encoder,
+                "-pix_fmt", "yuv420p",
+                "-c:a", "copy",
+                "-map", "0:v:0",
+                "-map", "1:a:0?",
+                &job.output_path
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output();
 
-            match cpu_out {
-                Ok(out) => out.status.success(),
-                Err(_) => false,
+        if let Ok(out) = copy_res {
+            if out.status.success() {
+                reassemble_success = true;
+                break;
             }
         }
-    };
+
+        // 2. Audio copy failed (e.g. incompatible stream for MP4 container); fallback to AAC 192k stereo
+        let aac_res = Command::new(&ffmpeg_binary)
+            .args(&[
+                "-y",
+                "-framerate", &fps_string,
+                "-i", out_frame_pattern.to_str().unwrap(),
+                "-i", &job.input_path,
+                "-c:v", encoder,
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-ac", "2",
+                "-map", "0:v:0",
+                "-map", "1:a:0?",
+                &job.output_path
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output();
+
+        if let Ok(out) = aac_res {
+            if out.status.success() {
+                reassemble_success = true;
+                break;
+            }
+        }
+    }
 
     if !reassemble_success {
-        return Err("ffmpeg reassemble failed during video output encoding".to_string());
+        return Err("No supported LGPL hardware H.264 encoder available (tried h264_nvenc, h264_qsv, h264_amf, h264_mf). Please update GPU drivers or install Media Foundation.".to_string());
     }
 
     // 7. Clean up scratch temporary directories
@@ -253,36 +260,69 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     Ok(())
 }
 
-/// Helper function to extract framerate fraction string from video using ffprobe with safe fallback.
-fn get_video_framerate(app: &AppHandle, video_path: &str) -> String {
-    let ffprobe_bin = resolve_sidecar_path(app, "ffprobe")
-        .map(|p| p.to_str().unwrap_or("ffprobe").to_string())
-        .unwrap_or_else(|_| "ffprobe".to_string());
+/// Helper function to check for VFR rejection and return valid CFR framerate fraction string.
+fn check_and_get_framerate(app: &AppHandle, video_path: &str) -> Result<String, String> {
+    let ffprobe_bin = resolve_ffprobe_binary(app)?;
 
-    if let Ok(output) = Command::new(&ffprobe_bin)
+    let output = Command::new(&ffprobe_bin)
         .args(&[
             "-v", "error",
             "-select_streams", "v:0",
-            "-show_entries", "stream=r_frame_rate",
+            "-show_entries", "stream=r_frame_rate,avg_frame_rate",
             "-of", "default=noprint_wrappers=1:nokey=1",
             video_path
         ])
         .output()
-    {
-        if output.status.success() {
-            let fps_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !fps_str.is_empty() {
-                return fps_str;
+        .map_err(|e| format!("Failed to run ffprobe: {}", e))?;
+
+    if !output.status.success() {
+        return Ok("30/1".to_string());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = stdout.lines().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+
+    if lines.len() >= 2 {
+        let r_fps = lines[0];
+        let avg_fps = lines[1];
+
+        if r_fps != avg_fps && r_fps != "0/0" && avg_fps != "0/0" {
+            if let (Some(r_val), Some(avg_val)) = (parse_fps_fraction(r_fps), parse_fps_fraction(avg_fps)) {
+                if (r_val - avg_val).abs() > 0.5 {
+                    return Err("Variable frame rate (VFR) videos are not supported in this release. Please convert to constant frame rate (CFR) before upscaling.".to_string());
+                }
             }
+        }
+        return Ok(r_fps.to_string());
+    } else if lines.len() == 1 {
+        return Ok(lines[0].to_string());
+    }
+
+    Ok("30/1".to_string())
+}
+
+fn parse_fps_fraction(s: &str) -> Option<f64> {
+    let parts: Vec<&str> = s.split('/').collect();
+    if parts.len() == 2 {
+        let num: f64 = parts[0].parse().ok()?;
+        let den: f64 = parts[1].parse().ok()?;
+        if den > 0.0 {
+            return Some(num / den);
+        }
+    } else if parts.len() == 1 {
+        return s.parse().ok();
+    }
+    None
+}
+
+/// Helper function to resolve ffmpeg binary (sidecar preferred in production, system PATH fallback).
+pub fn resolve_ffmpeg_binary(app: &AppHandle) -> Result<String, String> {
+    if let Ok(path) = resolve_sidecar_path(app, "ffmpeg") {
+        if path.exists() {
+            return Ok(path.to_str().unwrap().to_string());
         }
     }
 
-    "30/1".to_string()
-}
-
-/// Helper function to resolve ffmpeg binary (system path or sidecar fallback).
-fn resolve_ffmpeg_binary(app: &AppHandle) -> Result<String, String> {
-    // 1. Try system PATH
     let system_check = Command::new("ffmpeg")
         .arg("-version")
         .stdout(Stdio::null())
@@ -295,14 +335,30 @@ fn resolve_ffmpeg_binary(app: &AppHandle) -> Result<String, String> {
         }
     }
 
-    // 2. Try sidecar path
-    if let Ok(path) = resolve_sidecar_path(app, "ffmpeg") {
+    Err("FFmpeg binary was not found. Bundled sidecar missing and no system PATH installation present.".to_string())
+}
+
+/// Helper function to resolve ffprobe binary (sidecar preferred in production, system PATH fallback).
+pub fn resolve_ffprobe_binary(app: &AppHandle) -> Result<String, String> {
+    if let Ok(path) = resolve_sidecar_path(app, "ffprobe") {
         if path.exists() {
             return Ok(path.to_str().unwrap().to_string());
         }
     }
 
-    Err("ffmpeg was not found on system PATH and no sidecar binary is present. Please install FFmpeg on your system to process video files.".to_string())
+    let system_check = Command::new("ffprobe")
+        .arg("-version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    if let Ok(status) = system_check {
+        if status.success() {
+            return Ok("ffprobe".to_string());
+        }
+    }
+
+    Err("FFprobe binary was not found. Bundled sidecar missing and no system PATH installation present.".to_string())
 }
 
 /// Helper function to emit progress updates.
