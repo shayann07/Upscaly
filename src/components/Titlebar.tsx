@@ -118,7 +118,7 @@ export function Titlebar({
 
       {/* File Chip (shown when file is loaded) */}
       {hasFiles && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-auto">
           <div
             className="flex items-center gap-[11px] h-[34px] pl-3 pr-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] hover:scale-[1.05] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
             style={{ transition: "transform .24s var(--ease-spring), border-color .24s ease, box-shadow .24s ease" }}
