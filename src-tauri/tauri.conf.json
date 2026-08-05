@@ -31,7 +31,9 @@
     "active": true,
     "targets": "all",
     "externalBin": [
-      "binaries/realesrgan-ncnn-vulkan"
+      "binaries/realesrgan-ncnn-vulkan",
+      "binaries/ffmpeg",
+      "binaries/ffprobe"
     ],
     "resources": [
       "models/*"
