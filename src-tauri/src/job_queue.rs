@@ -335,6 +335,9 @@ fn run_single_image_job(
         *handle_guard = Some(handle);
     }
 
+    let start_time = std::time::Instant::now();
+    let mut current_pct = 5.0f64;
+
     // Poll until completion or cancellation
     loop {
         if cancel_requested.load(Ordering::SeqCst) {
@@ -354,13 +357,24 @@ fn run_single_image_job(
         }
         drop(handle_guard);
 
-        thread::sleep(std::time::Duration::from_millis(50));
+        let _elapsed = start_time.elapsed().as_secs_f64();
+        current_pct = (current_pct + 3.0).min(95.0);
+
+        let _ = app.emit("job-status-changed", JobProgress {
+            job_id: job.id.clone(),
+            percentage: current_pct,
+            status: "running".to_string(),
+            error: None,
+            phase: Some(format!("GPU Accelerated Upscaling ({:.1}%)", current_pct)),
+            eta_seconds: None,
+            fps: None,
+        });
+
+        thread::sleep(std::time::Duration::from_millis(150));
     }
 
     Ok(())
-
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -393,5 +407,6 @@ mod tests {
         assert_eq!(compute_workload_threads("nonexistent.png", false), "1:2:2");
     }
 }
+
 
 
