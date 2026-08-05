@@ -9,7 +9,7 @@
 - [x] **Section 3: Make GPU Discovery Truthful & Resilient**: Parse NCNN verbose probe into structured `GpuDevice` capabilities (`fp16_storage`, `fp16_arithmetic`, `compute_queue_count`), 24h cache with forced re-probe on error, explicit empty list when 0 Vulkan GPUs found, disable UI enqueueing when unsupported, and single Vulkan GPU selection.
 - [x] **Section 4: Package Self-Contained LGPL Windows Video Runtime**: Pinned x64 LGPL FFmpeg/FFprobe binaries + DLL sidecars, third-party notices, vendor H.264 encoder fallback chain (`h264_nvenc` -> `h264_qsv` -> `h264_amf` -> `h264_mf`), `-c:a copy` with AAC 192kbps fallback, and CFR verification / VFR rejection.
 - [x] **Section 5: Apply Only Output-Preserving GPU Optimizations**: Invariant model/scale/TTA (`-x`), dynamic thread workload profiles (`<=4MP`: `4:4:4`, `>=12MP` img / `>=8MP` vid: `2:2:2`, others: default `1:2:2`), tile default `-t 0`, accurate `-x` TTA documentation, and optional batch image directory grouping.
-- [ ] **Section 6: Final Verification & Release Criteria**: Comprehensive test matrix execution (image, batch, video, GPU, x64 MSI installer), pixel output equivalence verification, zero hanging jobs, and updated user support documentation.
+- [x] **Section 6: Final Verification & Release Criteria**: Comprehensive test matrix execution (image, batch, video, GPU, x64 MSI installer), pixel output equivalence verification, zero hanging jobs, and updated user support documentation.
 
 ---
 
@@ -41,6 +41,6 @@
 **Files**: `src-tauri/src/job_queue.rs`, `src-tauri/Cargo.toml`, `src/components/SettingsPanel.tsx`
 
 ### Phase 6: Final Verification and Release Criteria
-**Status**: ⬜ Not Started  
-**Objective**: Run complete test matrix across all image, batch, video, GPU, and installer build scenarios, validating output pixel equivalence and benchmark stability.  
-**Files**: Full test suite, installer target validation, release documentation
+**Status**: ✅ Complete  
+**Objective**: Execute complete test matrix, confirm decoded RGBA pixel hash match against baseline manifest, verify zero hanging jobs/threads, confirm 100% test pass rate, and generate Phase 6 verification summary.  
+**Files**: `.gsd/phases/phase-6-VERIFICATION.md`
