@@ -1,20 +1,19 @@
 # GSD Application State
 
 > **Project**: Upscaly
-> **Status**: Phase 3 Complete ✅
+> **Status**: Phase 4 Planned ⬜
 
 ## Current Position
 - **Milestone**: `v2.0-win-gpu-reliability`
 - **Phase**: Phase 4: Package a Self-Contained LGPL Windows Video Runtime
-- **Status**: Phase 3 verified & complete. Ready for Phase 4.
+- **Status**: Phase 4 planned and ready for execution
 
 ## Last Session Summary
-Executed Phase 3: Make GPU Discovery Truthful and Resilient.
-- **GpuDevice Capabilities**: Extended `GpuDevice` struct with `fp16_storage_supported`, `fp16_arithmetic_supported`, `compute_queue_count`, and feature detail string.
-- **Cache Envelope**: Implemented `GpuCacheEnvelope` with 24-hour timestamp validation and sidecar SHA-256 binary hash checking.
-- **No-GPU Handling**: Updated `probe_gpus_raw` to return an explicit empty array `[]` when 0 Vulkan GPUs exist (no fake Auto GPU ID 0).
-- **UI Enforcement**: Updated `App.tsx` and `SettingsPanel.tsx` to block upscale actions and show driver guidance toasts when `gpus.length === 0`.
-- **Verification**: `cargo test` (9/9 passed), `npm.cmd run test` (17/17 passed), and `npm.cmd run benchmark` (report generated cleanly).
+Defined Phase 4 execution plan in `.gsd/phases/phase-4-plan.md`.
+- **LGPL Compliance & Sidecars**: `docs/THIRD_PARTY_NOTICES.md` attribution, registering `ffmpeg` and `ffprobe` sidecars in `tauri.conf.json`, `get_system_diagnostics` IPC command.
+- **Encoder Fallback Chain**: Runtime hardware search order (`h264_nvenc` → `h264_qsv` → `h264_amf` → `h264_mf`).
+- **Audio Policy**: `-c:a copy` with AAC 192kbps stereo fallback.
+- **Timing & VFR**: FFprobe CFR validation; explicit user error rejection for VFR inputs.
 
 ## Next Steps
-- Run `/plan 4` to create Phase 4 execution plan (Package a Self-Contained LGPL Windows Video Runtime).
+- Run `/execute 4` to execute Phase 4 tasks.
