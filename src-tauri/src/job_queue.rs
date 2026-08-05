@@ -7,10 +7,8 @@ use std::path::{Path, PathBuf};
 use serde::{Serialize, Deserialize};
 use std::thread;
 
-use std::time::Instant;
-
 use crate::process_runner::{ProcessRunner, StdProcessRunner, ProcessHandle};
-use crate::sidecar_manager::{resolve_sidecar_path, attach_to_job_object};
+use crate::sidecar_manager::resolve_sidecar_path;
 use crate::model_manager::get_models_dir;
 use crate::video_pipeline::run_video_job;
 
@@ -250,7 +248,7 @@ pub fn cancel_job(job_id: &str) -> Result<(), String> {
     }
 
     // 2. Set cancellation flag and kill active process handle if running
-    let mut reg = get_registry().lock().unwrap();
+    let reg = get_registry().lock().unwrap();
     if let Some(control) = reg.get(job_id) {
         control.cancel_requested.store(true, Ordering::SeqCst);
         if let Ok(mut handle_guard) = control.process_handle.lock() {
@@ -336,8 +334,6 @@ fn run_single_image_job(
         let mut handle_guard = process_handle.lock().unwrap();
         *handle_guard = Some(handle);
     }
-
-    let start_time = Instant::now();
 
     // Poll until completion or cancellation
     loop {
