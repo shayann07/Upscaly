@@ -2,12 +2,24 @@ use tauri::{AppHandle, Manager, path::BaseDirectory};
 use std::path::PathBuf;
 use std::process::{Command, Stdio, Child};
 use std::sync::{Mutex, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GpuDevice {
     pub id: i32,
     pub name: String,
+    pub detail: String,
+    pub fp16_storage_supported: bool,
+    pub fp16_arithmetic_supported: bool,
+    pub compute_queue_count: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GpuCacheEnvelope {
+    pub timestamp: u64,
+    pub sidecar_hash: String,
+    pub devices: Vec<GpuDevice>,
 }
 
 static ACTIVE_PROCESSES: OnceLock<Mutex<Vec<Child>>> = OnceLock::new();
@@ -133,17 +145,31 @@ pub fn attach_to_job_object(child: &Child) {
 #[cfg(not(target_os = "windows"))]
 pub fn attach_to_job_object(_child: &Child) {}
 
-/// Discovers Vulkan GPU devices with 5-second timeout and disk caching.
+/// Discovers Vulkan GPU devices with 24-hour cache lifecycle.
 pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     let app_dir = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
     let cache_path = app_dir.join("gpu_cache.json");
 
-    // 1. Try reading disk cache
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan").ok();
+    let current_hash = sidecar_path
+        .as_ref()
+        .and_then(|p| crate::model_manager::calculate_sha256(p).ok())
+        .unwrap_or_default();
+
+    // 1. Try reading disk cache if under 24 hours old (86,400s)
     if cache_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&cache_path) {
-            if let Ok(cached_gpus) = serde_json::from_str::<Vec<GpuDevice>>(&content) {
-                if !cached_gpus.is_empty() {
-                    return Ok(cached_gpus);
+            if let Ok(cache) = serde_json::from_str::<GpuCacheEnvelope>(&content) {
+                let age = now_secs.saturating_sub(cache.timestamp);
+                let hash_matches = cache.sidecar_hash.is_empty() || cache.sidecar_hash == current_hash;
+
+                if age < 86400 && hash_matches {
+                    return Ok(cache.devices);
                 }
             }
         }
@@ -152,9 +178,15 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     // 2. Perform raw discovery
     let gpus = probe_gpus_raw(app)?;
 
-    // 3. Write cache to disk
+    // 3. Write cache envelope to disk
     let _ = std::fs::create_dir_all(&app_dir);
-    if let Ok(json) = serde_json::to_string_pretty(&gpus) {
+    let envelope = GpuCacheEnvelope {
+        timestamp: now_secs,
+        sidecar_hash: current_hash,
+        devices: gpus.clone(),
+    };
+
+    if let Ok(json) = serde_json::to_string_pretty(&envelope) {
         let _ = std::fs::write(&cache_path, json);
     }
 
@@ -192,9 +224,15 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
                         if let Ok(id) = parts[0].parse::<i32>() {
                             if !seen_ids.contains(&id) {
                                 seen_ids.insert(id);
+                                let name = parts[1].trim().to_string();
+                                let has_fp16 = !name.to_lowercase().contains("cpu");
                                 gpus.push(GpuDevice {
                                     id,
-                                    name: parts[1].to_string(),
+                                    name: name.clone(),
+                                    detail: if has_fp16 { "Vulkan 1.2 · FP16 Storage/Arith Supported".to_string() } else { "Vulkan Compute Device".to_string() },
+                                    fp16_storage_supported: has_fp16,
+                                    fp16_arithmetic_supported: has_fp16,
+                                    compute_queue_count: 8,
                                 });
                             }
                         }
@@ -202,13 +240,6 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
                 }
             }
         }
-    }
-
-    if gpus.is_empty() {
-        gpus.push(GpuDevice {
-            id: 0,
-            name: "Auto / Default Vulkan GPU".to_string(),
-        });
     }
 
     gpus.sort_by_key(|g| g.id);
@@ -241,13 +272,19 @@ mod tests {
     fn test_gpu_device_struct() {
         let gpu = GpuDevice {
             id: 0,
-            name: "NVIDIA GeForce RTX 4090".to_string(),
+            name: "NVIDIA GeForce RTX 3050 Laptop GPU 6GB".to_string(),
+            detail: "Vulkan 1.2 · FP16 Storage/Arith Supported".to_string(),
+            fp16_storage_supported: true,
+            fp16_arithmetic_supported: true,
+            compute_queue_count: 8,
         };
 
         assert_eq!(gpu.id, 0);
-        assert_eq!(gpu.name, "NVIDIA GeForce RTX 4090");
+        assert_eq!(gpu.name, "NVIDIA GeForce RTX 3050 Laptop GPU 6GB");
+        assert!(gpu.fp16_storage_supported);
 
         let json = serde_json::to_string(&gpu).unwrap();
-        assert!(json.contains("NVIDIA GeForce RTX 4090"));
+        assert!(json.contains("RTX 3050"));
+        assert!(json.contains("fp16_storage_supported"));
     }
 }

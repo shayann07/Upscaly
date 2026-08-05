@@ -2,7 +2,11 @@ export interface GpuInfo {
   id: number;
   name: string;
   detail: string;
+  fp16_storage_supported?: boolean;
+  fp16_arithmetic_supported?: boolean;
+  compute_queue_count?: number;
 }
+
 
 export interface ModelInfo {
   id: string;

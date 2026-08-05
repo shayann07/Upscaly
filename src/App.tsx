@@ -499,12 +499,18 @@ export default function App() {
       return;
     }
 
+    if (gpus.length === 0) {
+      addToast("error", "No Vulkan GPU Found", "No Vulkan-compatible GPU detected. Please install updated graphics display drivers.");
+      return;
+    }
+
     if (!filePath) {
       addToast("warning", "No File Selected", "Please drag and drop or open an image/video first.");
       return;
     }
 
     try {
+
       const clientJobId = crypto.randomUUID();
       setActiveJobId(clientJobId);
 
@@ -555,7 +561,13 @@ export default function App() {
 
   // Batch Upscale Logic
   const handleStartBatchUpscale = async () => {
+    if (gpus.length === 0) {
+      addToast("error", "No Vulkan GPU Found", "No Vulkan-compatible GPU detected. Please install updated graphics display drivers.");
+      return;
+    }
+
     const readyItems = batchItems.filter((i) => i.status === "ready" || i.status === "error" || (i.status as string) === "idle");
+
     if (readyItems.length === 0) {
       addToast("warning", "Queue Complete", "All items in batch have already completed.");
       return;
