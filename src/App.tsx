@@ -277,11 +277,11 @@ export default function App() {
         if (eta_seconds !== undefined) setEtaSeconds(eta_seconds);
         if (jobFps !== undefined) setFps(jobFps);
 
-        if (status === "processing") {
+        if (status === "running" || status === "processing") {
           setStatusMessage(`Upscaling in progress... ${percentage.toFixed(1)}%`);
         } else if (status === "queued") {
           setStatusMessage("Queued in GPU worker thread...");
-        } else if (status === "completed") {
+        } else if (status === "succeeded" || status === "completed") {
           setStatusMessage("Upscaling Completed Successfully!");
           const finalPath = pendingOutputPath.current || upscaledPath;
           if (finalPath) {
@@ -314,23 +314,26 @@ export default function App() {
         }
       }
 
-      // Update batch queue items
+      // Update batch queue items cleanly by stable job_id
       setBatchItems((prev) =>
         prev.map((item) => {
           if (item.id === job_id) {
-            const isFinished = status === "completed";
+            const isDone = status === "succeeded" || status === "completed";
             const isErr = status === "failed";
+            const isCanc = status === "cancelled";
             return {
               ...item,
               progress: percentage,
-              status: isFinished ? "done" : isErr ? "error" : status === "processing" ? "processing" : "queued",
-              outputPath: isFinished ? pendingOutputPath.current || item.outputPath : item.outputPath,
+              status: isDone ? "done" : isErr ? "error" : isCanc ? "cancelled" : status === "running" || status === "processing" ? "processing" : "queued",
+              outputPath: isDone ? pendingOutputPath.current || item.outputPath : item.outputPath,
+              error: isErr ? error : item.error,
             };
           }
           return item;
         })
       );
     });
+
 
     const unlistenDownload = listen<DownloadProgressEvent>("download-progress", (event) => {
       const { model_id, percentage } = event.payload;
@@ -502,6 +505,9 @@ export default function App() {
     }
 
     try {
+      const clientJobId = crypto.randomUUID();
+      setActiveJobId(clientJobId);
+
       setJobStatus("queued");
       setProgressVal(0);
       setStatusMessage("Queued in GPU worker thread...");
@@ -524,6 +530,7 @@ export default function App() {
 
       const jobId = await invoke<string>("run_upscale", {
         request: {
+          job_id: clientJobId,
           input_path: filePath,
           output_path: outPath,
           model_id: selectedModel,
@@ -534,15 +541,16 @@ export default function App() {
         },
       });
 
-      setActiveJobId(jobId);
       setJobStatus("processing");
       addToast("info", "Upscaling Started", `Job ID: ${jobId.slice(0, 8)}...`);
     } catch (err) {
       console.error("Upscale failed to start:", err);
+      setActiveJobId(null);
       setJobStatus("idle");
       playErrorSound(isMuted);
       addToast("error", "Error Starting Upscale", String(err));
     }
+
   };
 
   // Batch Upscale Logic
@@ -585,6 +593,7 @@ export default function App() {
 
         const jobId = await invoke<string>("run_upscale", {
           request: {
+            job_id: item.id,
             input_path: item.filePath,
             output_path: outPath,
             model_id: selectedModel,
@@ -594,6 +603,7 @@ export default function App() {
             is_video: isVid,
           },
         });
+
 
         setActiveJobId(jobId);
         setJobStatus("processing");

@@ -19,15 +19,17 @@ use job_queue::{Job, add_job_to_queue, cancel_job};
 const BAKED_PUBLIC_KEY: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
 #[derive(Debug, serde::Deserialize)]
-struct UpscaleRequest {
-    input_path: String,
-    output_path: String,
-    model_id: String,
-    gpu_id: i32,
-    scale: i32,
-    tile_size: i32,
-    is_video: bool,
+pub struct UpscaleRequest {
+    pub job_id: Option<String>,
+    pub input_path: String,
+    pub output_path: String,
+    pub model_id: String,
+    pub gpu_id: i32,
+    pub scale: i32,
+    pub tile_size: i32,
+    pub is_video: bool,
 }
+
 
 #[tauri::command]
 async fn list_gpus(app_handle: tauri::AppHandle) -> Result<Vec<GpuDevice>, String> {
@@ -234,13 +236,16 @@ async fn upscale_image(
     scale: i32,
     tile_size: i32,
     is_video: bool,
+    custom_job_id: Option<String>,
 ) -> Result<String, String> {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let job_id = format!("job_{:x}", nanos);
+    let job_id = custom_job_id.unwrap_or_else(|| {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        format!("job_{:x}", nanos)
+    });
 
     let job = Job {
         id: job_id.clone(),
@@ -268,8 +273,10 @@ async fn run_upscale(app_handle: tauri::AppHandle, request: UpscaleRequest) -> R
         request.scale,
         request.tile_size,
         request.is_video,
+        request.job_id,
     ).await
 }
+
 
 #[tauri::command]
 async fn cancel_upscale(job_id: String) -> Result<(), String> {
