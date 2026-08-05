@@ -1,9 +1,11 @@
 pub mod error;
+pub mod process_runner;
 mod sidecar_manager;
 mod model_manager;
 mod job_queue;
 mod video_pipeline;
 mod settings;
+
 
 pub use error::AppError;
 use tauri::Manager;

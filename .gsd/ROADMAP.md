@@ -4,7 +4,7 @@
 > **Goal**: Refactor Upscaly around a reliable, event-driven job runtime while preserving the current inference contract, shipping a self-contained x64 LGPL FFmpeg video engine with vendor H.264 encoders, truthful Vulkan GPU discovery, output-preserving workload optimizations, and an empirical regression/benchmark test suite.
 
 ## Must-Haves
-- [ ] **Section 1: Establish Regression & Benchmark Evidence First**: Reference corpus, manifest with decoded RGBA image pixel hashes & video frame/stream checks, `npm.cmd run benchmark` Node runner, mockable process-runner abstraction (`ProcessRunner` trait), and repaired Vitest suite.
+- [x] **Section 1: Establish Regression & Benchmark Evidence First**: Reference corpus, manifest with decoded RGBA image pixel hashes & video frame/stream checks, `npm.cmd run benchmark` Node runner, mockable process-runner abstraction (`ProcessRunner` trait), and repaired Vitest suite.
 - [ ] **Section 2: Replace Queue with Cancellable Race-Free Job Runtime**: Client-generated `job_id` (`crypto.randomUUID()`), strict terminal event contract (`queued | running | succeeded | failed | cancelled`), `VecDeque` + `ActiveJobRegistry`, non-hanging video monitor cleanup, backend output-path reservation, and React job reducer.
 - [ ] **Section 3: Make GPU Discovery Truthful & Resilient**: Parse NCNN verbose probe into structured `GpuDevice` capabilities (`fp16_storage`, `fp16_arithmetic`, `compute_queue_count`), 24h cache with forced re-probe on error, explicit empty list when 0 Vulkan GPUs found, disable UI enqueueing when unsupported, and single Vulkan GPU selection.
 - [ ] **Section 4: Package Self-Contained LGPL Windows Video Runtime**: Pinned x64 LGPL FFmpeg/FFprobe binaries + DLL sidecars, third-party notices, vendor H.264 encoder fallback chain (`h264_nvenc` -> `h264_qsv` -> `h264_amf` -> `h264_mf`), `-c:a copy` with AAC 192kbps fallback, and CFR verification / VFR rejection.
@@ -16,9 +16,9 @@
 ## Phases
 
 ### Phase 1: Establish Regression and Benchmark Evidence First
-**Status**: ⬜ Not Started  
+**Status**: ✅ Complete  
 **Objective**: Build reference test corpus, `npm.cmd run benchmark` Node runner, pixel-decoded RGBA hashing, process-runner abstraction with mock support, and repair frontend Vitest suite.  
-**Files**: `scripts/benchmark.ts`, `src-tauri/src/process_runner.rs`, `src/components/__tests__/*`, `package.json`
+**Files**: `scripts/benchmark.ts`, `src-tauri/src/process_runner.rs`, `src/components/__tests__/*`, `package.json`, `tests/fixtures/corpus_manifest.json`
 
 ### Phase 2: Replace the Queue with a Cancellable, Race-Free Job Runtime
 **Status**: ⬜ Not Started  

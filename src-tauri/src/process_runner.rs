@@ -1,0 +1,161 @@
+use std::path::Path;
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
+use crate::error::AppError;
+
+pub trait ProcessHandle: Send + Sync {
+    fn try_wait(&mut self) -> Result<Option<i32>, AppError>;
+    fn kill(&mut self) -> Result<(), AppError>;
+    fn id(&self) -> u32;
+}
+
+pub trait ProcessRunner: Send + Sync {
+    fn spawn(
+        &self,
+        program: &Path,
+        args: &[String],
+    ) -> Result<Box<dyn ProcessHandle>, AppError>;
+}
+
+/// Standard OS process runner wrapping std::process::Command and Child
+pub struct StdProcessRunner;
+
+impl StdProcessRunner {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+pub struct StdProcessHandle {
+    child: Child,
+}
+
+impl ProcessHandle for StdProcessHandle {
+    fn try_wait(&mut self) -> Result<Option<i32>, AppError> {
+        match self.child.try_wait() {
+            Ok(Some(status)) => Ok(status.code()),
+            Ok(None) => Ok(None),
+            Err(e) => Err(AppError::ExecutionError { message: format!("Failed to poll process status: {}", e) }),
+        }
+    }
+
+    fn kill(&mut self) -> Result<(), AppError> {
+        self.child.kill().map_err(|e| AppError::ExecutionError { message: format!("Failed to kill process: {}", e) })
+    }
+
+
+    fn id(&self) -> u32 {
+        self.child.id()
+    }
+}
+
+impl ProcessRunner for StdProcessRunner {
+    fn spawn(
+        &self,
+        program: &Path,
+        args: &[String],
+    ) -> Result<Box<dyn ProcessHandle>, AppError> {
+        let child = Command::new(program)
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| AppError::ExecutionError { message: format!("Failed to spawn process '{}': {}", program.display(), e) })?;
+
+
+        Ok(Box::new(StdProcessHandle { child }))
+    }
+}
+
+/// Mock process runner for testing without real executable or GPU dependencies
+pub struct MockProcessRunner {
+    pub exit_code: Arc<Mutex<Option<i32>>>,
+    pub was_killed: Arc<Mutex<bool>>,
+    pub fail_on_spawn: bool,
+}
+
+pub struct MockProcessHandle {
+    exit_code: Arc<Mutex<Option<i32>>>,
+    was_killed: Arc<Mutex<bool>>,
+    pid: u32,
+}
+
+impl ProcessHandle for MockProcessHandle {
+    fn try_wait(&mut self) -> Result<Option<i32>, AppError> {
+        let code = *self.exit_code.lock().unwrap();
+        Ok(code)
+    }
+
+    fn kill(&mut self) -> Result<(), AppError> {
+        let mut killed = self.was_killed.lock().unwrap();
+        *killed = true;
+        let mut code = self.exit_code.lock().unwrap();
+        *code = Some(-1);
+        Ok(())
+    }
+
+    fn id(&self) -> u32 {
+        self.pid
+    }
+}
+
+impl MockProcessRunner {
+    pub fn new(exit_code: Option<i32>) -> Self {
+        Self {
+            exit_code: Arc::new(Mutex::new(exit_code)),
+            was_killed: Arc::new(Mutex::new(false)),
+            fail_on_spawn: false,
+        }
+    }
+}
+
+impl ProcessRunner for MockProcessRunner {
+    fn spawn(
+        &self,
+        _program: &Path,
+        _args: &[String],
+    ) -> Result<Box<dyn ProcessHandle>, AppError> {
+        if self.fail_on_spawn {
+            return Err(AppError::ExecutionError { message: "Mock spawn failure simulated".into() });
+        }
+
+
+        Ok(Box::new(MockProcessHandle {
+            exit_code: Arc::clone(&self.exit_code),
+            was_killed: Arc::clone(&self.was_killed),
+            pid: 9999,
+        }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mock_process_runner_success() {
+        let runner = MockProcessRunner::new(Some(0));
+        let mut handle = runner.spawn(Path::new("dummy"), &[]).unwrap();
+        assert_eq!(handle.id(), 9999);
+        assert_eq!(handle.try_wait().unwrap(), Some(0));
+    }
+
+    #[test]
+    fn test_mock_process_runner_kill() {
+        let runner = MockProcessRunner::new(None);
+        let mut handle = runner.spawn(Path::new("dummy"), &[]).unwrap();
+        assert_eq!(handle.try_wait().unwrap(), None);
+
+        handle.kill().unwrap();
+        assert_eq!(handle.try_wait().unwrap(), Some(-1));
+        assert!(*runner.was_killed.lock().unwrap());
+    }
+
+    #[test]
+    fn test_mock_process_runner_spawn_failure() {
+        let mut runner = MockProcessRunner::new(Some(0));
+        runner.fail_on_spawn = true;
+        let result = runner.spawn(Path::new("dummy"), &[]);
+        assert!(result.is_err());
+    }
+}

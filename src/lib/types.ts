@@ -116,3 +116,19 @@ export const SUPPORTED_MODELS: ModelInfo[] = [
 ];
 
 export const SUPPORTED_SCALES = [2, 3, 4];
+
+export type JobState = "ready" | "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+export function isTerminalState(state: JobState | string): boolean {
+  return state === "succeeded" || state === "failed" || state === "cancelled";
+}
+
+export function isValidStateTransition(from: JobState, to: JobState): boolean {
+  if (from === to) return true;
+  if (isTerminalState(from)) return false; // terminal states cannot return to active
+  if (from === "ready") return to === "queued" || to === "running" || to === "cancelled";
+  if (from === "queued") return to === "running" || to === "cancelled" || to === "failed";
+  if (from === "running") return to === "succeeded" || to === "failed" || to === "cancelled";
+  return false;
+}
+

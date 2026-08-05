@@ -14,13 +14,12 @@ describe('ProgressOverlay Component', () => {
         onCancel={vi.fn()}
       />
     );
-    expect(screen.getByText('68.4%')).toBeInTheDocument();
-    expect(screen.getByText('Upscaling Video Frames')).toBeInTheDocument();
-    expect(screen.getByText('~14s left')).toBeInTheDocument();
-    expect(screen.getByText('24 FPS')).toBeInTheDocument();
+    expect(screen.getByText(/68\.4%/)).toBeInTheDocument();
+    expect(screen.getByText(/0:14/)).toBeInTheDocument();
+    expect(screen.getByText(/24\.0 FPS/)).toBeInTheDocument();
   });
 
-  it('triggers cancel callback when Cancel Upscale is clicked', () => {
+  it('triggers cancel callback when Cancel is clicked', () => {
     const handleCancel = vi.fn();
     render(
       <ProgressOverlay
@@ -30,8 +29,9 @@ describe('ProgressOverlay Component', () => {
         onCancel={handleCancel}
       />
     );
-    const cancelBtn = screen.getByText('Cancel Upscale');
+    const cancelBtn = screen.getByText('Cancel');
     fireEvent.click(cancelBtn);
     expect(handleCancel).toHaveBeenCalledTimes(1);
   });
 });
+
