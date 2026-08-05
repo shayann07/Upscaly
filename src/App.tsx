@@ -783,45 +783,49 @@ export default function App() {
                   onZoomChange={setZoomLevel}
                   onToggleViewMode={() => setComparisonViewMode((prev) => (prev === 'split' ? 'side-by-side' : 'split'))}
                 />
-              ) : isVideo ? (
-                <video
-                  src={getMediaSrc(filePath)}
-                  controls={jobStatus !== "processing" && jobStatus !== "queued"}
-                  autoPlay={jobStatus === "processing" || jobStatus === "queued"}
-                  loop
-                  muted
-                  className={`max-h-full max-w-full object-contain rounded-xl transition-all ${
-                    jobStatus === "processing" || jobStatus === "queued" ? "opacity-90 blur-[1px]" : ""
-                  }`}
-                />
               ) : (
-                <img
-                  src={getMediaSrc(filePath)}
-                  alt={fileName}
-                  className={`max-h-full max-w-full object-contain rounded-xl transition-all ${
-                    jobStatus === "processing" || jobStatus === "queued" ? "opacity-90 blur-[1px]" : ""
-                  }`}
-                />
-              )}
+                <div style={{ position: "relative", maxWidth: "100%", maxHeight: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", overflow: "hidden", borderRadius: 12 }}>
+                  {isVideo ? (
+                    <video
+                      src={getMediaSrc(filePath)}
+                      controls={jobStatus !== "processing" && jobStatus !== "queued"}
+                      autoPlay={jobStatus === "processing" || jobStatus === "queued"}
+                      loop
+                      muted
+                      className={`max-h-full max-w-full object-contain rounded-xl transition-all ${
+                        jobStatus === "processing" || jobStatus === "queued" ? "opacity-90 blur-[0.5px]" : ""
+                      }`}
+                    />
+                  ) : (
+                    <img
+                      src={getMediaSrc(filePath)}
+                      alt={fileName}
+                      className={`max-h-full max-w-full object-contain rounded-xl transition-all ${
+                        jobStatus === "processing" || jobStatus === "queued" ? "opacity-90 blur-[0.5px]" : ""
+                      }`}
+                    />
+                  )}
 
-              {/* 8x6 Tile Grid Scanning Overlay during Processing */}
-              {(jobStatus === "processing" || jobStatus === "queued") && (
-                <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gridTemplateRows: "repeat(6, 1fr)", gap: "1px", pointerEvents: "none" }}>
-                  {Array.from({ length: 48 }).map((_, i) => {
-                    const cutoff = (progressVal / 100) * 48;
-                    const state = i < Math.floor(cutoff) ? "done" : i < Math.ceil(cutoff) ? "active" : "pending";
-                    return (
-                      <div
-                        key={i}
-                        style={{
-                          background: state === "done" ? "rgba(0,0,0,0)" : state === "active" ? "rgba(224, 30, 60, 0.3)" : "rgba(13, 12, 11, 0.15)",
-                          border: state === "active" ? "1px solid #FF3B5C" : "1px solid rgba(255, 255, 255, 0.08)",
-                          boxShadow: state === "active" ? "0 0 12px rgba(255, 59, 92, 0.6), inset 0 0 8px rgba(255, 59, 92, 0.4)" : "none",
-                          transition: "all .2s ease",
-                        }}
-                      />
-                    );
-                  })}
+                  {/* 8x6 Tile Grid Scanning Overlay directly over media frame */}
+                  {(jobStatus === "processing" || jobStatus === "queued") && (
+                    <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gridTemplateRows: "repeat(6, 1fr)", gap: "2px", pointerEvents: "none", zIndex: 10 }}>
+                      {Array.from({ length: 48 }).map((_, i) => {
+                        const cutoff = (progressVal / 100) * 48;
+                        const state = i < Math.floor(cutoff) ? "done" : i < Math.ceil(cutoff) ? "active" : "pending";
+                        return (
+                          <div
+                            key={i}
+                            style={{
+                              background: state === "done" ? "rgba(0,0,0,0)" : state === "active" ? "rgba(239, 68, 68, 0.45)" : "rgba(0, 0, 0, 0.25)",
+                              border: state === "active" ? "1.5px solid #FF3B5C" : "1px dashed rgba(255, 255, 255, 0.25)",
+                              boxShadow: state === "active" ? "0 0 16px rgba(239, 68, 68, 0.8), inset 0 0 12px rgba(239, 68, 68, 0.6)" : "none",
+                              transition: "all .15s ease",
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </motion.div>

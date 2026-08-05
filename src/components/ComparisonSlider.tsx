@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { getMediaSrc } from "../lib/media";
 
 interface ComparisonSliderProps {
   inputPath?: string;
@@ -48,8 +48,8 @@ export function ComparisonSlider({
   const isVideoInput = useMemo(() => /\.(mp4|mkv|mov|avi|webm)$/i.test(realInputPath), [realInputPath]);
   const isVideoOutput = useMemo(() => /\.(mp4|mkv|mov|avi|webm)$/i.test(realOutputPath), [realOutputPath]);
 
-  const inputSrc = useMemo(() => realInputPath ? convertFileSrc(realInputPath) : "", [realInputPath]);
-  const outputSrc = useMemo(() => realOutputPath ? convertFileSrc(realOutputPath) : "", [realOutputPath]);
+  const inputSrc = useMemo(() => getMediaSrc(realInputPath), [realInputPath]);
+  const outputSrc = useMemo(() => getMediaSrc(realOutputPath), [realOutputPath]);
 
   // Reset states when sources change
   useEffect(() => {
@@ -67,7 +67,7 @@ export function ComparisonSlider({
 
   // Get image/video dimensions
   useEffect(() => {
-    if (!inputSrc || !outputSrc) return;
+    if (!inputSrc) return;
 
     if (isVideoInput) {
       const vid1 = document.createElement("video");
@@ -79,15 +79,34 @@ export function ComparisonSlider({
       img1.src = inputSrc;
     }
 
+    if (!outputSrc) return;
+
     if (isVideoOutput) {
       const vid2 = document.createElement("video");
-      vid2.onloadedmetadata = () => setOutputDims({ w: vid2.videoWidth, h: vid2.videoHeight });
+      vid2.onloadedmetadata = () => {
+        setOutputDims({ w: vid2.videoWidth, h: vid2.videoHeight });
+        setOutputError(false);
+      };
       vid2.onerror = () => setOutputError(true);
       vid2.src = outputSrc;
     } else {
       const img2 = new Image();
-      img2.onload = () => setOutputDims({ w: img2.naturalWidth, h: img2.naturalHeight });
-      img2.onerror = () => setOutputError(true);
+      img2.onload = () => {
+        setOutputDims({ w: img2.naturalWidth, h: img2.naturalHeight });
+        setOutputError(false);
+      };
+      img2.onerror = () => {
+        // Retry loading after a brief 150ms delay in case the file system is flushing
+        setTimeout(() => {
+          const retryImg = new Image();
+          retryImg.onload = () => {
+            setOutputDims({ w: retryImg.naturalWidth, h: retryImg.naturalHeight });
+            setOutputError(false);
+          };
+          retryImg.onerror = () => setOutputError(true);
+          retryImg.src = `${outputSrc}?t=${Date.now()}`;
+        }, 150);
+      };
       img2.src = outputSrc;
     }
   }, [inputSrc, outputSrc, isVideoInput, isVideoOutput]);
