@@ -39,7 +39,6 @@ export function ComparisonSlider({
 
   const [inputDims, setInputDims] = useState<{ w: number; h: number } | null>(null);
   const [outputDims, setOutputDims] = useState<{ w: number; h: number } | null>(null);
-  const [outputError, setOutputError] = useState(false);
 
   const realInputPath = inputPath || originalPath || "";
   const realOutputPath = outputPath || upscaledPath || "";
@@ -51,11 +50,10 @@ export function ComparisonSlider({
   const inputSrc = useMemo(() => getMediaSrc(realInputPath), [realInputPath]);
   const outputSrc = useMemo(() => getMediaSrc(realOutputPath), [realOutputPath]);
 
-  // Reset states when sources change
+  // Reset dimensions when sources change
   useEffect(() => {
     setInputDims(null);
     setOutputDims(null);
-    setOutputError(false);
   }, [inputSrc, outputSrc]);
 
   // Reset pan when zoom is reset to 1x
@@ -67,47 +65,28 @@ export function ComparisonSlider({
 
   // Get image/video dimensions
   useEffect(() => {
-    if (!inputSrc) return;
-
-    if (isVideoInput) {
-      const vid1 = document.createElement("video");
-      vid1.onloadedmetadata = () => setInputDims({ w: vid1.videoWidth, h: vid1.videoHeight });
-      vid1.src = inputSrc;
-    } else {
-      const img1 = new Image();
-      img1.onload = () => setInputDims({ w: img1.naturalWidth, h: img1.naturalHeight });
-      img1.src = inputSrc;
+    if (inputSrc) {
+      if (isVideoInput) {
+        const vid1 = document.createElement("video");
+        vid1.onloadedmetadata = () => setInputDims({ w: vid1.videoWidth, h: vid1.videoHeight });
+        vid1.src = inputSrc;
+      } else {
+        const img1 = new Image();
+        img1.onload = () => setInputDims({ w: img1.naturalWidth, h: img1.naturalHeight });
+        img1.src = inputSrc;
+      }
     }
 
-    if (!outputSrc) return;
-
-    if (isVideoOutput) {
-      const vid2 = document.createElement("video");
-      vid2.onloadedmetadata = () => {
-        setOutputDims({ w: vid2.videoWidth, h: vid2.videoHeight });
-        setOutputError(false);
-      };
-      vid2.onerror = () => setOutputError(true);
-      vid2.src = outputSrc;
-    } else {
-      const img2 = new Image();
-      img2.onload = () => {
-        setOutputDims({ w: img2.naturalWidth, h: img2.naturalHeight });
-        setOutputError(false);
-      };
-      img2.onerror = () => {
-        // Retry loading after a brief 150ms delay in case the file system is flushing
-        setTimeout(() => {
-          const retryImg = new Image();
-          retryImg.onload = () => {
-            setOutputDims({ w: retryImg.naturalWidth, h: retryImg.naturalHeight });
-            setOutputError(false);
-          };
-          retryImg.onerror = () => setOutputError(true);
-          retryImg.src = `${outputSrc}?t=${Date.now()}`;
-        }, 150);
-      };
-      img2.src = outputSrc;
+    if (outputSrc) {
+      if (isVideoOutput) {
+        const vid2 = document.createElement("video");
+        vid2.onloadedmetadata = () => setOutputDims({ w: vid2.videoWidth, h: vid2.videoHeight });
+        vid2.src = outputSrc;
+      } else {
+        const img2 = new Image();
+        img2.onload = () => setOutputDims({ w: img2.naturalWidth, h: img2.naturalHeight });
+        img2.src = outputSrc;
+      }
     }
   }, [inputSrc, outputSrc, isVideoInput, isVideoOutput]);
 
@@ -235,19 +214,8 @@ export function ComparisonSlider({
     justifyContent: "center",
   };
 
-  const renderMedia = (src: string, isVideo: boolean, ref?: React.RefObject<HTMLVideoElement | null>, isOutput = false) => {
+  const renderMedia = (src: string, isVideo: boolean, ref?: React.RefObject<HTMLVideoElement | null>) => {
     if (!src) return null;
-
-    if (isOutput && outputError) {
-      return (
-        <div style={mediaContainerStyle} className="flex flex-col items-center justify-center p-6 text-center select-none">
-          <div className="text-[12px] font-bold font-['Martian_Mono',monospace] text-[#E88A80] tracking-[0.08em] mb-1">UPSCALED FILE NOT FOUND</div>
-          <div className="font-['Martian_Mono',monospace] text-[9.5px] text-[var(--text-muted)] max-w-[340px] truncate px-3 py-1.5 rounded bg-[rgba(11,10,9,.8)] border border-[var(--border-default)]">
-            {realOutputPath}
-          </div>
-        </div>
-      );
-    }
 
     if (isVideo) {
       return (
@@ -259,13 +227,6 @@ export function ComparisonSlider({
             loop
             muted
             playsInline
-            onError={() => {
-              if (isOutput) setOutputError(true);
-            }}
-            onLoadedData={(e) => {
-              if (isOutput) setOutputError(false);
-              e.currentTarget.play().catch(() => {});
-            }}
             onPlay={() => {
               if (ref === videoInputRef && videoOutputRef.current) {
                 videoOutputRef.current.play().catch(() => {});
@@ -278,22 +239,16 @@ export function ComparisonSlider({
     }
 
     return (
-      <div style={mediaContainerStyle}>
-        <img
-          src={src}
-          alt={isOutput ? "Upscaled Output" : "Original Input"}
-          onError={() => {
-            if (isOutput) setOutputError(true);
-          }}
-          onLoad={() => {
-            if (isOutput) setOutputError(false);
-          }}
-          className="max-h-full max-w-full object-contain pointer-events-none select-none"
-          style={{
-            imageRendering: isOutput ? "high-quality" : "auto",
-          }}
-        />
-      </div>
+      <div
+        style={{
+          ...mediaContainerStyle,
+          backgroundImage: `url(${src})`,
+          backgroundSize: "contain",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+          filter: "none",
+        }}
+      />
     );
   };
 
@@ -306,13 +261,13 @@ export function ComparisonSlider({
         style={{ cursor: zoom > 1 ? (isPanning ? "grabbing" : "grab") : "default" }}
       >
         <div className="relative overflow-hidden">
-          {renderMedia(inputSrc, isVideoInput, videoInputRef, false)}
+          {renderMedia(inputSrc, isVideoInput, videoInputRef)}
           <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] text-[var(--text-tertiary)] tracking-[0.06em]">
             ORIGINAL{inputDims ? ` · ${inputDims.w}×${inputDims.h}` : ""}
           </div>
         </div>
         <div className="relative overflow-hidden">
-          {renderMedia(outputSrc, isVideoOutput, videoOutputRef, true)}
+          {renderMedia(outputSrc, isVideoOutput, videoOutputRef)}
           <div className="absolute bottom-3 right-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em]" style={{ color: accentColor }}>
             UPSCALED{outputDims ? ` · ${outputDims.w}×${outputDims.h}` : ""}
           </div>
@@ -332,7 +287,7 @@ export function ComparisonSlider({
     >
       {/* Output (upscaled) layer — full frame */}
       <div className="absolute inset-0">
-        {renderMedia(outputSrc, isVideoOutput, videoOutputRef, true)}
+        {renderMedia(outputSrc, isVideoOutput, videoOutputRef)}
       </div>
 
       {/* Input (original) layer — clipped */}
@@ -344,7 +299,7 @@ export function ComparisonSlider({
           willChange: "clip-path",
         }}
       >
-        {renderMedia(inputSrc, isVideoInput, videoInputRef, false)}
+        {renderMedia(inputSrc, isVideoInput, videoInputRef)}
       </div>
 
       {/* Interactive Slider Divider Line & Hit Zone */}

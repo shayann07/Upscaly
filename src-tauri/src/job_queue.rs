@@ -290,22 +290,7 @@ pub fn normalize_tile_size(user_tile: i32) -> i32 {
     }
 }
 
-pub fn compute_workload_threads(input_path: &str, is_video: bool) -> &'static str {
-    if is_video {
-        return "2:2:2";
-    }
-
-    if let Ok((width, height)) = image::image_dimensions(input_path) {
-        let megapixels = (width as u64 * height as u64) as f64 / 1_000_000.0;
-        if megapixels <= 4.0 {
-            return "4:4:4";
-        } else if megapixels >= 12.0 {
-            return "2:2:2";
-        } else {
-            return "1:2:2";
-        }
-    }
-
+pub fn compute_workload_threads(_input_path: &str, _is_video: bool) -> &'static str {
     "1:2:2"
 }
 
@@ -424,7 +409,7 @@ mod tests {
 
     #[test]
     fn test_compute_workload_threads() {
-        assert_eq!(compute_workload_threads("dummy.mp4", true), "2:2:2");
+        assert_eq!(compute_workload_threads("dummy.mp4", true), "1:2:2");
         assert_eq!(compute_workload_threads("nonexistent.png", false), "1:2:2");
     }
 }
