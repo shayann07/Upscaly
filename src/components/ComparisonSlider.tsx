@@ -259,16 +259,22 @@ export function ComparisonSlider({
     }
 
     return (
-      <div
-        style={{
-          ...mediaContainerStyle,
-          backgroundImage: `url(${src})`,
-          backgroundSize: "contain",
-          backgroundPosition: "center",
-          backgroundRepeat: "no-repeat",
-          filter: "none",
-        }}
-      />
+      <div style={mediaContainerStyle}>
+        <img
+          src={src}
+          alt={isOutput ? "Upscaled Output" : "Original Input"}
+          onError={() => {
+            if (isOutput) setOutputError(true);
+          }}
+          onLoad={() => {
+            if (isOutput) setOutputError(false);
+          }}
+          className="max-h-full max-w-full object-contain pointer-events-none select-none"
+          style={{
+            imageRendering: isOutput ? "high-quality" : "auto",
+          }}
+        />
+      </div>
     );
   };
 

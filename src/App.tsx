@@ -122,6 +122,7 @@ export default function App() {
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>(() => getRecentHistory());
 
   const pendingOutputPath = useRef<string>("");
+  const activeJobIdRef = useRef<string | null>(null);
   const isInitialLoad = useRef<boolean>(true);
 
   // Dynamic GPU VRAM calculation
@@ -270,7 +271,12 @@ export default function App() {
       const { job_id, percentage, status, error, phase, eta_seconds, fps: jobFps, output_path: eventOutPath } = event.payload;
 
       // Update single studio job
-      if (activeJobId && job_id === activeJobId) {
+      const isCurrentStudioJob = (activeJobId && job_id === activeJobId) || (activeJobIdRef.current && job_id === activeJobIdRef.current);
+      if (isCurrentStudioJob) {
+        if (activeJobIdRef.current !== job_id) {
+          activeJobIdRef.current = job_id;
+          setActiveJobId(job_id);
+        }
         const effectiveStatus = (status === "succeeded" || status === "completed") ? "completed" : status;
         setProgressVal(percentage);
         setJobStatus(effectiveStatus);
@@ -298,17 +304,20 @@ export default function App() {
             });
             setHistoryItems(newHist);
           }
+          activeJobIdRef.current = null;
           setActiveJobId(null);
           refreshInstalledModels();
           playCompleteSound(isMuted);
           addToast("success", "Upscaling Complete", "Enhanced output saved.");
         } else if (status === "failed") {
+          activeJobIdRef.current = null;
           setActiveJobId(null);
           setJobStatus("idle");
           playErrorSound(isMuted);
           const errStr = error || "Processing failed during sidecar execution.";
           addToast("error", "Upscaling Failed", errStr);
         } else if (status === "cancelled") {
+          activeJobIdRef.current = null;
           setActiveJobId(null);
           setJobStatus("idle");
           addToast("info", "Cancelled", "Upscaling task was cancelled.");
@@ -513,6 +522,7 @@ export default function App() {
     try {
 
       const clientJobId = crypto.randomUUID();
+      activeJobIdRef.current = clientJobId;
       setActiveJobId(clientJobId);
 
       setJobStatus("queued");
