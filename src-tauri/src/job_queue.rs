@@ -275,6 +275,33 @@ pub fn kill_all_active_jobs() {
     }
 }
 
+pub fn normalize_tile_size(user_tile: i32) -> i32 {
+    if user_tile <= 0 {
+        0
+    } else {
+        ((user_tile / 32) * 32).clamp(32, 1024)
+    }
+}
+
+pub fn compute_workload_threads(input_path: &str, is_video: bool) -> &'static str {
+    if is_video {
+        return "2:2:2";
+    }
+
+    if let Ok((width, height)) = image::image_dimensions(input_path) {
+        let megapixels = (width as u64 * height as u64) as f64 / 1_000_000.0;
+        if megapixels <= 4.0 {
+            return "4:4:4";
+        } else if megapixels >= 12.0 {
+            return "2:2:2";
+        } else {
+            return "1:2:2";
+        }
+    }
+
+    "1:2:2"
+}
+
 /// Executes a single image upscale job using StdProcessRunner with concurrent stdout/stderr streaming.
 fn run_single_image_job(
     app: &AppHandle,
@@ -285,6 +312,9 @@ fn run_single_image_job(
     let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan")?;
     let models_dir = get_models_dir(app);
 
+    let thread_profile = compute_workload_threads(&job.input_path, job.is_video);
+    let tile_size = normalize_tile_size(job.tile_size);
+
     let args = vec![
         "-i".to_string(), job.input_path.clone(),
         "-o".to_string(), job.output_path.clone(),
@@ -292,11 +322,12 @@ fn run_single_image_job(
         "-m".to_string(), models_dir.to_str().unwrap_or("models").to_string(),
         "-g".to_string(), job.gpu_id.to_string(),
         "-s".to_string(), job.scale.to_string(),
-        "-t".to_string(), job.tile_size.to_string(),
-        "-j".to_string(), "4:4:4".to_string(),
+        "-t".to_string(), tile_size.to_string(),
+        "-j".to_string(), thread_profile.to_string(),
         "-x".to_string(),
         "-v".to_string(),
     ];
+
 
     let runner = StdProcessRunner::new();
     let handle = runner.spawn(&sidecar_path, &args).map_err(|e| e.to_string())?;
@@ -350,5 +381,21 @@ mod tests {
         release_output_path(&path1);
         release_output_path(&path2);
     }
+
+    #[test]
+    fn test_normalize_tile_size() {
+        assert_eq!(normalize_tile_size(0), 0);
+        assert_eq!(normalize_tile_size(-100), 0);
+        assert_eq!(normalize_tile_size(200), 192);
+        assert_eq!(normalize_tile_size(2000), 1024);
+        assert_eq!(normalize_tile_size(10), 32);
+    }
+
+    #[test]
+    fn test_compute_workload_threads() {
+        assert_eq!(compute_workload_threads("dummy.mp4", true), "2:2:2");
+        assert_eq!(compute_workload_threads("nonexistent.png", false), "1:2:2");
+    }
 }
+
 
