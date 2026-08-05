@@ -1,47 +1,47 @@
 # ROADMAP.md
 
-> **Current Milestone**: `v1.0-liquid-glass`
-> **Goal**: Full production-grade rewrite of Upscaly desktop app with Async Rust backend, Windows Job Object sidecar isolation, 60fps Liquid Dark Theme (`Cosmic`/`Violet`/`Lavender`/`Vanilla`), Atropos 3D tilt cards, Liquid Shimmer Pill CTA, 60fps Hardware Split-Comparison Slider, Resumable Model Downloads, and 100% Automated Testing Suite.
-> **Source of Truth**: [implementation_plan.md](file:///C:/Users/shaya/.gemini/antigravity-ide/brain/7348b482-8515-4914-bd7e-602a6042d4ae/implementation_plan.md)
+> **Current Milestone**: `v2.0-win-gpu-reliability`
+> **Goal**: Refactor Upscaly around a reliable, event-driven job runtime, self-contained LGPL FFmpeg distribution with vendor H.264 hardware encoders, truthful GPU discovery, output-preserving GPU optimizations, and a comprehensive test/benchmark suite.
 
-## Must-Haves (45-Point Master Specification)
-- [x] **Process Safety**: Windows Job Object sidecar tree auto-kill (`JobObjectSetInformation`)
-- [x] **Instant Launch**: Cached Vulkan GPU discovery with 5s async timeout & driver hash validation
-- [x] **Visual Theme**: 60fps Ambient Liquid Shader (`Cosmic` `#23212C` + `Violet` `#36255C` + `Lavender` `#D2C3F6`)
-- [x] **Interactive Dropzone**: Atropos 3D Parallax tilt card with floating format tags (`PNG`, `JPG`, `MP4`) & ripple drop
-- [x] **Primary CTA**: Liquid Shimmer Pill CTA (`Vanilla` `#F1FEC8` → `Lavender` `#D2C3F6`) with 30px magnetic cursor pull
-- [x] **Hardware Slider**: 60fps clip-path Before/After comparison slider with 100%/200%/400% hardware zoom lens controls
-- [x] **Video Pipeline**: 3-Phase FFmpeg video pipeline with Rust RAII temp folder cleanup
-- [x] **Model Downloads**: Resumable HTTP Range downloader from GitHub Releases API with SHA256 validation
-- [x] **Notifications**: Floating Liquid Toast Stack with Framer Motion spring physics & one-click auto-fix CTAs
-- [x] **Audio & Settings**: Apple-like UI sound effects & persistent settings store (`app_data_dir/settings.json`)
-- [x] **Automated Testing**: 100% automated test coverage across Rust backend (`cargo test`) and React frontend (`npm run test`)
+## Must-Haves
+- [ ] **Regression Corpus & Benchmark Runner**: Test corpus, `npm run benchmark` CLI runner emitting JSON reports, decoded pixel RGBA hashing for images and frame/stream validation for videos.
+- [ ] **Process Runner Abstraction & Test Suite**: Mockable process runner for unit tests without GPU requirements; repaired & expanded frontend vitest suite covering job state lifecycle.
+- [ ] **Cancellable Event-Driven Job Runtime**: Client-generated `job_id` (`crypto.randomUUID()`), terminal job events (`queued`, `running`, `succeeded`, `failed`, `cancelled`), `VecDeque` + `ActiveJobRegistry`, safe video monitor cleanup, backend output-path reservation, and React job-state reducer.
+- [ ] **Truthful GPU Discovery**: Structured `GpuDevice` capabilities parsed from NCNN probe, 24h cache with forced re-probe on error, explicit empty list fallback when no Vulkan device is found, and single-GPU selection.
+- [ ] **Self-Contained LGPL Video Engine**: Bundled x64 LGPL FFmpeg/FFprobe binaries + DLL sidecars, vendor H.264 hardware encoder search chain (`h264_nvenc` -> `h264_qsv` -> `h264_amf` -> `h264_mf`), `-c:a copy` with AAC fallback, and VFR detection/rejection.
+- [ ] **Output-Preserving Optimizations**: Workload-based thread profiles (`4:4:4`, `2:2:2`, `1:2:2`), automatic tile `-t 0` default, accurate `-x` TTA documentation, and optional batch image grouping.
+- [ ] **End-to-End Release Verification**: Full verification matrix (image, batch, video, GPU, x64 installer) passing all automated tests and benchmark regression checks.
 
 ---
 
 ## Phases
 
-### Phase 1: Async Rust Core & Sidecar Safety
-**Status**: ✅ Complete  
-**Objective**: Build a non-blocking Rust backend with Windows Job Objects, typed `AppError` enum IPC serialization, 5s GPU cache timeout, pre-flight disk/resource checks, and `tracing` file logger.  
-**Files**: `src-tauri/src/lib.rs`, `sidecar_manager.rs`, `job_engine.rs`, `model_manager.rs`, `video_pipeline.rs`, `settings.rs`
+### Phase 1: Regression Corpus, Benchmark Runner & Test Infrastructure
+**Status**: ⬜ Not Started  
+**Objective**: Build a redistributable reference test corpus, `npm run benchmark` runner, pixel-decoded RGBA hashing, process-runner abstraction with fake sidecar support, and repair frontend vitest tests.  
+**Files**: `scripts/benchmark.ts`, `src-tauri/src/process_runner.rs`, `src/components/__tests__/*`, `package.json`
 
-### Phase 2: React Liquid Glass UI Architecture
-**Status**: ✅ Complete  
-**Objective**: Implement modular React 19 component architecture, 60fps liquid canvas shader background, Atropos 3D tilt dropzone card, friendly model selector tabs, Liquid Shimmer CTA, and Motion Primitives spring toast notifications.  
-**Files**: `src/App.tsx`, `App.css`, `components/LiquidShaderBg.tsx`, `DropZone.tsx`, `SettingsPanel.tsx`, `UpscaleButton.tsx`, `ToastContainer.tsx`
+### Phase 2: Cancellable Event-Driven Job Runtime & Backend Scheduler
+**Status**: ⬜ Not Started  
+**Objective**: Implement client-generated `job_id`, strict terminal event states, `VecDeque` job queue with `ActiveJobRegistry`, atomic cancellation, non-hanging video monitor cleanup, backend output-path reservation, and React job reducer.  
+**Files**: `src-tauri/src/job_queue.rs`, `src-tauri/src/lib.rs`, `src-tauri/src/video_pipeline.rs`, `src/App.tsx`, `src/lib/types.ts`
 
-### Phase 3: Hardware Comparison Slider & Video Pipeline Integration
-**Status**: ✅ Complete  
-**Objective**: Build 60fps hardware-accelerated clip-path Before/After comparison slider with 100%/200%/400% zoom controls, 3-phase video frame pipeline with RAII temp folder cleanup, and native Explorer file actions.  
-**Files**: `components/ComparisonSlider.tsx`, `ProgressOverlay.tsx`, `CompletionCard.tsx`, `video_pipeline.rs`
+### Phase 3: Truthful GPU Discovery & Capability Profiling
+**Status**: ⬜ Not Started  
+**Objective**: Parse verbose NCNN probe output into `GpuDevice` structs, handle probe execution timeouts, maintain 24h cache with re-probe on error, eliminate fake VRAM metrics, and handle no-Vulkan-GPU state gracefully.  
+**Files**: `src-tauri/src/sidecar_manager.rs`, `src/components/SettingsPanel.tsx`, `src/lib/types.ts`
 
-### Phase 4: Model Updates, Sound FX & Final Verification
-**Status**: ✅ Complete  
-**Objective**: Integrate GitHub Releases API model discovery/downloader modal, Apple-like UI sound effects, settings persistence (`settings.json`), and verify 0 warnings/errors across full production build.  
-**Files**: `components/UpdateBadge.tsx`, `lib/models.ts`, `settings.rs`, full verification suite
+### Phase 4: Self-Contained LGPL Video Engine & Vendor H.264 Encoders
+**Status**: ⬜ Not Started  
+**Objective**: Package LGPL FFmpeg/FFprobe binaries & sidecar DLLs, implement H.264 encoder fallback chain (`h264_nvenc` -> `h264_qsv` -> `h264_amf` -> `h264_mf`), handle audio copy/AAC fallback, and reject VFR videos with explicit errors.  
+**Files**: `src-tauri/src/video_pipeline.rs`, `src-tauri/tauri.conf.json`, `docs/THIRD_PARTY_NOTICES.md`
 
-### Phase 5: Comprehensive Automated Testing Suite
-**Status**: ✅ Complete  
-**Objective**: Implement unit tests, IPC integration tests, and UI component tests across Rust backend (`cargo test`) and React frontend (`npm run test`).  
-**Files**: `src-tauri/src/error.rs`, `settings.rs`, `model_manager.rs`, `sidecar_manager.rs`, `vitest.config.ts`, `src/components/__tests__/*`
+### Phase 5: Output-Preserving GPU Optimizations & Workload Profiles
+**Status**: ⬜ Not Started  
+**Objective**: Implement dynamic thread profile selection (`4:4:4`, `2:2:2`, `1:2:2`), set tile default to `-t 0`, update `-x` TTA docs/UI, and add optional directory batch image grouping.  
+**Files**: `src-tauri/src/job_queue.rs`, `src-tauri/src/sidecar_manager.rs`, `src/components/AdvancedSettings.tsx`
+
+### Phase 6: Comprehensive Verification & Packaging Suite
+**Status**: ⬜ Not Started  
+**Objective**: Run complete test matrix across all image, batch, video, GPU, and installer build scenarios, validating output pixel equivalence and benchmark stability.  
+**Files**: Full test suite, installer target validation, release documentation
