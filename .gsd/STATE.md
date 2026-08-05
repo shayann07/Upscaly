@@ -1,19 +1,20 @@
 # GSD Application State
 
 > **Project**: Upscaly
-> **Status**: Phase 1 Complete ✅
+> **Status**: Phase 2 Planned ⬜
 
 ## Current Position
 - **Milestone**: `v2.0-win-gpu-reliability`
 - **Phase**: Phase 2: Replace the Queue with a Cancellable, Race-Free Job Runtime
-- **Status**: Phase 1 verified & complete. Ready for Phase 2.
+- **Status**: Phase 2 planned and ready for execution
 
 ## Last Session Summary
-Executed Phase 1: Establish Regression and Benchmark Evidence First.
-- **Vitest Suite**: Repaired 6 UI component tests and added `JobStateLifecycle.test.tsx` (17 tests passing across suite).
-- **ProcessRunner**: Implemented Rust `ProcessRunner` trait, `StdProcessRunner`, and `MockProcessRunner` with 8 passing Rust backend unit tests (`cargo test`).
-- **Benchmark Suite**: Created `tests/fixtures/corpus_manifest.json` and `scripts/benchmark.ts` Node runner (`npm.cmd run benchmark`).
-- **Verification**: Verified `cargo test`, `npm.cmd run test`, and `npm.cmd run benchmark` all exit with code 0.
+Defined Phase 2 execution plan in `.gsd/phases/phase-2-plan.md`.
+- **Public Command Contract**: Client-generated `job_id` (`crypto.randomUUID()`), strict terminal event contract (`queued | running | succeeded | failed | cancelled`).
+- **Backend Scheduler**: `VecDeque<Job>` with `ActiveJobRegistry`, atomic `JobControl`, concurrent stdout/stderr stream drain, and non-blocking polling.
+- **Safe Video Cleanup**: Frame monitor loop with explicit exit conditions (frame completion, sidecar exit, cancellation, or phase failure).
+- **Output-Path Reservation**: Backend path reservation preventing filename collisions (`_upscaled_4x (1)`).
+- **Frontend State**: Event-driven job reducer in `App.tsx` handling single and batch job states.
 
 ## Next Steps
-- Run `/plan 2` to create Phase 2 execution plan (Cancellable Race-Free Job Runtime & Backend Scheduler).
+- Run `/execute 2` to execute Phase 2 tasks.
