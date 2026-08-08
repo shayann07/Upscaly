@@ -795,7 +795,7 @@ export default function App() {
                       autoPlay={jobStatus === "processing" || jobStatus === "queued"}
                       loop
                       muted
-                      className={`max-h-[62vh] max-w-full object-contain rounded-xl transition-all ${
+                      className={`max-w-full max-h-full object-contain rounded-xl transition-all ${
                         jobStatus === "processing" || jobStatus === "queued" ? "opacity-30 blur-[2px]" : ""
                       }`}
                     />
@@ -803,7 +803,7 @@ export default function App() {
                     <img
                       src={getMediaSrc(filePath)}
                       alt={fileName}
-                      className={`max-h-[62vh] max-w-full object-contain rounded-xl transition-all ${
+                      className={`max-w-full max-h-full object-contain rounded-xl transition-all ${
                         jobStatus === "processing" || jobStatus === "queued" ? "opacity-30 blur-[2px]" : ""
                       }`}
                     />
