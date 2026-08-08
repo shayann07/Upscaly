@@ -366,6 +366,35 @@ export default function App() {
     };
   }, [activeJobId, filePath, fileName, upscaledPath, selectedModel, scale, isVideo, isMuted]);
 
+  // Synchronized Category Selection
+  const handleSelectCategory = (newCat: "photos" | "anime" | "video") => {
+    setCategory(newCat);
+    const targetCat = newCat === "photos" ? "photo" : newCat;
+    const matchModel = SUPPORTED_MODELS.find(
+      (m) => m.cat === targetCat && (installedModels.length === 0 || installedModels.includes(m.id))
+    ) || SUPPORTED_MODELS.find((m) => m.cat === targetCat) || SUPPORTED_MODELS[0];
+
+    if (matchModel) {
+      setSelectedModel(matchModel.id);
+      if (matchModel.scale) {
+        setScale(matchModel.scale);
+      }
+    }
+  };
+
+  // Synchronized Model Selection
+  const handleSelectModel = (modelId: string) => {
+    setSelectedModel(modelId);
+    const modelInfo = SUPPORTED_MODELS.find((m) => m.id === modelId);
+    if (modelInfo) {
+      if (modelInfo.scale) setScale(modelInfo.scale);
+      const modelCat = modelInfo.cat === "photo" ? "photos" : (modelInfo.cat as "anime" | "video");
+      if (category !== modelCat) {
+        setCategory(modelCat);
+      }
+    }
+  };
+
   // File Select Handler
   const handleOpenFile = async () => {
     try {
@@ -399,6 +428,14 @@ export default function App() {
         setProgressVal(0);
         setStatusMessage("");
         setJobPhase("");
+
+        if (isVid) {
+          handleSelectCategory("video");
+        } else if (category === "video") {
+          handleSelectCategory("photos");
+        } else {
+          handleSelectCategory(category);
+        }
 
         const dims = await getMediaDimensions(getMediaSrc(path), isVid);
         setCurrentFileDims(dims);
@@ -895,10 +932,10 @@ export default function App() {
       <div style={{ position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)", zIndex: 42 }}>
         <SettingsPanel
           category={category}
-          onSelectCategory={setCategory}
+          onSelectCategory={handleSelectCategory}
           installedModels={installedModels}
           selectedModel={selectedModel}
-          onSelectModel={setSelectedModel}
+          onSelectModel={handleSelectModel}
           scale={scale}
           onSelectScale={setScale}
           isProcessing={jobStatus === "processing" || jobStatus === "queued"}
