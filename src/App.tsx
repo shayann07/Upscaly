@@ -795,17 +795,28 @@ export default function App() {
                       autoPlay={jobStatus === "processing" || jobStatus === "queued"}
                       loop
                       muted
-                      className={`max-w-full max-h-full object-contain rounded-xl transition-all ${
-                        jobStatus === "processing" || jobStatus === "queued" ? "opacity-30 blur-[2px]" : ""
-                      }`}
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                        filter: jobStatus === "processing" || jobStatus === "queued" ? "opacity(0.3) blur(2px)" : "none",
+                        transition: "filter .2s ease",
+                      }}
                     />
                   ) : (
-                    <img
-                      src={getMediaSrc(filePath)}
-                      alt={fileName}
-                      className={`max-w-full max-h-full object-contain rounded-xl transition-all ${
-                        jobStatus === "processing" || jobStatus === "queued" ? "opacity-30 blur-[2px]" : ""
-                      }`}
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        backgroundImage: `url(${getMediaSrc(filePath)})`,
+                        backgroundSize: "contain",
+                        backgroundPosition: "center",
+                        backgroundRepeat: "no-repeat",
+                        filter: jobStatus === "processing" || jobStatus === "queued" ? "opacity(0.3) blur(2px)" : "none",
+                        transition: "filter .2s ease",
+                      }}
                     />
                   )}
 
