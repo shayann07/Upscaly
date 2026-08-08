@@ -22,6 +22,7 @@ import { BatchQueueView, BatchItem } from "./components/BatchQueueView";
 import { playDropSound, playCompleteSound, playErrorSound } from "./lib/sound";
 import { getMediaSrc } from "./lib/media";
 import { getModelMetadata } from "./lib/models";
+import { SUPPORTED_MODELS } from "./lib/types";
 import { addHistoryItem, getRecentHistory, HistoryItem } from "./lib/history";
 
 interface GpuDevice {
@@ -837,7 +838,7 @@ export default function App() {
                         inset: 0,
                         width: "100%",
                         height: "100%",
-                        objectFit: "contain",
+                        objectFit: "cover",
                         filter: jobStatus === "processing" || jobStatus === "queued" ? "opacity(0.3) blur(2px)" : "none",
                         transition: "filter .2s ease",
                       }}
@@ -848,7 +849,7 @@ export default function App() {
                         position: "absolute",
                         inset: 0,
                         backgroundImage: `url(${getMediaSrc(filePath)})`,
-                        backgroundSize: "contain",
+                        backgroundSize: "cover",
                         backgroundPosition: "center",
                         backgroundRepeat: "no-repeat",
                         filter: jobStatus === "processing" || jobStatus === "queued" ? "opacity(0.3) blur(2px)" : "none",
