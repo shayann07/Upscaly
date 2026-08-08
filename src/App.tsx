@@ -277,7 +277,10 @@ export default function App() {
           activeJobIdRef.current = job_id;
           setActiveJobId(job_id);
         }
-        const effectiveStatus = (status === "succeeded" || status === "completed") ? "completed" : status;
+        const effectiveStatus = 
+          (status === "succeeded" || status === "completed") ? "completed" :
+          (status === "running" || status === "processing") ? "processing" :
+          status;
         setProgressVal(percentage);
         setJobStatus(effectiveStatus);
         if (phase) setJobPhase(phase);
