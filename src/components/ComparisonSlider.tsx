@@ -243,7 +243,7 @@ export function ComparisonSlider({
         style={{
           ...mediaContainerStyle,
           backgroundImage: `url(${src})`,
-          backgroundSize: "contain",
+          backgroundSize: "cover",
           backgroundPosition: "center",
           backgroundRepeat: "no-repeat",
           filter: "none",
