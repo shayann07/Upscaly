@@ -787,7 +787,7 @@ export default function App() {
                   onToggleViewMode={() => setComparisonViewMode((prev) => (prev === 'split' ? 'side-by-side' : 'split'))}
                 />
               ) : (
-                <div style={{ position: "relative", maxWidth: "100%", maxHeight: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", overflow: "hidden", borderRadius: 12 }}>
+                <>
                   {isVideo ? (
                     <video
                       src={getMediaSrc(filePath)}
@@ -795,23 +795,23 @@ export default function App() {
                       autoPlay={jobStatus === "processing" || jobStatus === "queued"}
                       loop
                       muted
-                      className={`max-h-full max-w-full object-contain rounded-xl transition-all ${
-                        jobStatus === "processing" || jobStatus === "queued" ? "opacity-90 blur-[0.5px]" : ""
+                      className={`max-h-[62vh] max-w-full object-contain rounded-xl transition-all ${
+                        jobStatus === "processing" || jobStatus === "queued" ? "opacity-30 blur-[2px]" : ""
                       }`}
                     />
                   ) : (
                     <img
                       src={getMediaSrc(filePath)}
                       alt={fileName}
-                      className={`max-h-full max-w-full object-contain rounded-xl transition-all ${
-                        jobStatus === "processing" || jobStatus === "queued" ? "opacity-90 blur-[0.5px]" : ""
+                      className={`max-h-[62vh] max-w-full object-contain rounded-xl transition-all ${
+                        jobStatus === "processing" || jobStatus === "queued" ? "opacity-30 blur-[2px]" : ""
                       }`}
                     />
                   )}
 
-                  {/* 8x6 Tile Grid Scanning Overlay directly over media frame */}
+                  {/* 8x6 Tile Grid Scanning Overlay matching HTML handoff */}
                   {(jobStatus === "processing" || jobStatus === "queued") && (
-                    <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gridTemplateRows: "repeat(6, 1fr)", gap: "2px", pointerEvents: "none", zIndex: 10 }}>
+                    <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gridTemplateRows: "repeat(6, 1fr)", gap: "1px", pointerEvents: "none", zIndex: 10 }}>
                       {Array.from({ length: 48 }).map((_, i) => {
                         const cutoff = (progressVal / 100) * 48;
                         const state = i < Math.floor(cutoff) ? "done" : i < Math.ceil(cutoff) ? "active" : "pending";
@@ -819,17 +819,21 @@ export default function App() {
                           <div
                             key={i}
                             style={{
-                              background: state === "done" ? "rgba(0,0,0,0)" : state === "active" ? "rgba(239, 68, 68, 0.45)" : "rgba(0, 0, 0, 0.25)",
-                              border: state === "active" ? "1.5px solid #FF3B5C" : "1px dashed rgba(255, 255, 255, 0.25)",
-                              boxShadow: state === "active" ? "0 0 16px rgba(239, 68, 68, 0.8), inset 0 0 12px rgba(239, 68, 68, 0.6)" : "none",
-                              transition: "all .15s ease",
+                              background:
+                                state === "done"
+                                  ? "transparent"
+                                  : state === "active"
+                                  ? "rgba(168,11,36,.16)"
+                                  : "rgba(9,8,8,.72)",
+                              boxShadow: state === "active" ? "inset 0 0 0 1px #A80B24" : "none",
+                              transition: "background .3s ease",
                             }}
                           />
                         );
                       })}
                     </div>
                   )}
-                </div>
+                </>
               )}
             </motion.div>
           )}
