@@ -161,24 +161,25 @@ export function SettingsPanel({
 
       {/* Primary action button */}
       <button
-        onClick={isProcessing ? onCancel : onRun}
+        disabled={isProcessing || !hasFiles}
+        onClick={onRun}
         className="flex-none flex items-center gap-2 font-['Archivo',sans-serif] font-semibold whitespace-nowrap transition-all duration-300 hover:-translate-y-0.5"
         style={{
           height: big ? 36 : 30,
           padding: `0 ${big ? 18 : 14}px`,
-          border: isProcessing ? "1px solid var(--border-danger)" : "none",
+          border: "none",
           borderRadius: 11,
-          background: isProcessing ? "var(--danger-bg)" : hasFiles ? "var(--text-primary)" : "#1B1917",
-          color: isProcessing ? "var(--danger-text)" : hasFiles ? "var(--bg-base)" : "var(--text-dim)",
+          background: isProcessing ? "#1B1917" : hasFiles ? "var(--text-primary)" : "#1B1917",
+          color: isProcessing ? "var(--text-dim)" : hasFiles ? "var(--bg-base)" : "var(--text-dim)",
           fontSize: big ? "13px" : "12px",
-          cursor: hasFiles ? "pointer" : "not-allowed",
+          cursor: hasFiles && !isProcessing ? "pointer" : "not-allowed",
           transition: `all .24s ${EASE}`,
         }}
       >
-        <span>{isProcessing ? "Cancel" : isBatchMode ? "Run queue" : "Upscale"}</span>
-        {big && (
+        <span>{isProcessing ? "Processing..." : isBatchMode ? "Run queue" : "Upscale"}</span>
+        {big && !isProcessing && (
           <span className="font-['Martian_Mono',monospace] text-[9px] opacity-50 tracking-[0.04em]">
-            {isProcessing ? "ESC" : "⌘↩"}
+            ⌘↩
           </span>
         )}
       </button>

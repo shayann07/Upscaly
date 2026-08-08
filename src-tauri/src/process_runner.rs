@@ -55,13 +55,36 @@ impl ProcessRunner for StdProcessRunner {
         program: &Path,
         args: &[String],
     ) -> Result<Box<dyn ProcessHandle>, AppError> {
-        let child = Command::new(program)
+        let mut child = Command::new(program)
             .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| AppError::ExecutionError { message: format!("Failed to spawn process '{}': {}", program.display(), e) })?;
 
+        // Drain stdout and stderr in background threads so OS pipe buffers never fill up and deadlock child processes
+        if let Some(stdout) = child.stdout.take() {
+            std::thread::spawn(move || {
+                use std::io::BufRead;
+                let mut reader = std::io::BufReader::new(stdout);
+                let mut line = String::new();
+                while let Ok(bytes) = reader.read_line(&mut line) {
+                    if bytes == 0 { break; }
+                    line.clear();
+                }
+            });
+        }
+        if let Some(stderr) = child.stderr.take() {
+            std::thread::spawn(move || {
+                use std::io::BufRead;
+                let mut reader = std::io::BufReader::new(stderr);
+                let mut line = String::new();
+                while let Ok(bytes) = reader.read_line(&mut line) {
+                    if bytes == 0 { break; }
+                    line.clear();
+                }
+            });
+        }
 
         Ok(Box::new(StdProcessHandle { child }))
     }
