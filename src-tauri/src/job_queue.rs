@@ -316,10 +316,8 @@ fn run_single_image_job(
         "-s".to_string(), job.scale.to_string(),
         "-t".to_string(), tile_size.to_string(),
         "-j".to_string(), thread_profile.to_string(),
-        "-x".to_string(),
         "-v".to_string(),
     ];
-
 
     let runner = StdProcessRunner::new();
     let handle = runner.spawn(&sidecar_path, &args).map_err(|e| e.to_string())?;
@@ -330,14 +328,14 @@ fn run_single_image_job(
     }
 
     let start_time = std::time::Instant::now();
-    let mut current_pct = 10.0f64;
+    let mut current_pct = 0.0f64;
 
     let _ = app.emit("job-status-changed", JobProgress {
         job_id: job.id.clone(),
         percentage: current_pct,
         status: "running".to_string(),
         error: None,
-        phase: Some("GPU Accelerated Upscaling (10.0%)".to_string()),
+        phase: Some("GPU Accelerated Upscaling (0.0%)".to_string()),
         eta_seconds: None,
         fps: None,
         output_path: Some(job.output_path.clone()),
@@ -349,21 +347,32 @@ fn run_single_image_job(
             return Err("cancelled".to_string());
         }
 
-        let mut handle_guard = process_handle.lock().unwrap();
-        if let Some(ref mut child) = *handle_guard {
-            match child.try_wait() {
-                Ok(Some(0)) => break,
-                Ok(Some(code)) => return Err(format!("Engine exited with non-zero exit code: {}", code)),
-                Ok(None) => {},
-                Err(e) => return Err(e.to_string()),
+        let latest_pct = {
+            let mut handle_guard = process_handle.lock().unwrap();
+            if let Some(ref mut child) = *handle_guard {
+                match child.try_wait() {
+                    Ok(Some(0)) => break,
+                    Ok(Some(code)) => return Err(format!("Engine exited with non-zero exit code: {}", code)),
+                    Ok(None) => child.latest_progress(),
+                    Err(e) => return Err(e.to_string()),
+                }
+            } else {
+                break;
             }
-        } else {
-            break;
-        }
-        drop(handle_guard);
+        };
 
-        let _elapsed = start_time.elapsed().as_secs_f64();
-        current_pct = (current_pct + 8.0).min(95.0);
+        if let Some(real_pct) = latest_pct {
+            current_pct = real_pct.clamp(0.0, 99.9);
+        }
+
+        let elapsed = start_time.elapsed().as_secs_f64();
+        let rate_pct_per_sec = if elapsed > 0.1 && current_pct > 0.0 { current_pct / elapsed } else { 0.0 };
+        let remaining_pct = (100.0 - current_pct).max(0.0);
+        let eta_secs = if rate_pct_per_sec > 0.01 {
+            Some((remaining_pct / rate_pct_per_sec).ceil() as u64)
+        } else {
+            None
+        };
 
         let _ = app.emit("job-status-changed", JobProgress {
             job_id: job.id.clone(),
@@ -371,7 +380,7 @@ fn run_single_image_job(
             status: "running".to_string(),
             error: None,
             phase: Some(format!("GPU Accelerated Upscaling ({:.1}%)", current_pct)),
-            eta_seconds: None,
+            eta_seconds: eta_secs,
             fps: None,
             output_path: Some(job.output_path.clone()),
         });

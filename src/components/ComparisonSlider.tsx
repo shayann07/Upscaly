@@ -201,14 +201,15 @@ export function ComparisonSlider({
     };
   }, [isDragging, isPanning, startPan, updateSlider]);
 
-  const EASE = "var(--ease-spring)";
-
   const mediaContainerStyle: React.CSSProperties = {
     position: "absolute",
     inset: 0,
-    transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
+    transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0px) scale3d(${zoom}, ${zoom}, 1)`,
     transformOrigin: "center center",
-    transition: isPanning ? "none" : `transform .22s ${EASE}`,
+    transition: isPanning ? "none" : "transform 0.12s cubic-bezier(0.16, 1, 0.3, 1)",
+    willChange: "transform",
+    backfaceVisibility: "hidden",
+    WebkitBackfaceVisibility: "hidden",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -233,22 +234,22 @@ export function ComparisonSlider({
               }
             }}
             className="w-full h-full object-contain pointer-events-none"
+            style={{ backfaceVisibility: "hidden" }}
           />
         </div>
       );
     }
 
     return (
-      <div
-        style={{
-          ...mediaContainerStyle,
-          backgroundImage: `url(${src})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundRepeat: "no-repeat",
-          filter: "none",
-        }}
-      />
+      <div style={mediaContainerStyle}>
+        <img
+          src={src}
+          alt=""
+          className="w-full h-full object-contain pointer-events-none select-none"
+          draggable={false}
+          style={{ backfaceVisibility: "hidden" }}
+        />
+      </div>
     );
   };
 

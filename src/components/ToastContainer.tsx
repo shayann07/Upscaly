@@ -65,7 +65,7 @@ export function ToastContainer({ toasts, onDismiss, settingsOpen = false }: Toas
         return (
           <div
             key={t.id}
-            className="group flex gap-[11px] pointer-events-auto transition-all duration-300 max-h-[72px] overflow-hidden hover:max-h-[400px] hover:w-[360px] hover:-ml-[50px] shadow-[var(--shadow-toast)]"
+            className="group flex gap-[11px] pointer-events-auto transition-all duration-300 max-h-[72px] overflow-hidden hover:max-h-[400px] hover:w-[360px] hover:-ml-[50px] shadow-[var(--shadow-toast)] hover:scale-[1.03] hover:border-[var(--border-hover)]"
             style={{
               padding: "12px 13px",
               border: `1px solid ${colors.borderColor}`,

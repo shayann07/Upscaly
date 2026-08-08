@@ -7,6 +7,9 @@ pub trait ProcessHandle: Send + Sync {
     fn try_wait(&mut self) -> Result<Option<i32>, AppError>;
     fn kill(&mut self) -> Result<(), AppError>;
     fn id(&self) -> u32;
+    fn latest_progress(&self) -> Option<f64> {
+        None
+    }
 }
 
 pub trait ProcessRunner: Send + Sync {
@@ -28,6 +31,7 @@ impl StdProcessRunner {
 
 pub struct StdProcessHandle {
     child: Child,
+    progress: Arc<Mutex<Option<f64>>>,
 }
 
 impl ProcessHandle for StdProcessHandle {
@@ -43,9 +47,12 @@ impl ProcessHandle for StdProcessHandle {
         self.child.kill().map_err(|e| AppError::ExecutionError { message: format!("Failed to kill process: {}", e) })
     }
 
-
     fn id(&self) -> u32 {
         self.child.id()
+    }
+
+    fn latest_progress(&self) -> Option<f64> {
+        *self.progress.lock().unwrap()
     }
 }
 
@@ -61,6 +68,9 @@ impl ProcessRunner for StdProcessRunner {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| AppError::ExecutionError { message: format!("Failed to spawn process '{}': {}", program.display(), e) })?;
+
+        let progress = Arc::new(Mutex::new(None));
+        let progress_clone = Arc::clone(&progress);
 
         // Drain stdout and stderr in background threads so OS pipe buffers never fill up and deadlock child processes
         if let Some(stdout) = child.stdout.take() {
@@ -81,12 +91,20 @@ impl ProcessRunner for StdProcessRunner {
                 let mut line = String::new();
                 while let Ok(bytes) = reader.read_line(&mut line) {
                     if bytes == 0 { break; }
+                    let trimmed = line.trim();
+                    if let Some(pct_str) = trimmed.strip_suffix('%') {
+                        if let Ok(pct) = pct_str.trim().parse::<f64>() {
+                            if let Ok(mut p) = progress_clone.lock() {
+                                *p = Some(pct);
+                            }
+                        }
+                    }
                     line.clear();
                 }
             });
         }
 
-        Ok(Box::new(StdProcessHandle { child }))
+        Ok(Box::new(StdProcessHandle { child, progress }))
     }
 }
 

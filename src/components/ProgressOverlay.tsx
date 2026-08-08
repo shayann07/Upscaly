@@ -26,7 +26,13 @@ export function ProgressOverlay({
   fps,
   etaSeconds,
 }: ProgressOverlayProps) {
-  const displayEta = etaSeconds !== undefined ? `${Math.floor(etaSeconds / 60)}:${(etaSeconds % 60).toString().padStart(2, "0")}` : eta;
+  const displayEta =
+    etaSeconds !== undefined && etaSeconds > 0
+      ? `${Math.floor(etaSeconds / 60)}:${(etaSeconds % 60).toString().padStart(2, "0")}`
+      : eta !== "--:--"
+      ? eta
+      : "0:05";
+
   const rawPhase = statusText || phase;
   
   // Format percentage cleanly without duplicate numbers
@@ -45,7 +51,7 @@ export function ProgressOverlay({
       animate={{ opacity: 1, y: 0, x: "-50%" }}
       exit={{ opacity: 0, y: 14, x: "-50%" }}
       transition={{ duration: 0.3, ease: [0.22, 1.3, 0.36, 1] }}
-      className="absolute bottom-[78px] left-1/2 flex items-center gap-4 z-[35] select-none"
+      className="absolute bottom-[78px] left-1/2 flex items-center gap-4 z-[35] select-none transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
       style={{
         padding: "11px 14px",
         border: "1px solid var(--border-subtle)",

@@ -35,7 +35,7 @@ export function SettingsPanel({
   hasFiles = true,
   isBatchMode = false,
   onRun = () => {},
-  onCancel = () => {},
+  onCancel: _onCancel = () => {},
   onOpenCatalog = () => {},
   accentColor = "var(--accent)",
 }: SettingsPanelProps) {
@@ -78,7 +78,7 @@ export function SettingsPanel({
     <div
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className="flex items-center"
+      className="flex items-center transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
       style={{
         gap: big ? 8 : 6,
         padding: big ? 6 : 5,
@@ -86,22 +86,21 @@ export function SettingsPanel({
         borderRadius: 16,
         background: "rgba(13,12,11,.96)",
         boxShadow: `0 ${big ? 22 : 14}px ${big ? 50 : 34}px rgba(0,0,0,.6)`,
-        transition: `all .24s ${EASE}`,
       }}
     >
       {/* Category tabs */}
       <div className="flex gap-0.5 p-0.5 border border-[var(--border-default)] rounded-xl bg-[var(--bg-elevated)]">
-        <button onClick={() => handleCategory("photo")} style={pill(activeCategory === "photo", big)}>Photo</button>
-        <button onClick={() => handleCategory("anime")} style={pill(activeCategory === "anime", big)}>Anime</button>
-        <button onClick={() => handleCategory("video")} style={pill(activeCategory === "video", big)}>Video</button>
+        <button onClick={() => handleCategory("photo")} style={pill(activeCategory === "photo", big)} className="transition-all duration-200 hover:scale-[1.05] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]">Photo</button>
+        <button onClick={() => handleCategory("anime")} style={pill(activeCategory === "anime", big)} className="transition-all duration-200 hover:scale-[1.05] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]">Anime</button>
+        <button onClick={() => handleCategory("video")} style={pill(activeCategory === "video", big)} className="transition-all duration-200 hover:scale-[1.05] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]">Video</button>
       </div>
 
       {/* Model selector */}
       <div className="relative flex-none" style={{ width: big ? 206 : 162, transition: `width .24s ${EASE}` }}>
         <button
           onClick={() => setModelMenuOpen((prev) => !prev)}
-          className="w-full flex items-center gap-[9px] border border-[var(--border-default)] rounded-[11px] bg-[var(--bg-elevated)] cursor-pointer transition-all duration-300 hover:border-[#454138]"
-          style={{ height: big ? 36 : 30, padding: "0 11px", transition: `all .24s ${EASE}` }}
+          className="w-full flex items-center gap-[9px] border border-[var(--border-default)] rounded-[11px] bg-[var(--bg-elevated)] cursor-pointer transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
+          style={{ height: big ? 36 : 30, padding: "0 11px" }}
         >
           <div className="flex-1 min-w-0 text-left">
             <div className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis">{model.name}</div>
@@ -124,7 +123,7 @@ export function SettingsPanel({
                   onSelectModel(m.id);
                   setModelMenuOpen(false);
                 }}
-                className="flex items-start gap-3 p-3 rounded-[10px] cursor-pointer transition-colors duration-150"
+                className="flex items-start gap-3 p-3 rounded-[10px] cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:bg-[var(--bg-elevated)] hover:border-[var(--border-hover)]"
                 style={{ background: m.id === selectedModel ? "var(--bg-active)" : "transparent" }}
               >
                 <div className="flex-1 min-w-0">
@@ -144,7 +143,7 @@ export function SettingsPanel({
                 setModelMenuOpen(false);
                 onOpenCatalog();
               }}
-              className="mt-1 px-2.5 py-[9px] border-t border-[var(--border-default)] font-['Martian_Mono',monospace] text-[10px] tracking-[0.06em] text-[var(--accent)] cursor-pointer"
+              className="mt-1 px-2.5 py-[9px] border-t border-[var(--border-default)] font-['Martian_Mono',monospace] text-[10px] tracking-[0.06em] text-[var(--accent)] cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:text-[var(--text-primary)]"
             >
               BROWSE FULL CATALOG →
             </div>
@@ -154,16 +153,16 @@ export function SettingsPanel({
 
       {/* Scale buttons */}
       <div className="flex gap-0.5 p-0.5 border border-[var(--border-default)] rounded-xl bg-[var(--bg-elevated)]">
-        <button onClick={() => onSelectScale(2)} style={pill(activeScale === 2, big)}>2×</button>
-        <button onClick={() => onSelectScale(3)} style={pill(activeScale === 3, big)}>3×</button>
-        <button onClick={() => onSelectScale(4)} style={pill(activeScale === 4, big)}>4×</button>
+        <button onClick={() => onSelectScale(2)} style={pill(activeScale === 2, big)} className="transition-all duration-200 hover:scale-[1.05] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]">2×</button>
+        <button onClick={() => onSelectScale(3)} style={pill(activeScale === 3, big)} className="transition-all duration-200 hover:scale-[1.05] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]">3×</button>
+        <button onClick={() => onSelectScale(4)} style={pill(activeScale === 4, big)} className="transition-all duration-200 hover:scale-[1.05] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]">4×</button>
       </div>
 
       {/* Primary action button */}
       <button
         disabled={isProcessing || !hasFiles}
         onClick={onRun}
-        className="flex-none flex items-center gap-2 font-['Archivo',sans-serif] font-semibold whitespace-nowrap transition-all duration-300 hover:-translate-y-0.5"
+        className="flex-none flex items-center gap-2 font-['Archivo',sans-serif] font-semibold whitespace-nowrap transition-all duration-200 hover:scale-[1.05] hover:shadow-[0_4px_16px_rgba(255,255,255,0.25)]"
         style={{
           height: big ? 36 : 30,
           padding: `0 ${big ? 18 : 14}px`,
@@ -173,7 +172,6 @@ export function SettingsPanel({
           color: isProcessing ? "var(--text-dim)" : hasFiles ? "var(--bg-base)" : "var(--text-dim)",
           fontSize: big ? "13px" : "12px",
           cursor: hasFiles && !isProcessing ? "pointer" : "not-allowed",
-          transition: `all .24s ${EASE}`,
         }}
       >
         <span>{isProcessing ? "Processing..." : isBatchMode ? "Run queue" : "Upscale"}</span>

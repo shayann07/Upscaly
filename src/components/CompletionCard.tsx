@@ -47,7 +47,7 @@ export function CompletionCard({
       animate={{ opacity: 1, y: 0, x: "-50%" }}
       exit={{ opacity: 0, y: 14, x: "-50%" }}
       transition={{ duration: 0.32, ease: [0.22, 1.3, 0.36, 1] }}
-      className="absolute bottom-[78px] left-1/2 flex items-center gap-3.5 z-[35]"
+      className="absolute bottom-[78px] left-1/2 flex items-center gap-3.5 z-[35] transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
       style={{
         padding: "10px 12px",
         border: "1px solid var(--border-subtle)",
