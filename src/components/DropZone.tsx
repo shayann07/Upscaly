@@ -25,7 +25,7 @@ export function DropZone({
 
   return (
     <div
-      className="relative border rounded-2xl overflow-hidden"
+      className="relative border rounded-2xl overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-modal)]"
       style={{
         width: "min(516px, calc(100% - 48px))",
         border: `1px solid var(--border-subtle)`,
@@ -66,15 +66,13 @@ export function DropZone({
         <div className="flex items-center gap-2 mt-6">
           <button
             onClick={handleAdd}
-            className="h-[38px] px-5 flex items-center gap-[9px] border-none rounded-[9px] bg-[var(--text-primary)] text-[var(--bg-base)] font-['Archivo',sans-serif] text-[12.5px] font-semibold cursor-pointer transition-transform duration-200 hover:-translate-y-0.5"
-            style={{ transition: "transform .18s var(--ease-pop)" }}
+            className="h-[38px] px-5 flex items-center gap-[9px] border-none rounded-[9px] bg-[var(--text-primary)] text-[var(--bg-base)] font-['Archivo',sans-serif] text-[12.5px] font-semibold cursor-pointer transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_4px_16px_rgba(255,255,255,0.25)]"
           >
             Choose files
           </button>
           <button
             onClick={handleBatch}
-            className="h-[38px] px-4 border border-[var(--border-subtle)] rounded-[9px] bg-transparent text-[var(--text-secondary)] font-['Archivo',sans-serif] text-[12.5px] font-semibold cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:text-[var(--text-primary)] hover:bg-[#161514]"
-            style={{ transition: "all .18s var(--ease-pop)" }}
+            className="h-[38px] px-4 border border-[var(--border-subtle)] rounded-[9px] bg-transparent text-[var(--text-secondary)] font-['Archivo',sans-serif] text-[12.5px] font-semibold cursor-pointer transition-all duration-200 hover:scale-[1.04] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)] hover:bg-[#161514] hover:shadow-[var(--shadow-pill-hover)]"
           >
             Folder
           </button>

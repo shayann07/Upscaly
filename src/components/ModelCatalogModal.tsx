@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { SUPPORTED_MODELS, ModelInfo } from "../lib/types";
 
 export interface ModelItem {
@@ -40,71 +39,55 @@ export function ModelCatalogModal({
   const activeDlPct = downloadProgress;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
-      onClick={onClose}
-      className="absolute inset-0 bg-[var(--bg-overlay)] flex items-center justify-center z-[100] p-10"
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.955 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.955 }}
-        transition={{ duration: 0.28, ease: [0.22, 1.3, 0.36, 1] }}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-[620px] max-h-[80vh] flex flex-col border border-[var(--border-subtle)] rounded-2xl overflow-hidden bg-[var(--bg-surface)] shadow-[var(--shadow-modal)]"
-      >
-        {/* Header */}
-        <div className="flex-none h-[52px] flex items-center justify-between px-[18px] border-b border-[var(--border-default)]">
-          <div className="flex items-baseline gap-2.5">
-            <span className="text-[13.5px] font-semibold">Model catalog</span>
-            <span className="font-['Martian_Mono',monospace] text-[9.5px] text-[var(--text-dim)] tracking-[0.06em]">
-              {activeInstalled.length} OF {SUPPORTED_MODELS.length} INSTALLED
-            </span>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-6 h-6 border-none rounded-[7px] bg-transparent text-[var(--text-muted)] text-[15px] cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-          >
-            ×
-          </button>
+    <div className="w-full h-full flex flex-col border border-[#34312D] rounded-[14px] bg-[rgba(13,12,11,.97)] shadow-[0_20px_50px_rgba(0,0,0,.6)] overflow-hidden">
+      {/* Header */}
+      <div className="flex-none h-[38px] flex items-center justify-between px-3 border-b border-[#232120]">
+        <div className="flex items-baseline gap-2">
+          <span className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.1em] text-[#6B655E]">MODEL CATALOG</span>
+          <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.06em]">
+            ({activeInstalled.length}/{SUPPORTED_MODELS.length})
+          </span>
         </div>
+        <button
+          onClick={onClose}
+          className="w-5 h-5 flex items-center justify-center border-none rounded-md bg-transparent text-[#6B655E] text-sm cursor-pointer transition-all duration-150 hover:bg-[#1C1B19] hover:text-[#F2F0ED]"
+        >
+          ×
+        </button>
+      </div>
 
-        {/* Model list */}
-        <div className="flex-1 overflow-y-auto min-h-0 p-2">
-          {SUPPORTED_MODELS.map((m: ModelInfo) => {
-            const isInstalled = activeInstalled.includes(m.id);
-            const isDl = activeDownloading === m.id;
-            return (
-              <div
-                key={m.id}
-                className="flex items-center gap-3.5 p-3 rounded-[11px] transition-colors duration-150 hover:bg-[var(--bg-elevated)]"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-[3px]">
-                    <span className="text-[12.5px] font-semibold text-[var(--text-primary)]">{m.name}</span>
-                    <span className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.05em] px-1.5 py-[3px] rounded-[6px] border border-[var(--border-default)] text-[var(--text-dim)]">
-                      {m.cat.toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="text-[11.5px] text-[var(--text-muted)] mb-[3px]">{m.note}</div>
-                  <div className="font-['Martian_Mono',monospace] text-[9px] text-[#4A453F] tracking-[0.04em]">
-                    {m.id.toUpperCase()} · {m.size} · {m.scale}× NATIVE
-                  </div>
+      {/* Model list */}
+      <div className="flex-1 overflow-y-auto min-h-0 p-2 space-y-1.5">
+        {SUPPORTED_MODELS.map((m: ModelInfo) => {
+          const isInstalled = activeInstalled.includes(m.id);
+          const isDl = activeDownloading === m.id;
+          return (
+            <div
+              key={m.id}
+              className="p-2.5 rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] transition-all duration-200 hover:scale-[1.02] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
+            >
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-[12px] font-semibold text-[var(--text-primary)] truncate">{m.name}</span>
+                <span className="font-['Martian_Mono',monospace] text-[8.5px] tracking-[0.05em] px-1.5 py-0.5 rounded border border-[var(--border-default)] text-[var(--text-dim)]">
+                  {m.cat.toUpperCase()}
+                </span>
+              </div>
+              <div className="text-[11px] text-[var(--text-muted)] mb-1.5 line-clamp-2">{m.note}</div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-['Martian_Mono',monospace] text-[8.5px] text-[#5A554F] tracking-[0.04em] truncate">
+                  {m.size} · {m.scale}×
                 </div>
 
-                <div className="flex-none">
+                <div>
                   {isInstalled && !isDl && (
-                    <span className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] text-[var(--success)] px-2.5 py-1.5 border border-[var(--success-border)] rounded-[7px] bg-[var(--success-bg)]">
+                    <span className="font-['Martian_Mono',monospace] text-[8.5px] tracking-[0.06em] text-[var(--success)] px-2 py-0.5 border border-[var(--success-border)] rounded bg-[var(--success-bg)]">
                       INSTALLED
                     </span>
                   )}
                   {isDl && (
-                    <div className="w-[100px]">
-                      <div className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.04em] mb-[5px]" style={{ color: accentColor }}>
-                        FETCHING {Math.round(activeDlPct)}%
+                    <div className="w-[80px]">
+                      <div className="font-['Martian_Mono',monospace] text-[8.5px] tracking-[0.04em] mb-1" style={{ color: accentColor }}>
+                        {Math.round(activeDlPct)}%
                       </div>
                       <div className="h-[3px] rounded-sm bg-[#1B1917] overflow-hidden">
                         <div className="h-full" style={{ width: `${activeDlPct}%`, background: accentColor }} />
@@ -114,18 +97,18 @@ export function ModelCatalogModal({
                   {!isInstalled && !isDl && (
                     <button
                       onClick={() => onDownloadModel(m.id)}
-                      className="h-7 px-3 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-elevated)] text-[#EDEAE6] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)]"
+                      className="h-6 px-2.5 border border-[var(--border-subtle)] rounded-md bg-[var(--bg-base)] text-[#EDEAE6] font-['Archivo',sans-serif] text-[10.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)]"
                     >
                       Download
                     </button>
                   )}
                 </div>
               </div>
-            );
-          })}
-        </div>
-      </motion.div>
-    </motion.div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

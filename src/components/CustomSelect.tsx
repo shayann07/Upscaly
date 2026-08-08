@@ -58,7 +58,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#181820] hover:bg-[#22222B] border border-[#272730] hover:border-zinc-700 text-xs font-medium text-white transition-colors cursor-pointer group"
+          className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#181820] hover:bg-[#22222B] border border-[#272730] hover:border-[var(--border-hover)] text-xs font-medium text-white transition-all duration-200 hover:scale-[1.02] hover:shadow-[var(--shadow-pill-hover)] cursor-pointer group"
         >
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {icon && <span className="text-zinc-400 group-hover:text-zinc-300 transition-colors">{icon}</span>}

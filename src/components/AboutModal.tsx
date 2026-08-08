@@ -1,5 +1,3 @@
-import { motion } from "framer-motion";
-
 interface AboutModalProps {
   onClose: () => void;
   isOpen?: boolean;
@@ -19,56 +17,38 @@ export function AboutModal({ onClose, isOpen = true }: AboutModalProps) {
   if (isOpen === false) return null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
-      onClick={onClose}
-      className="absolute inset-0 bg-[var(--bg-overlay)] flex items-center justify-center z-[100] p-10"
-    >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.955 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.955 }}
-        transition={{ duration: 0.28, ease: [0.22, 1.3, 0.36, 1] }}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-[480px] border border-[var(--border-subtle)] rounded-2xl overflow-hidden bg-[var(--bg-surface)] shadow-[var(--shadow-modal)]"
-      >
-        {/* Header */}
-        <div className="px-5 pt-[18px] pb-4 border-b border-[var(--border-default)]">
-          <div className="flex items-start justify-between gap-3.5 mb-2">
-            <span className="font-['Martian_Mono',monospace] text-[9.5px] text-[var(--text-dim)] tracking-[0.09em]">
-              REAL-ESRGAN NCNN · VULKAN
-            </span>
-            <button
-              onClick={onClose}
-              className="w-6 h-6 flex-none flex items-center justify-center border-none rounded-[7px] bg-transparent text-[var(--text-muted)] text-[15px] leading-none cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-            >
-              ×
-            </button>
-          </div>
-          <div className="text-[12.5px] text-[var(--text-tertiary)] leading-[1.6]">
-            Local image and video upscaling on Vulkan. No account, no network calls, no telemetry — media never leaves the machine.
-          </div>
+    <div className="w-full h-full flex flex-col border border-[#34312D] rounded-[14px] bg-[rgba(13,12,11,.97)] shadow-[0_20px_50px_rgba(0,0,0,.6)] overflow-hidden">
+      {/* Header */}
+      <div className="flex-none h-[38px] flex items-center justify-between px-3 border-b border-[#232120]">
+        <span className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.1em] text-[#6B655E]">SHORTCUTS & INFO</span>
+        <button
+          onClick={onClose}
+          className="w-5 h-5 flex items-center justify-center border-none rounded-md bg-transparent text-[#6B655E] text-sm cursor-pointer transition-all duration-150 hover:bg-[#1C1B19] hover:text-[#F2F0ED]"
+        >
+          ×
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto min-h-0 p-3">
+        <div className="text-[11.5px] text-[var(--text-tertiary)] leading-[1.6] mb-3 pb-3 border-b border-[#232120]">
+          Local image and video upscaling on Vulkan. No account, no network calls, no telemetry — media never leaves the machine.
         </div>
 
-        {/* Shortcuts */}
-        <div className="px-5 pt-4 pb-5">
-          <div className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.1em] text-[var(--text-dim)] mb-[9px]">
-            SHORTCUTS
-          </div>
+        <div className="font-['Martian_Mono',monospace] text-[8.5px] tracking-[0.1em] text-[#6B655E] mb-2">
+          SHORTCUTS
+        </div>
+        <div className="space-y-1">
           {HOTKEYS.map((k) => (
-            <div key={k.key} className="flex items-center gap-3.5 py-2 border-t border-[var(--border-default)]">
-              <span className="w-24 flex-none font-['Martian_Mono',monospace] text-[10px] text-[#EDEAE6] tracking-[0.02em]">
+            <div key={k.key} className="flex items-center gap-2 py-1.5 px-2 rounded-lg border border-transparent transition-all duration-200 hover:scale-[1.02] hover:bg-[#1C1B19] hover:border-[var(--border-hover)]">
+              <span className="w-16 flex-none font-['Martian_Mono',monospace] text-[9.5px] text-[#EDEAE6] tracking-[0.02em]">
                 {k.key}
               </span>
-              <span className="flex-1 text-xs text-[var(--text-tertiary)]">{k.desc}</span>
+              <span className="flex-1 text-[11px] text-[var(--text-tertiary)]">{k.desc}</span>
             </div>
           ))}
         </div>
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   );
 }
 

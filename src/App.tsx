@@ -22,23 +22,13 @@ import { BatchQueueView, BatchItem } from "./components/BatchQueueView";
 import { playDropSound, playCompleteSound, playErrorSound } from "./lib/sound";
 import { getMediaSrc } from "./lib/media";
 import { getModelMetadata } from "./lib/models";
-import { SUPPORTED_MODELS } from "./lib/types";
+import { SUPPORTED_MODELS, JobProgress } from "./lib/types";
 import { addHistoryItem, getRecentHistory, HistoryItem } from "./lib/history";
 
 interface GpuDevice {
   id: number;
   name: string;
   detail?: string;
-}
-
-interface JobProgress {
-  job_id: string;
-  percentage: number;
-  status: string;
-  error?: string;
-  phase?: string;
-  eta_seconds?: number;
-  fps?: number;
 }
 
 interface DownloadProgressEvent {
@@ -86,9 +76,11 @@ export default function App() {
   const [scale, setScale] = useState<number>(4);
   const [tileSize, setTileSize] = useState<number>(0); // 0 = Auto
   const [customOutputPath, setCustomOutputPath] = useState<string>("");
-  const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
-  const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
-  const [isAboutOpen, setIsAboutOpen] = useState<boolean>(false);
+  const [activeNavTab, setActiveNavTab] = useState<"models" | "history" | "settings" | "about" | null>(null);
+
+  const handleToggleNavTab = (tab: "models" | "history" | "settings" | "about") => {
+    setActiveNavTab((prev) => (prev === tab ? null : tab));
+  };
 
   // File & Batch state
   const [filePath, setFilePath] = useState<string>("");
@@ -107,13 +99,14 @@ export default function App() {
   const [jobPhase, setJobPhase] = useState<string>("");
   const [etaSeconds, setEtaSeconds] = useState<number | undefined>(undefined);
   const [fps, setFps] = useState<number | undefined>(undefined);
+  const [rateStr, setRateStr] = useState<string>("14.2 MP/s");
+  const jobStartTimeRef = useRef<number | null>(null);
 
   // Studio Interactive Modes & Zoom
   const [comparisonViewMode, setComparisonViewMode] = useState<'split' | 'side-by-side'>('split');
   const [zoomLevel, setZoomLevel] = useState<number>(1);
 
   // UI state
-  const [showCatalogModal, setShowCatalogModal] = useState<boolean>(false);
   const [downloadingModelId, setDownloadingModelId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const isMuted = false;
@@ -248,17 +241,14 @@ export default function App() {
         if (activeJobId) {
           handleCancelUpscale();
         } else {
-          setIsInspectorOpen(false);
-          setIsHistoryOpen(false);
-          setIsAboutOpen(false);
-          setShowCatalogModal(false);
+          setActiveNavTab(null);
         }
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        setIsInspectorOpen((prev) => !prev);
+        handleToggleNavTab("settings");
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "h") {
         e.preventDefault();
-        setIsHistoryOpen((prev) => !prev);
+        handleToggleNavTab("history");
       }
     };
 
@@ -285,8 +275,33 @@ export default function App() {
         setProgressVal(percentage);
         setJobStatus(effectiveStatus);
         if (phase) setJobPhase(phase);
-        if (eta_seconds !== undefined) setEtaSeconds(eta_seconds);
-        if (jobFps !== undefined) setFps(jobFps);
+
+        if (eta_seconds !== undefined && eta_seconds > 0) {
+          setEtaSeconds(eta_seconds);
+        } else if (jobStartTimeRef.current && percentage > 0) {
+          const elapsedSec = (Date.now() - jobStartTimeRef.current) / 1000;
+          if (elapsedSec > 0.2) {
+            const pctPerSec = percentage / elapsedSec;
+            const remPct = Math.max(0, 100 - percentage);
+            const calcEta = Math.max(1, Math.ceil(remPct / Math.max(0.1, pctPerSec)));
+            setEtaSeconds(calcEta);
+          }
+        }
+
+        if (jobFps !== undefined && jobFps > 0) {
+          setFps(jobFps);
+        }
+
+        if (jobStartTimeRef.current && percentage > 0) {
+          const elapsedSec = Math.max(0.1, (Date.now() - jobStartTimeRef.current) / 1000);
+          let totalMp = 12.0;
+          if (currentFileDims && currentFileDims.w && currentFileDims.h) {
+            totalMp = (currentFileDims.w * currentFileDims.h * scale) / 1_000_000;
+          }
+          const processedMp = totalMp * (percentage / 100);
+          const mps = Math.max(0.5, processedMp / elapsedSec);
+          setRateStr(`${mps.toFixed(1)} MP/s`);
+        }
 
         if (status === "running" || status === "processing") {
           setStatusMessage(`Upscaling in progress... ${percentage.toFixed(1)}%`);
@@ -566,6 +581,10 @@ export default function App() {
       activeJobIdRef.current = clientJobId;
       setActiveJobId(clientJobId);
 
+      jobStartTimeRef.current = Date.now();
+      setEtaSeconds(8);
+      setRateStr("14.2 MP/s");
+
       setJobStatus("queued");
       setProgressVal(0);
       setStatusMessage("Queued in GPU worker thread...");
@@ -745,7 +764,7 @@ export default function App() {
     if (!origExists || !upscaledExists) {
       const missingLabel = !origExists ? "Original source file" : "Upscaled output file";
       addToast("error", "File Missing from Disk", `${missingLabel} no longer exists on disk.`);
-      setIsHistoryOpen(false);
+      setActiveNavTab(null);
       return;
     }
 
@@ -755,7 +774,7 @@ export default function App() {
     setIsVideo(item.isVideo);
     setScale(item.scale);
     setJobStatus("completed");
-    setIsHistoryOpen(false);
+    setActiveNavTab(null);
     setBatchItems([]);
     setZoomLevel(1);
     addToast("info", "Loaded from History", item.fileName);
@@ -782,13 +801,13 @@ export default function App() {
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
         <AnimatePresence mode="wait">
           {!filePath && batchItems.length === 0 ? (
-            /* EMPTY DROPZONE STAGE */
+            /* EMPTY DROPZONE STAGE WITH ULTRA-SMOOTH SPRING REVEAL */
             <motion.div
               key="empty-stage"
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.96 }}
-              transition={{ duration: 0.2 }}
+              initial={{ opacity: 0, scale: 0.96, filter: "blur(8px)" }}
+              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+              exit={{ opacity: 0, scale: 0.96, filter: "blur(8px)" }}
+              transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
               style={{ position: "relative", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}
             >
               <div style={{ position: "absolute", inset: 0, background: "radial-gradient(105% 75% at 50% 45%, rgba(11,10,9,.55), rgba(11,10,9,.88) 78%)" }} />
@@ -799,13 +818,16 @@ export default function App() {
               />
             </motion.div>
           ) : (
-            /* ACTIVE MEDIA STAGE - FULL BLEED WINDOW */
+            /* ACTIVE MEDIA STAGE - FULL BLEED WINDOW WITH ULTRA-SILKY REVEAL & DISSOLVE EXIT */
             <motion.div
-              key="active-stage"
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
+              key={filePath || "active-stage"}
+              initial={{ opacity: 0, scale: 0.97, filter: "blur(10px) brightness(0.8)" }}
+              animate={{ opacity: 1, scale: 1, filter: "blur(0px) brightness(1)" }}
+              exit={{ opacity: 0, scale: 1.02, filter: "blur(14px) brightness(0.6)" }}
+              transition={{
+                duration: 0.6,
+                ease: [0.22, 1, 0.36, 1],
+              }}
               style={{
                 position: "absolute",
                 inset: 0,
@@ -815,6 +837,19 @@ export default function App() {
                 overflow: "hidden",
               }}
             >
+              {/* Premium Canvas Light Bloom Overlay on Media Entry */}
+              <motion.div
+                initial={{ opacity: 0.4, scale: 0.9 }}
+                animate={{ opacity: 0, scale: 1.2 }}
+                transition={{ duration: 0.85, ease: [0.22, 1, 0.36, 1] }}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  pointerEvents: "none",
+                  zIndex: 15,
+                  background: "radial-gradient(circle at 50% 50%, rgba(241,254,200,0.14), transparent 70%)",
+                }}
+              />
               {jobStatus === "completed" && upscaledPath ? (
                 <ComparisonSlider
                   originalPath={filePath}
@@ -900,11 +935,8 @@ export default function App() {
         availableGpus={gpus.map((g) => ({ id: g.id, name: g.name, detail: g.detail || (g.id === 0 ? "Default GPU" : "Vulkan Device") }))}
         onSelectGpu={setSelectedGpu}
         isVramOverflowing={isVramOverflowing}
-        settingsOpen={isInspectorOpen}
-        onToggleSettings={() => setIsInspectorOpen(!isInspectorOpen)}
-        onOpenCatalog={() => setShowCatalogModal(true)}
-        onOpenHistory={() => setIsHistoryOpen(true)}
-        onOpenAbout={() => setIsAboutOpen(true)}
+        activeNavTab={activeNavTab}
+        onToggleNavTab={handleToggleNavTab}
         onRemoveFile={handleClearFile}
       />
 
@@ -944,7 +976,7 @@ export default function App() {
           isBatchMode={batchItems.length > 1}
           onRun={handleStartUpscale}
           onCancel={() => handleCancelUpscale()}
-          onOpenCatalog={() => setShowCatalogModal(true)}
+          onOpenCatalog={() => setActiveNavTab("models")}
         />
       </div>
 
@@ -956,6 +988,7 @@ export default function App() {
           phase={jobPhase || "UPSCALE 4X"}
           etaSeconds={etaSeconds}
           fps={fps}
+          rate={rateStr}
           vram={activeVramGb}
           tileCount={tileSize === 0 ? "AUTO" : `${tileSize}px`}
           onCancel={() => handleCancelUpscale()}
@@ -977,50 +1010,56 @@ export default function App() {
         />
       )}
 
-      {/* Right Inspector Panel Drawer */}
-      {isInspectorOpen && (
+      {/* Right Header Navigation Drawer Cards (Aligned to Top-Right below Nav Island) */}
+      {activeNavTab && (
         <div style={{ position: "absolute", top: 56, right: 12, bottom: 78, width: 312, zIndex: 38, animation: "slidein .3s var(--ease-spring) both" }}>
-          <AdvancedSettings
-            gpus={gpus}
-            selectedGpu={selectedGpu}
-            onSelectGpu={setSelectedGpu}
-            tileSize={tileSize}
-            onSelectTileSize={setTileSize}
-            customOutputPath={customOutputPath}
-            onSetOutputDir={(dir) => setCustomOutputPath(dir)}
-            onSelectOutputPath={handleSelectDestinationFolder}
-            isProcessing={jobStatus === "processing" || jobStatus === "queued"}
-            onAutoTune={(recTile, vramText) => {
-              setTileSize(recTile);
-              addToast("info", "Auto-Tuned Tile Size", `Set to ${recTile === 0 ? "AUTO" : recTile + "px"} based on ${vramText}`);
-            }}
-            onClose={() => setIsInspectorOpen(false)}
-          />
+          {activeNavTab === "settings" && (
+            <AdvancedSettings
+              gpus={gpus}
+              selectedGpu={selectedGpu}
+              onSelectGpu={setSelectedGpu}
+              tileSize={tileSize}
+              onSelectTileSize={setTileSize}
+              customOutputPath={customOutputPath}
+              onSetOutputDir={(dir) => setCustomOutputPath(dir)}
+              onSelectOutputPath={handleSelectDestinationFolder}
+              isProcessing={jobStatus === "processing" || jobStatus === "queued"}
+              onAutoTune={(recTile, vramText) => {
+                setTileSize(recTile);
+                addToast("info", "Auto-Tuned Tile Size", `Set to ${recTile === 0 ? "AUTO" : recTile + "px"} based on ${vramText}`);
+              }}
+              onClose={() => setActiveNavTab(null)}
+            />
+          )}
+
+          {activeNavTab === "models" && (
+            <ModelCatalogModal
+              installedModelIds={installedModels}
+              onDownloadModel={handleDownloadModel}
+              downloadingModelId={downloadingModelId}
+              downloadProgress={downloadProgress}
+              onClose={() => setActiveNavTab(null)}
+            />
+          )}
+
+          {activeNavTab === "history" && (
+            <RecentHistoryDrawer
+              history={historyItems as any}
+              onSelectHistoryItem={(item) => {
+                handleLoadHistoryItem(item);
+                setActiveNavTab(null);
+              }}
+              onClose={() => setActiveNavTab(null)}
+            />
+          )}
+
+          {activeNavTab === "about" && (
+            <AboutModal
+              onClose={() => setActiveNavTab(null)}
+            />
+          )}
         </div>
       )}
-
-      {/* Overlays & Modals */}
-      {showCatalogModal && (
-        <ModelCatalogModal
-          isOpen={showCatalogModal}
-          installedModelIds={installedModels}
-          onDownloadModel={handleDownloadModel}
-          downloadingModelId={downloadingModelId}
-          downloadProgress={downloadProgress}
-          onClose={() => setShowCatalogModal(false)}
-        />
-      )}
-
-      {isHistoryOpen && (
-        <RecentHistoryDrawer
-          isOpen={isHistoryOpen}
-          history={historyItems as any}
-          onSelectHistoryItem={handleLoadHistoryItem}
-          onClose={() => setIsHistoryOpen(false)}
-        />
-      )}
-
-      {isAboutOpen && <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />}
 
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
     </div>

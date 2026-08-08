@@ -81,7 +81,7 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
     let models_dir = get_models_dir(app);
 
     let mut cmd = Command::new(sidecar_path);
-    cmd.args(&[
+    cmd.args([
         "-i", frames_in_dir.to_str().unwrap(),
         "-o", frames_out_dir.to_str().unwrap(),
         "-n", &job.model_name,
@@ -91,7 +91,6 @@ pub fn run_video_job(app: &AppHandle, job: &Job) -> Result<(), String> {
         "-t", &job.tile_size.to_string(),
         "-f", "png",
         "-j", "4:4:4", // Maximize worker thread concurrency (load:proc:save)
-        "-x",          // FP16 Precision mode for 2x faster GPU Tensor/Vulkan execution
         "-v"
     ]);
 

@@ -165,7 +165,7 @@ export function BatchQueueView({
               onDragEnter={() => handleDragEnter(idx)}
               onDragOver={(e) => e.preventDefault()}
               onDragEnd={() => setDragFrom(null)}
-              className="relative flex items-center cursor-pointer group"
+              className="relative flex items-center cursor-pointer group transition-all duration-200 hover:scale-[1.02] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
               style={{
                 gap: open ? 11 : 0,
                 justifyContent: open ? "flex-start" : "center",
@@ -179,7 +179,6 @@ export function BatchQueueView({
                 opacity: open || active ? 1 : 0.66,
                 transform: open ? "none" : `translateX(${active ? 5 : 0}px) scale(${active ? 1 : 0.9})`,
                 transformOrigin: "center left",
-                transition: `all .24s ${EASE}`,
               }}
             >
               {/* Real Thumbnail */}
@@ -222,7 +221,7 @@ export function BatchQueueView({
                     e.stopPropagation();
                     onRemoveItem(f.id);
                   }}
-                  className="w-4 h-4 hidden group-hover:flex items-center justify-center rounded text-[var(--danger-text)] text-xs"
+                  className="w-4 h-4 hidden group-hover:flex items-center justify-center rounded text-[var(--danger-text)] text-xs transition-all duration-150 hover:scale-110"
                 >
                   ×
                 </button>
@@ -238,7 +237,7 @@ export function BatchQueueView({
 
               {/* Cancel item button if processing */}
               {onCancelItem && st === "processing" && (
-                <button onClick={() => onCancelItem(f.id)} className="text-[9px] text-[var(--danger-text)] ml-1">
+                <button onClick={() => onCancelItem(f.id)} className="text-[9px] text-[var(--danger-text)] ml-1 transition-all duration-150 hover:scale-110">
                   ✕
                 </button>
               )}
@@ -267,14 +266,14 @@ export function BatchQueueView({
       >
         <button
           onClick={handleAdd}
-          className="flex-1 h-8 flex items-center justify-center gap-[7px] border border-[var(--border-default)] rounded-[9px] bg-[var(--bg-elevated)] text-[var(--text-tertiary)] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-200 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] hover:border-[var(--border-subtle)]"
+          className="flex-1 h-8 flex items-center justify-center gap-[7px] border border-[var(--border-default)] rounded-[9px] bg-[var(--bg-elevated)] text-[var(--text-tertiary)] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-200 hover:scale-[1.04] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
         >
           <span className="text-sm leading-none">+</span>
           <span>Add files</span>
         </button>
         <button
           onClick={handleClearAll}
-          className="w-10 h-8 flex items-center justify-center border border-[var(--border-default)] rounded-[9px] bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-['Martian_Mono',monospace] text-[9px] cursor-pointer transition-all duration-200 hover:bg-[var(--danger-hover)] hover:text-[var(--danger-text)] hover:border-[var(--border-danger)]"
+          className="w-10 h-8 flex items-center justify-center border border-[var(--border-default)] rounded-[9px] bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-['Martian_Mono',monospace] text-[9px] cursor-pointer transition-all duration-200 hover:scale-[1.04] hover:bg-[var(--danger-hover)] hover:text-[var(--danger-text)] hover:border-[var(--border-danger)] hover:shadow-[0_0_12px_rgba(232,138,128,0.25)]"
         >
           CLR
         </button>
@@ -298,7 +297,7 @@ export function BatchQueueView({
         <div className="flex-none" style={{ padding: "4px 0 0" }}>
           <button
             onClick={handleAdd}
-            className="w-[46px] h-[30px] mx-auto flex items-center justify-center border border-dashed border-[#332E29] rounded-[11px] bg-[rgba(13,12,11,.8)] text-[var(--text-tertiary)] text-sm cursor-pointer transition-all duration-200 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] hover:border-[var(--border-subtle)]"
+            className="w-[46px] h-[30px] mx-auto flex items-center justify-center border border-dashed border-[#332E29] rounded-[11px] bg-[rgba(13,12,11,.8)] text-[var(--text-tertiary)] text-sm cursor-pointer transition-all duration-200 hover:scale-[1.05] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
           >
             +
           </button>

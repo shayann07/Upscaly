@@ -12,6 +12,8 @@ interface TitlebarProps {
   availableGpus?: GpuInfo[];
   onSelectGpu?: (gpuId: number) => void;
   isVramOverflowing?: boolean;
+  activeNavTab?: "models" | "history" | "settings" | "about" | null;
+  onToggleNavTab?: (tab: "models" | "history" | "settings" | "about") => void;
   settingsOpen?: boolean;
   onToggleSettings?: () => void;
   onOpenCatalog?: () => void;
@@ -37,6 +39,8 @@ export function Titlebar({
   availableGpus = [],
   onSelectGpu = () => {},
   isVramOverflowing = false,
+  activeNavTab,
+  onToggleNavTab,
   settingsOpen = false,
   onToggleSettings = () => {},
   onOpenCatalog = () => {},
@@ -57,7 +61,7 @@ export function Titlebar({
   const handleToggleInspector = onToggleSettings || onToggleInspector || onShowSettings || (() => {});
   const handleHistory = onOpenHistory || onShowHistory || (() => {});
   const handleAbout = onOpenAbout || onShowAbout || (() => {});
-  const inspectorActive = settingsOpen || isInspectorOpen || false;
+  const inspectorActive = activeNavTab === "settings" || settingsOpen || isInspectorOpen || false;
 
   const currentGpu = availableGpus.find((g) => g.id === selectedGpu);
   const gpuLabel = currentGpu ? currentGpu.name : "GPU Acceleration";
@@ -119,10 +123,7 @@ export function Titlebar({
       {/* File Chip (shown when file is loaded) */}
       {hasFiles && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-auto">
-          <div
-            className="flex items-center gap-[11px] h-[34px] pl-3 pr-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] hover:scale-[1.05] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
-            style={{ transition: "transform .24s var(--ease-spring), border-color .24s ease, box-shadow .24s ease" }}
-          >
+          <div className="flex items-center gap-[11px] h-[34px] pl-3 pr-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]">
             <span className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis min-w-0 max-w-[230px]">{fileName}</span>
             <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.05em] whitespace-nowrap">{kindTag}</span>
             {isDone && outDims && (
@@ -146,14 +147,13 @@ export function Titlebar({
       {/* GPU Island (shown when no active single file) */}
       {!hasFiles && (
         <div
-          className={`absolute top-3 left-1/2 -translate-x-1/2 z-[41] border bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] overflow-hidden transition-all duration-200 hover:scale-[1.06] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)] ${
+          className={`absolute top-3 left-1/2 -translate-x-1/2 z-[41] border bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] overflow-hidden transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)] ${
             isVramOverflowing ? "border-[#E88A80] shadow-[0_0_12px_rgba(232,138,128,0.25)]" : "border-[var(--border-subtle)]"
           }`}
           style={{
             width: gpuMenuOpen ? 310 : isVramOverflowing ? 275 : 210,
             borderRadius: gpuMenuOpen ? 14 : 11,
             transformOrigin: "top center",
-            transition: "width .28s var(--ease-spring), transform .24s var(--ease-spring), border-radius .24s ease, border-color .24s ease, box-shadow .24s ease",
           }}
         >
           <button
@@ -208,32 +208,44 @@ export function Titlebar({
       )}
 
       {/* Right Studio Header Nav Island */}
-      <div className="pointer-events-auto flex items-center gap-1.5 h-[34px] px-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)]">
+      <div className="pointer-events-auto flex items-center gap-1.5 h-[34px] px-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]">
         <button
-          onClick={handleCatalog}
-          className="px-2.5 py-1 border-none rounded-lg bg-transparent text-[var(--text-tertiary)] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          onClick={() => (onToggleNavTab ? onToggleNavTab("models") : handleCatalog())}
+          className={`px-2.5 py-1 border-none rounded-lg font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 ${
+            activeNavTab === "models"
+              ? "bg-[var(--bg-active)] text-[var(--text-primary)]"
+              : "bg-transparent text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
         >
           Models
         </button>
         <button
-          onClick={handleHistory}
-          className="px-2.5 py-1 border-none rounded-lg bg-transparent text-[var(--text-tertiary)] font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          onClick={() => (onToggleNavTab ? onToggleNavTab("history") : handleHistory())}
+          className={`px-2.5 py-1 border-none rounded-lg font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 ${
+            activeNavTab === "history"
+              ? "bg-[var(--bg-active)] text-[var(--text-primary)]"
+              : "bg-transparent text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
         >
           History
         </button>
         <button
-          onClick={handleToggleInspector}
-          className="px-2.5 py-1 border-none rounded-lg bg-transparent font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)]"
-          style={{
-            color: inspectorActive ? "var(--text-primary)" : "var(--text-tertiary)",
-            background: inspectorActive ? "var(--bg-active)" : "transparent",
-          }}
+          onClick={() => (onToggleNavTab ? onToggleNavTab("settings") : handleToggleInspector())}
+          className={`px-2.5 py-1 border-none rounded-lg font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 ${
+            activeNavTab === "settings" || inspectorActive
+              ? "bg-[var(--bg-active)] text-[var(--text-primary)]"
+              : "bg-transparent text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
         >
           Settings
         </button>
         <button
-          onClick={handleAbout}
-          className="w-6 h-6 flex items-center justify-center border-none rounded-md bg-transparent text-[var(--text-tertiary)] font-['Martian_Mono',monospace] text-xs font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          onClick={() => (onToggleNavTab ? onToggleNavTab("about") : handleAbout())}
+          className={`w-6 h-6 flex items-center justify-center border-none rounded-md font-['Martian_Mono',monospace] text-xs font-semibold cursor-pointer transition-all duration-150 ${
+            activeNavTab === "about"
+              ? "bg-[var(--bg-active)] text-[var(--text-primary)]"
+              : "bg-transparent text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          }`}
         >
           ?
         </button>
