@@ -365,11 +365,22 @@ pub fn resolve_effective_scale(
     requested_scale: i32,
     models_dir: Option<&Path>,
 ) -> i32 {
+    let name_lower = model_name.to_lowercase();
+    if name_lower.contains("x4") || name_lower.contains("4x") || name_lower.contains("ultra") {
+        return 4;
+    }
+    if name_lower.contains("x3") || name_lower.contains("3x") {
+        return 3;
+    }
+    if name_lower.contains("x2") || name_lower.contains("2x") {
+        return 2;
+    }
+
     if let Some(dir) = models_dir {
         let param_path = dir.join(format!("{model_name}.param"));
         if param_path.exists() {
             if let Ok(meta) = crate::engine::model_store::parse_ncnn_param_cached(&param_path) {
-                if meta.scale > 0 {
+                if (2..=4).contains(&meta.scale) {
                     #[allow(clippy::cast_possible_wrap)]
                     return meta.scale as i32;
                 }
@@ -377,15 +388,10 @@ pub fn resolve_effective_scale(
         }
     }
 
-    let name_lower = model_name.to_lowercase();
-    if name_lower.contains("x4") || name_lower.contains("4x") || name_lower.contains("ultra") {
-        4
-    } else if name_lower.contains("x3") || name_lower.contains("3x") {
-        3
-    } else if name_lower.contains("x2") || name_lower.contains("2x") {
-        2
-    } else {
+    if (2..=4).contains(&requested_scale) {
         requested_scale
+    } else {
+        4
     }
 }
 
@@ -568,5 +574,7 @@ mod tests {
         assert_eq!(resolve_effective_scale("realesr-animevideov3-x4", 2, None), 4);
         assert_eq!(resolve_effective_scale("custom-model-4x", 2, None), 4);
         assert_eq!(resolve_effective_scale("unknown-model", 3, None), 3);
+        assert_eq!(resolve_effective_scale("unknown-model", 99, None), 4);
+        assert_eq!(resolve_effective_scale("unknown-model", -1, None), 4);
     }
 }
