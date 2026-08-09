@@ -85,7 +85,8 @@ export function useMediaSelection(
         ...prev,
         {
           id: `folder-${Date.now()}`,
-          name: selected.split(/[\\/]/).pop() || 'Folder',
+          fileName: selected.split(/[\\/]/).pop() || 'Folder',
+          filePath: selected,
           path: selected,
           status: 'queued',
           progress: 0,

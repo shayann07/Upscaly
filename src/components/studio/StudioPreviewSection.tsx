@@ -32,7 +32,7 @@ export function StudioPreviewSection({
   isProc,
   progressVal,
 }: StudioPreviewSectionProps) {
-  const inputMedia = filePath || (batchItems.length > 0 ? batchItems[0].filePath : undefined);
+  const inputMedia = filePath || (batchItems.length > 0 ? (batchItems[0].filePath || batchItems[0].path) : undefined);
   const isVideo = inputMedia ? /\.(mp4|mkv|mov|avi|webm)$/i.test(inputMedia) : false;
 
   return (
