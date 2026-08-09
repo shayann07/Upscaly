@@ -7,15 +7,13 @@ export function getMediaSrc(path: string | undefined | null): string {
     path.startsWith('blob:') ||
     path.startsWith('data:') ||
     path.startsWith('http://') ||
-    path.startsWith('https://') ||
-    path.startsWith('asset:')
+    path.startsWith('https://')
   ) {
     return path;
   }
 
   try {
-    const normalized = path.replace(/\\/g, '/');
-    return convertFileSrc(normalized);
+    return convertFileSrc(path);
   } catch (err) {
     console.warn('convertFileSrc fallback to path:', err);
     return path;

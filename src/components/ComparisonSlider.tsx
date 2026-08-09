@@ -1,6 +1,6 @@
+import React from 'react';
 import { useComparisonDrag } from '../hooks/useComparisonDrag';
 import { useComparisonMedia } from '../hooks/useComparisonMedia';
-import { ComparisonMediaOverlay } from './comparison/ComparisonMediaOverlay';
 import { ComparisonSideView } from './comparison/ComparisonSideView';
 
 interface ComparisonSliderProps {
@@ -59,6 +59,62 @@ export function ComparisonSlider(props: ComparisonSliderProps) {
     handleHandleMouseDown,
   } = useComparisonDrag({ zoom, onZoomChange, activeMode });
 
+  const mediaContainerStyle: React.CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0px) scale3d(${zoom}, ${zoom}, 1)`,
+    transformOrigin: 'center center',
+    transition: isPanning ? 'none' : 'transform 0.12s cubic-bezier(0.16, 1, 0.3, 1)',
+    willChange: 'transform',
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  const renderMedia = (
+    src: string,
+    isVideo: boolean,
+    ref?: React.RefObject<HTMLVideoElement | null>
+  ) => {
+    if (!src) return null;
+
+    if (isVideo) {
+      return (
+        <div style={mediaContainerStyle}>
+          <video
+            ref={ref}
+            src={src}
+            autoPlay
+            loop
+            muted
+            playsInline
+            onPlay={() => {
+              if (ref === videoInputRef && videoOutputRef.current) {
+                videoOutputRef.current.play().catch(() => {});
+              }
+            }}
+            className="w-full h-full object-contain pointer-events-none"
+            style={{ backfaceVisibility: 'hidden' }}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div style={mediaContainerStyle}>
+        <img
+          src={src}
+          alt=""
+          className="w-full h-full object-contain pointer-events-none select-none"
+          draggable={false}
+          style={{ backfaceVisibility: 'hidden' }}
+        />
+      </div>
+    );
+  };
+
   if (activeMode === 'side') {
     return (
       <ComparisonSideView
@@ -90,16 +146,12 @@ export function ComparisonSlider(props: ComparisonSliderProps) {
         cursor: zoom > 1 ? (isPanning ? 'grabbing' : 'grab') : 'ew-resize',
       }}
     >
+      {/* Output (upscaled) layer — full frame */}
       <div className="absolute inset-0">
-        <ComparisonMediaOverlay
-          src={outputSrc}
-          isVideo={isVideoOutput}
-          videoRef={videoOutputRef}
-          panOffset={panOffset}
-          zoom={zoom}
-          isPanning={isPanning}
-        />
+        {renderMedia(outputSrc, isVideoOutput, videoOutputRef)}
       </div>
+
+      {/* Input (original) layer — clipped */}
       <div
         className="absolute inset-0"
         style={{
@@ -108,15 +160,10 @@ export function ComparisonSlider(props: ComparisonSliderProps) {
           willChange: 'clip-path',
         }}
       >
-        <ComparisonMediaOverlay
-          src={inputSrc}
-          isVideo={isVideoInput}
-          videoRef={videoInputRef}
-          panOffset={panOffset}
-          zoom={zoom}
-          isPanning={isPanning}
-        />
+        {renderMedia(inputSrc, isVideoInput, videoInputRef)}
       </div>
+
+      {/* Interactive Slider Divider Line & Hit Zone */}
       <div
         onMouseDown={handleHandleMouseDown}
         className="absolute top-0 bottom-0 w-3 -ml-[6px] z-[20] cursor-ew-resize flex justify-center items-center pointer-events-auto"
@@ -137,6 +184,8 @@ export function ComparisonSlider(props: ComparisonSliderProps) {
           </span>
         </div>
       </div>
+
+      {/* Labels */}
       <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] text-[var(--text-tertiary)] tracking-[0.06em] z-10 pointer-events-none">
         ORIGINAL{inputDims ? ` · ${inputDims.w}×${inputDims.h}` : ''}
       </div>
