@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useSettings } from './useSettings';
 import { useModelCatalog } from './useModelCatalog';
 import { useMediaSelection } from './useMediaSelection';
