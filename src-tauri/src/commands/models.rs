@@ -106,7 +106,7 @@ pub async fn list_available_models(app_handle: tauri::AppHandle) -> Result<Vec<M
             param_size: 15408,
             bin_url: m.bin_url,
             bin_sha256: "".to_string(),
-            bin_size: 9000000,
+            bin_size: 9_000_000,
         })
         .collect();
     Ok(items)

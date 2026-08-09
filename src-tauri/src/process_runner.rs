@@ -56,7 +56,10 @@ impl ProcessHandle for StdProcessHandle {
     }
 
     fn latest_progress(&self) -> Option<f64> {
-        *self.progress.lock().unwrap()
+        *self
+            .progress
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn get_stderr_log(&self) -> String {
@@ -149,14 +152,23 @@ pub struct MockProcessHandle {
 
 impl ProcessHandle for MockProcessHandle {
     fn try_wait(&mut self) -> Result<Option<i32>, AppError> {
-        let code = *self.exit_code.lock().unwrap();
+        let code = *self
+            .exit_code
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         Ok(code)
     }
 
     fn kill(&mut self) -> Result<(), AppError> {
-        let mut killed = self.was_killed.lock().unwrap();
+        let mut killed = self
+            .was_killed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *killed = true;
-        let mut code = self.exit_code.lock().unwrap();
+        let mut code = self
+            .exit_code
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *code = Some(-1);
         Ok(())
     }

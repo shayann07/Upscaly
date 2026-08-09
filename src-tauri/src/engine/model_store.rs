@@ -193,7 +193,7 @@ impl ModelStore {
     }
 
     async fn download_atomic_file(
-        app: &AppHandle,
+        _app: &AppHandle,
         model_id: &str,
         ext: &str,
         url: &str,

@@ -41,6 +41,7 @@ pub struct SignedManifest {
     pub data: String, // JSON string of ManifestData
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DownloadProgress {
     pub model_id: String,
@@ -53,6 +54,7 @@ pub struct DownloadProgress {
 #[cfg(windows)]
 #[link(name = "kernel32")]
 extern "system" {
+    #[allow(dead_code)]
     fn GetDiskFreeSpaceExW(
         lpDirectoryName: *const u16,
         lpFreeBytesAvailableToCaller: *mut u64,
@@ -62,6 +64,7 @@ extern "system" {
 }
 
 /// Queries free disk space available in bytes.
+#[allow(dead_code)]
 pub fn get_available_disk_space(dir: &Path) -> Result<u64, String> {
     #[cfg(windows)]
     #[allow(unsafe_code)]
@@ -199,6 +202,7 @@ pub fn copy_bundled_models(app: &AppHandle, dest_dir: &Path) {
 }
 
 /// Downloads a single file with resume capability and progress updates.
+#[allow(dead_code)]
 pub async fn download_file(
     app: &AppHandle,
     model_id: &str,
