@@ -3,11 +3,13 @@ import { DropZone } from '../DropZone';
 import { ComparisonSlider } from '../ComparisonSlider';
 import { StudioGridOverlay } from './StudioGridOverlay';
 import { BatchItem } from '../../lib/types';
+import { getMediaSrc } from '../../lib/media';
 
 interface StudioPreviewSectionProps {
   filePath: string | null;
   batchItems: BatchItem[];
   upscaledPath: string | null;
+  jobStatus: string;
   comparisonViewMode: 'split' | 'side-by-side';
   zoomLevel: number;
   setZoomLevel: React.Dispatch<React.SetStateAction<number>>;
@@ -21,6 +23,7 @@ export function StudioPreviewSection({
   filePath,
   batchItems,
   upscaledPath,
+  jobStatus,
   comparisonViewMode,
   zoomLevel,
   setZoomLevel,
@@ -30,6 +33,7 @@ export function StudioPreviewSection({
   progressVal,
 }: StudioPreviewSectionProps) {
   const inputMedia = filePath || (batchItems.length > 0 ? batchItems[0].filePath : undefined);
+  const isVideo = inputMedia ? /\.(mp4|mkv|mov|avi|webm)$/i.test(inputMedia) : false;
 
   return (
     <div
@@ -85,17 +89,75 @@ export function StudioPreviewSection({
               duration: 0.6,
               ease: [0.22, 1, 0.36, 1],
             }}
-            style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+            }}
           >
-            <ComparisonSlider
-              inputPath={inputMedia}
-              outputPath={upscaledPath || undefined}
-              viewMode={comparisonViewMode}
-              zoom={zoomLevel}
-              onZoomChange={setZoomLevel}
+            {/* Premium Canvas Light Bloom Overlay on Media Entry */}
+            <motion.div
+              initial={{ opacity: 0.4, scale: 0.9 }}
+              animate={{ opacity: 0, scale: 1.2 }}
+              transition={{ duration: 0.85, ease: [0.22, 1, 0.36, 1] }}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                pointerEvents: 'none',
+                zIndex: 15,
+                background:
+                  'radial-gradient(circle at 50% 50%, rgba(241,254,200,0.14), transparent 70%)',
+              }}
             />
 
-            {isProc && <StudioGridOverlay progressVal={progressVal} />}
+            {jobStatus === 'completed' && upscaledPath ? (
+              <ComparisonSlider
+                inputPath={inputMedia}
+                outputPath={upscaledPath}
+                viewMode={comparisonViewMode}
+                zoom={zoomLevel}
+                onZoomChange={setZoomLevel}
+              />
+            ) : (
+              <>
+                {inputMedia && isVideo ? (
+                  <video
+                    src={getMediaSrc(inputMedia)}
+                    controls={!isProc}
+                    autoPlay={isProc}
+                    loop
+                    muted
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                      filter: isProc ? 'opacity(0.3) blur(2px)' : 'none',
+                      transition: 'filter .2s ease',
+                    }}
+                  />
+                ) : inputMedia ? (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      backgroundImage: `url(${getMediaSrc(inputMedia)})`,
+                      backgroundSize: 'contain',
+                      backgroundPosition: 'center',
+                      backgroundRepeat: 'no-repeat',
+                      filter: isProc ? 'opacity(0.3) blur(2px)' : 'none',
+                      transition: 'filter .2s ease',
+                    }}
+                  />
+                ) : null}
+
+                {isProc && <StudioGridOverlay progressVal={progressVal} />}
+              </>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

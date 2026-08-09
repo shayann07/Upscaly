@@ -115,6 +115,7 @@ export function StudioCanvas(props: StudioCanvasProps) {
         filePath={filePath}
         batchItems={batchItems}
         upscaledPath={upscaledPath}
+        jobStatus={jobStatus}
         comparisonViewMode={comparisonViewMode}
         zoomLevel={zoomLevel}
         setZoomLevel={setZoomLevel}
