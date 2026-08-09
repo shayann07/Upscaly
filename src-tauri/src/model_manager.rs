@@ -64,6 +64,7 @@ extern "system" {
 /// Queries free disk space available in bytes.
 pub fn get_available_disk_space(dir: &Path) -> Result<u64, String> {
     #[cfg(windows)]
+    #[allow(unsafe_code)]
     {
         use std::os::windows::ffi::OsStrExt;
         let parent_dir = if dir.exists() {

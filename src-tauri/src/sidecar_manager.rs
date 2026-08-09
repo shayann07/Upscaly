@@ -136,6 +136,7 @@ use windows_sys::Win32::System::JobObjects::{
 static GLOBAL_JOB_OBJECT: OnceLock<usize> = OnceLock::new();
 
 #[cfg(target_os = "windows")]
+#[allow(unsafe_code)]
 fn get_or_create_job_object() -> usize {
     *GLOBAL_JOB_OBJECT.get_or_init(|| unsafe {
         let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
@@ -155,6 +156,7 @@ fn get_or_create_job_object() -> usize {
 
 /// Attaches a spawned child process to a Windows Job Object configured to kill child processes on parent exit.
 #[cfg(target_os = "windows")]
+#[allow(unsafe_code)]
 pub fn attach_to_job_object(child: &Child) {
     let job_handle = get_or_create_job_object();
     if job_handle != 0 {
