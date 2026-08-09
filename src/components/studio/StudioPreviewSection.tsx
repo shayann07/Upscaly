@@ -126,16 +126,16 @@ export function StudioPreviewSection({
                 {inputMedia && isVideo ? (
                   <video
                     src={getMediaSrc(inputMedia)}
-                    controls={!isProc}
-                    autoPlay={isProc}
+                    autoPlay
                     loop
                     muted
+                    playsInline
                     style={{
                       position: 'absolute',
                       inset: 0,
                       width: '100%',
                       height: '100%',
-                      objectFit: 'contain',
+                      objectFit: 'cover',
                       filter: isProc ? 'opacity(0.3) blur(2px)' : 'none',
                       transition: 'filter .2s ease',
                     }}
@@ -146,7 +146,7 @@ export function StudioPreviewSection({
                       position: 'absolute',
                       inset: 0,
                       backgroundImage: `url(${getMediaSrc(inputMedia)})`,
-                      backgroundSize: 'contain',
+                      backgroundSize: 'cover',
                       backgroundPosition: 'center',
                       backgroundRepeat: 'no-repeat',
                       filter: isProc ? 'opacity(0.3) blur(2px)' : 'none',
