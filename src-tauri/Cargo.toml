@@ -47,7 +47,7 @@ pedantic = { level = "allow", priority = -1 }
 complexity = { level = "warn", priority = -1 }
 perf = { level = "warn", priority = -1 }
 correctness = { level = "deny", priority = -1 }
-cognitive_complexity = "allow"
+cognitive_complexity = "warn"
 too_many_arguments = "allow"
 unwrap_used = "allow"
 manual_range_contains = "allow"
