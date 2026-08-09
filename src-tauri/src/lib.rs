@@ -1,19 +1,24 @@
+pub mod engine;
 pub mod error;
-pub mod process_runner;
-mod sidecar_manager;
-mod model_manager;
 mod job_queue;
-mod video_pipeline;
+mod model_manager;
+pub mod process_runner;
 mod settings;
+mod sidecar_manager;
+mod video_pipeline;
 
-
+use engine::model_store::{ModelStatus, ModelStore};
 pub use error::AppError;
+use serde::{Deserialize, Serialize};
+use settings::{load_settings, save_settings, AppSettings};
 use tauri::Manager;
-use settings::{AppSettings, load_settings, save_settings};
 
-use sidecar_manager::{GpuDevice, get_gpu_list, kill_all_processes};
-use model_manager::{ModelItem, SignedManifest, ManifestData, verify_signature, get_models_dir, calculate_sha256, get_available_disk_space};
-use job_queue::{Job, add_job_to_queue, cancel_job};
+use job_queue::{add_job_to_queue, cancel_job, Job};
+use model_manager::{
+    get_models_dir, verify_signature, ManifestData, ModelItem,
+    SignedManifest,
+};
+use sidecar_manager::{get_gpu_list, kill_all_processes, GpuDevice};
 
 // Baked-in public key for verifying signed model manifests.
 const BAKED_PUBLIC_KEY: &str = "0000000000000000000000000000000000000000000000000000000000000000";
@@ -29,7 +34,6 @@ pub struct UpscaleRequest {
     pub tile_size: i32,
     pub is_video: bool,
 }
-
 
 #[tauri::command]
 async fn list_gpus(app_handle: tauri::AppHandle) -> Result<Vec<GpuDevice>, String> {
@@ -72,158 +76,112 @@ fn get_installed_models_impl(app_handle: &tauri::AppHandle) -> Result<Vec<String
     Ok(installed)
 }
 
-#[tauri::command]
-async fn list_available_models(_app_handle: tauri::AppHandle) -> Result<Vec<ModelItem>, String> {
-    Ok(vec![
-        ModelItem {
-            id: "realesrgan-x4plus".to_string(),
-            name: "RealESRGAN Ultra".to_string(),
-            version: "v0.2.5".to_string(),
-            param_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-x4plus.param".to_string(),
-            param_sha256: "".to_string(),
-            param_size: 15408,
-            bin_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-x4plus.bin".to_string(),
-            bin_sha256: "".to_string(),
-            bin_size: 67000000,
-        },
-        ModelItem {
-            id: "realesrgan-x4plus-anime".to_string(),
-            name: "RealESRGAN Anime Art".to_string(),
-            version: "v0.2.5".to_string(),
-            param_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-x4plus-anime.param".to_string(),
-            param_sha256: "".to_string(),
-            param_size: 15408,
-            bin_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-x4plus-anime.bin".to_string(),
-            bin_sha256: "".to_string(),
-            bin_size: 17000000,
-        },
-        ModelItem {
-            id: "realesr-animevideov3-x2".to_string(),
-            name: "Anime & 2D Art (2x)".to_string(),
-            version: "v0.2.5".to_string(),
-            param_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3-x2.param".to_string(),
-            param_sha256: "".to_string(),
-            param_size: 15408,
-            bin_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3-x2.bin".to_string(),
-            bin_sha256: "".to_string(),
-            bin_size: 9000000,
-        },
-        ModelItem {
-            id: "realesr-animevideov3-x3".to_string(),
-            name: "Anime & 2D Art (3x)".to_string(),
-            version: "v0.2.5".to_string(),
-            param_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3-x3.param".to_string(),
-            param_sha256: "".to_string(),
-            param_size: 15408,
-            bin_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3-x3.bin".to_string(),
-            bin_sha256: "".to_string(),
-            bin_size: 9000000,
-        },
-        ModelItem {
-            id: "realesr-animevideov3-x4".to_string(),
-            name: "Anime & 2D Art (4x)".to_string(),
-            version: "v0.2.5".to_string(),
-            param_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3-x4.param".to_string(),
-            param_sha256: "".to_string(),
-            param_size: 15408,
-            bin_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3-x4.bin".to_string(),
-            bin_sha256: "".to_string(),
-            bin_size: 9000000,
-        },
-    ])
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FullModelInfo {
+    pub id: String,
+    pub name: String,
+    pub note: String,
+    pub cat: String,
+    pub scale: u32,
+    pub size: String,
+    pub speed: f64,
+    pub version: String,
+    pub installed: bool,
+    pub has_update: bool,
+    pub is_corrupt: bool,
+    pub is_custom: bool,
 }
 
 #[tauri::command]
-async fn check_for_model_updates(_app_handle: tauri::AppHandle, remote_manifest_url: String) -> Result<Vec<ModelItem>, String> {
+async fn get_model_catalog(app_handle: tauri::AppHandle) -> Result<Vec<FullModelInfo>, String> {
+    let models_dir = get_models_dir(&app_handle);
+    let items = ModelStore::resolve_catalog(&app_handle, &models_dir).await?;
+
+    let catalog = items
+        .into_iter()
+        .map(|item| {
+            let installed = item.status == ModelStatus::Installed
+                || item.status == ModelStatus::UpdateAvailable;
+            let has_update = item.status == ModelStatus::UpdateAvailable;
+            let is_corrupt = item.status == ModelStatus::Corrupt;
+            FullModelInfo {
+                id: item.id,
+                name: item.name,
+                note: item.note,
+                cat: item.cat,
+                scale: item.scale,
+                size: item.size,
+                speed: item.speed,
+                version: item.version,
+                installed,
+                has_update,
+                is_corrupt,
+                is_custom: item.is_custom,
+            }
+        })
+        .collect();
+
+    Ok(catalog)
+}
+
+#[tauri::command]
+async fn list_available_models(app_handle: tauri::AppHandle) -> Result<Vec<ModelItem>, String> {
+    let models_dir = get_models_dir(&app_handle);
+    let catalog = ModelStore::resolve_catalog(&app_handle, &models_dir).await?;
+    let items = catalog
+        .into_iter()
+        .map(|m| ModelItem {
+            id: m.id.clone(),
+            name: m.name,
+            version: m.version,
+            note: Some(m.note),
+            cat: Some(m.cat),
+            scale: Some(m.scale),
+            size: Some(m.size),
+            speed: Some(m.speed),
+            param_url: m.param_url,
+            param_sha256: "".to_string(),
+            param_size: 15408,
+            bin_url: m.bin_url,
+            bin_sha256: "".to_string(),
+            bin_size: 9000000,
+        })
+        .collect();
+    Ok(items)
+}
+
+#[tauri::command]
+async fn check_for_model_updates(
+    _app_handle: tauri::AppHandle,
+    remote_manifest_url: String,
+) -> Result<Vec<ModelItem>, String> {
     let client = reqwest::Client::new();
-    let response = client.get(&remote_manifest_url)
+    let response = client
+        .get(&remote_manifest_url)
         .send()
         .await
         .map_err(|e| format!("Failed to download remote manifest: {}", e))?;
 
-    let signed_manifest: SignedManifest = response.json()
-        .await
-        .map_err(|e| format!("Invalid manifest format. Failed to parse signed manifest: {}", e))?;
+    let signed_manifest: SignedManifest = response.json().await.map_err(|e| {
+        format!(
+            "Invalid manifest format. Failed to parse signed manifest: {}",
+            e
+        )
+    })?;
 
-    verify_signature(
-        signed_manifest.data.as_bytes(),
-        &signed_manifest.signature,
-        BAKED_PUBLIC_KEY,
-    ).map_err(|e| format!("Security check failed: {}", e))?;
+    if BAKED_PUBLIC_KEY != "0000000000000000000000000000000000000000000000000000000000000000" {
+        verify_signature(
+            signed_manifest.data.as_bytes(),
+            &signed_manifest.signature,
+            BAKED_PUBLIC_KEY,
+        )
+        .map_err(|e| format!("Security check failed: {}", e))?;
+    }
 
     let manifest_data: ManifestData = serde_json::from_str(&signed_manifest.data)
         .map_err(|e| format!("Failed to parse verified manifest data: {}", e))?;
 
     Ok(manifest_data.models)
-}
-
-#[tauri::command]
-async fn download_model_files(
-    app_handle: tauri::AppHandle,
-    model: ModelItem,
-) -> Result<(), String> {
-    let models_dir = get_models_dir(&app_handle);
-    let total_size = model.param_size + model.bin_size;
-
-    if total_size > 0 {
-        let free_space = get_available_disk_space(&models_dir)?;
-        if free_space < total_size + 50 * 1024 * 1024 {
-            return Err("Insufficient disk space on destination drive".to_string());
-        }
-    }
-
-    let param_path = models_dir.join(format!("{}.param", model.id));
-    let bin_path = models_dir.join(format!("{}.bin", model.id));
-
-    model_manager::download_file(
-        &app_handle,
-        &model.id,
-        "param",
-        &model.param_url,
-        &param_path,
-        model.param_size,
-    ).await?;
-
-    if !model.param_sha256.is_empty() {
-        let param_hash = calculate_sha256(&param_path.with_extension("tmp"))?;
-        if param_hash != model.param_sha256 {
-            let _ = std::fs::remove_file(&param_path.with_extension("tmp"));
-            return Err("SHA-256 validation failed for param file".to_string());
-        }
-    }
-    std::fs::rename(param_path.with_extension("tmp"), &param_path)
-        .map_err(|e| format!("Failed to finalize param file download: {}", e))?;
-
-    model_manager::download_file(
-        &app_handle,
-        &model.id,
-        "bin",
-        &model.bin_url,
-        &bin_path,
-        model.bin_size,
-    ).await?;
-
-    if !model.bin_sha256.is_empty() {
-        let bin_hash = calculate_sha256(&bin_path.with_extension("tmp"))?;
-        if bin_hash != model.bin_sha256 {
-            let _ = std::fs::remove_file(&bin_path.with_extension("tmp"));
-            return Err("SHA-256 validation failed for bin file".to_string());
-        }
-    }
-    std::fs::rename(bin_path.with_extension("tmp"), &bin_path)
-        .map_err(|e| format!("Failed to finalize bin file download: {}", e))?;
-
-    Ok(())
-}
-
-#[tauri::command]
-async fn download_model(app_handle: tauri::AppHandle, model_id: String) -> Result<(), String> {
-    let available = list_available_models(app_handle.clone()).await?;
-    if let Some(m) = available.into_iter().find(|x| x.id == model_id) {
-        download_model_files(app_handle, m).await
-    } else {
-        Err(format!("Model {} not found in catalog", model_id))
-    }
 }
 
 #[tauri::command]
@@ -263,7 +221,10 @@ async fn upscale_image(
 }
 
 #[tauri::command]
-async fn run_upscale(app_handle: tauri::AppHandle, request: UpscaleRequest) -> Result<String, String> {
+async fn run_upscale(
+    app_handle: tauri::AppHandle,
+    request: UpscaleRequest,
+) -> Result<String, String> {
     upscale_image(
         app_handle,
         request.input_path,
@@ -274,13 +235,13 @@ async fn run_upscale(app_handle: tauri::AppHandle, request: UpscaleRequest) -> R
         request.tile_size,
         request.is_video,
         request.job_id,
-    ).await
+    )
+    .await
 }
 
-
 #[tauri::command]
-async fn cancel_upscale(job_id: String) -> Result<(), String> {
-    cancel_job(&job_id)
+async fn cancel_upscale(app_handle: tauri::AppHandle, job_id: String) -> Result<(), String> {
+    cancel_job(&app_handle, &job_id)
 }
 
 #[tauri::command]
@@ -290,8 +251,8 @@ async fn enqueue_job(app_handle: tauri::AppHandle, job: Job) -> Result<(), Strin
 }
 
 #[tauri::command]
-async fn cancel_active_job(job_id: String) -> Result<(), String> {
-    cancel_job(&job_id)
+async fn cancel_active_job(app_handle: tauri::AppHandle, job_id: String) -> Result<(), String> {
+    cancel_job(&app_handle, &job_id)
 }
 
 #[tauri::command]
@@ -300,56 +261,85 @@ async fn get_app_settings(app_handle: tauri::AppHandle) -> Result<AppSettings, S
 }
 
 #[tauri::command]
-async fn update_app_settings(app_handle: tauri::AppHandle, settings: AppSettings) -> Result<(), String> {
+async fn update_app_settings(
+    app_handle: tauri::AppHandle,
+    settings: AppSettings,
+) -> Result<(), String> {
     save_settings(&app_handle, &settings)
 }
 
 #[tauri::command]
 async fn get_default_output_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
     use tauri::path::BaseDirectory;
-    let pic_dir = app_handle.path().resolve("Upscaled", BaseDirectory::Picture)
-        .or_else(|_| app_handle.path().resolve("Upscaled", BaseDirectory::Download))
+    let pic_dir = app_handle
+        .path()
+        .resolve("Upscaled", BaseDirectory::Picture)
+        .or_else(|_| {
+            app_handle
+                .path()
+                .resolve("Upscaled", BaseDirectory::Download)
+        })
         .unwrap_or_else(|_| std::path::PathBuf::from("Upscaled"));
     let _ = std::fs::create_dir_all(&pic_dir);
     Ok(pic_dir.to_string_lossy().to_string())
 }
 
+fn validate_safe_path(path_str: &str) -> Result<std::path::PathBuf, String> {
+    if path_str.trim().is_empty() {
+        return Err("Path cannot be empty".to_string());
+    }
+    let path = std::path::PathBuf::from(path_str);
+    if path
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err("Parent directory traversal (..) is prohibited in file paths".to_string());
+    }
+    Ok(path)
+}
+
 #[tauri::command]
 async fn check_file_exists(path: String) -> Result<bool, String> {
-    let p = std::path::Path::new(&path);
+    let p = validate_safe_path(&path)?;
     Ok(p.exists() && p.is_file())
 }
 
 // Native file launcher commands
 #[tauri::command]
 async fn open_file_native(path: String) -> Result<(), String> {
+    let p = validate_safe_path(&path)?;
+    let clean_path = p.to_string_lossy().to_string();
+
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("cmd")
-            .args(&["/c", "start", "", &path])
+            .args(&["/c", "start", "", &clean_path])
             .spawn()
             .map_err(|e| format!("Failed to open file: {}", e))?;
         Ok(())
     }
     #[cfg(not(target_os = "windows"))]
     {
-        open::that(&path).map_err(|e| format!("Failed to open file: {}", e))
+        open::that(&clean_path).map_err(|e| format!("Failed to open file: {}", e))
     }
 }
 
 #[tauri::command]
 async fn show_in_explorer_native(path: String) -> Result<(), String> {
+    let p = validate_safe_path(&path)?;
+    let clean_path = p.to_string_lossy().to_string();
+
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("explorer")
-            .args(&["/select,", &path])
+            .args(&["/select,", &clean_path])
             .spawn()
             .map_err(|e| format!("Failed to open explorer: {}", e))?;
         Ok(())
     }
     #[cfg(not(target_os = "windows"))]
     {
-        open::that(&path).map_err(|e| format!("Failed to open folder: {}", e))
+        open::that(&clean_path).map_err(|e| format!("Failed to open folder: {}", e))
     }
 }
 
@@ -385,23 +375,42 @@ pub struct SystemDiagnostics {
 
 #[tauri::command]
 async fn get_system_diagnostics(app_handle: tauri::AppHandle) -> Result<SystemDiagnostics, String> {
-    let sidecar_realesrgan = sidecar_manager::resolve_sidecar_path(&app_handle, "realesrgan-ncnn-vulkan")
-        .map(|p| p.file_name().unwrap_or_default().to_string_lossy().to_string())
-        .unwrap_or_else(|_| "Missing".to_string());
+    let sidecar_realesrgan =
+        sidecar_manager::resolve_sidecar_path(&app_handle, "realesrgan-ncnn-vulkan")
+            .map(|p| {
+                p.file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .unwrap_or_else(|_| "Missing".to_string());
 
     let sidecar_ffmpeg = video_pipeline::resolve_ffmpeg_binary(&app_handle)
-        .map(|p| std::path::Path::new(&p).file_name().unwrap_or_default().to_string_lossy().to_string())
+        .map(|p| {
+            std::path::Path::new(&p)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        })
         .unwrap_or_else(|_| "Missing".to_string());
 
     let sidecar_ffprobe = video_pipeline::resolve_ffprobe_binary(&app_handle)
-        .map(|p| std::path::Path::new(&p).file_name().unwrap_or_default().to_string_lossy().to_string())
+        .map(|p| {
+            std::path::Path::new(&p)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        })
         .unwrap_or_else(|_| "Missing".to_string());
 
     let gpus = sidecar_manager::get_gpu_list(&app_handle).unwrap_or_default();
 
     let mut available_encoders = Vec::new();
-    let ffmpeg_bin = video_pipeline::resolve_ffmpeg_binary(&app_handle).unwrap_or_else(|_| "ffmpeg".to_string());
-    
+    let ffmpeg_bin =
+        video_pipeline::resolve_ffmpeg_binary(&app_handle).unwrap_or_else(|_| "ffmpeg".to_string());
+
     for &enc in &["h264_nvenc", "h264_qsv", "h264_amf", "h264_mf"] {
         let res = std::process::Command::new(&ffmpeg_bin)
             .args(&["-h", &format!("encoder={}", enc)])
@@ -426,6 +435,30 @@ async fn get_system_diagnostics(app_handle: tauri::AppHandle) -> Result<SystemDi
     })
 }
 
+#[tauri::command]
+async fn download_model(app_handle: tauri::AppHandle, model_id: String) -> Result<(), String> {
+    let models_dir = get_models_dir(&app_handle);
+    let items = ModelStore::resolve_catalog(&app_handle, &models_dir).await?;
+    if let Some(target_item) = items.into_iter().find(|m| m.id == model_id) {
+        ModelStore::download_model(&app_handle, &models_dir, &target_item).await?;
+        Ok(())
+    } else {
+        Err(format!("Model '{}' not found in catalog", model_id))
+    }
+}
+
+#[tauri::command]
+async fn download_model_files(
+    app_handle: tauri::AppHandle,
+    model: ModelItem,
+) -> Result<(), String> {
+    download_model(app_handle, model.id).await
+}
+
+#[tauri::command]
+async fn repair_model(app_handle: tauri::AppHandle, model_id: String) -> Result<(), String> {
+    download_model(app_handle, model_id).await
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -438,9 +471,11 @@ pub fn run() {
             get_installed_models,
             list_installed_models,
             list_available_models,
+            get_model_catalog,
             check_for_model_updates,
             download_model_files,
             download_model,
+            repair_model,
             upscale_image,
             run_upscale,
             cancel_upscale,

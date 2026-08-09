@@ -6,7 +6,7 @@ interface RecentHistoryDrawerProps {
   onClose: () => void;
   onRestore?: (entry: HistoryEntry) => void;
   isOpen?: boolean;
-  onSelectHistoryItem?: (item: any) => void;
+  onSelectHistoryItem?: (item: HistoryEntry) => void;
   onClearHistory?: () => void;
   onRemoveItem?: (id: string) => void;
 }

@@ -12,7 +12,7 @@ export interface SelectOption {
 interface CustomSelectProps {
   options: SelectOption[];
   value: string | number;
-  onChange: (val: any) => void;
+  onChange: (val: string | number) => void;
   placeholder?: string;
   icon?: React.ReactNode;
   className?: string;

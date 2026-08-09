@@ -41,17 +41,29 @@ impl Serialize for AppError {
             AppError::GpuError { message } => {
                 state.serialize_field("code", "GPU_ERROR")?;
                 state.serialize_field("message", message)?;
-                state.serialize_field("suggestion", "Select a different GPU or check Vulkan drivers")?;
+                state.serialize_field(
+                    "suggestion",
+                    "Select a different GPU or check Vulkan drivers",
+                )?;
             }
             AppError::InsufficientStorage { required_mb } => {
                 state.serialize_field("code", "INSUFFICIENT_STORAGE")?;
                 state.serialize_field("message", &self.to_string())?;
-                state.serialize_field("suggestion", &format!("Free up at least {}MB of space on target drive", required_mb))?;
+                state.serialize_field(
+                    "suggestion",
+                    &format!(
+                        "Free up at least {}MB of space on target drive",
+                        required_mb
+                    ),
+                )?;
             }
             AppError::InvalidFileFormat { reason } => {
                 state.serialize_field("code", "INVALID_FILE_FORMAT")?;
                 state.serialize_field("message", reason)?;
-                state.serialize_field("suggestion", "Use supported formats (PNG, JPG, WEBP, MP4, MKV)")?;
+                state.serialize_field(
+                    "suggestion",
+                    "Use supported formats (PNG, JPG, WEBP, MP4, MKV)",
+                )?;
             }
             AppError::NetworkError { message } => {
                 state.serialize_field("code", "NETWORK_ERROR")?;
@@ -61,7 +73,8 @@ impl Serialize for AppError {
             AppError::ExecutionError { message } => {
                 state.serialize_field("code", "EXECUTION_ERROR")?;
                 state.serialize_field("message", message)?;
-                state.serialize_field("suggestion", "Try lowering Tile Size in Advanced Settings")?;
+                state
+                    .serialize_field("suggestion", "Try lowering Tile Size in Advanced Settings")?;
             }
             AppError::Cancelled => {
                 state.serialize_field("code", "CANCELLED")?;
@@ -79,12 +92,16 @@ mod tests {
 
     #[test]
     fn test_app_error_serialization() {
-        let err = AppError::SidecarNotFound { path: "realesrgan.exe".into() };
+        let err = AppError::SidecarNotFound {
+            path: "realesrgan.exe".into(),
+        };
         let json = serde_json::to_string(&err).unwrap();
         assert!(json.contains("SIDECAR_NOT_FOUND"));
         assert!(json.contains("realesrgan.exe"));
 
-        let gpu_err = AppError::GpuError { message: "Device 0 lost".into() };
+        let gpu_err = AppError::GpuError {
+            message: "Device 0 lost".into(),
+        };
         let json_gpu = serde_json::to_string(&gpu_err).unwrap();
         assert!(json_gpu.contains("GPU_ERROR"));
     }

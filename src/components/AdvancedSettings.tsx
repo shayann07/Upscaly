@@ -79,7 +79,7 @@ export function AdvancedSettings({
   const vramPct = Math.min(100, Math.round((usedVramGb / totalVramGb) * 100));
 
   const handleAutoTuneClick = () => {
-    let recTile = 0; // Auto by default
+    let recTile: number;
     const isIntel = currentGpu && (currentGpu.name.toLowerCase().includes("intel") || currentGpu.name.toLowerCase().includes("uhd"));
     if (isIntel) {
       recTile = 256; // 256px tile size reduces tile overhead by 75% on Intel iGPUs

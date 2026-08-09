@@ -22,7 +22,7 @@ import { BatchQueueView, BatchItem } from "./components/BatchQueueView";
 import { playDropSound, playCompleteSound, playErrorSound } from "./lib/sound";
 import { getMediaSrc } from "./lib/media";
 import { getModelMetadata } from "./lib/models";
-import { SUPPORTED_MODELS, JobProgress } from "./lib/types";
+import { SUPPORTED_MODELS, ModelInfo, JobProgress, HistoryEntry } from "./lib/types";
 import { addHistoryItem, getRecentHistory, HistoryItem } from "./lib/history";
 
 interface GpuDevice {
@@ -70,6 +70,7 @@ export default function App() {
   const [gpus, setGpus] = useState<GpuDevice[]>([]);
   const [selectedGpu, setSelectedGpu] = useState<number>(0);
   const [installedModels, setInstalledModels] = useState<string[]>([]);
+  const [supportedModels, setSupportedModels] = useState<ModelInfo[]>(SUPPORTED_MODELS);
   const [category, setCategory] = useState<"photos" | "anime" | "video">("photos");
 
   const [selectedModel, setSelectedModel] = useState<string>("realesrgan-x4plus");
@@ -109,7 +110,19 @@ export default function App() {
   // UI state
   const [downloadingModelId, setDownloadingModelId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
-  const isMuted = false;
+  const [isMuted, setIsMuted] = useState<boolean>(() => {
+    const saved = localStorage.getItem("upscaly_sound_muted");
+    return saved === "true";
+  });
+
+  const handleToggleMute = () => {
+    setIsMuted((prev) => {
+      const next = !prev;
+      localStorage.setItem("upscaly_sound_muted", String(next));
+      return next;
+    });
+  };
+
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   // History state
@@ -145,24 +158,46 @@ export default function App() {
     setZoomLevel((prev) => (prev === 1 ? 2 : prev === 2 ? 4 : prev === 4 ? 8 : 1));
   };
 
+  const gpuInitializedRef = useRef<boolean>(false);
+
   // Toast Helpers
-  const addToast = (type: "success" | "error" | "info" | "warning", heading: string, message: string) => {
-    const cleanHeading = heading.replace(/[!:]+$/g, "").trim();
-    const formattedMessage = message ? `${cleanHeading}: ${message}` : cleanHeading;
-    const newToast: ToastItem = {
-      id: Math.random().toString(),
-      type,
-      message: formattedMessage,
-    };
-    setToasts((prev) => [...prev, newToast]);
+  const addToast = (type: "success" | "error" | "info" | "warning", title: string, message: string) => {
+    const formattedMessage = message ? `${title}: ${message}` : title;
+    setToasts((prev) => {
+      if (prev.some((t) => t.message === formattedMessage)) {
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          id: `${Date.now()}-${Math.random()}`,
+          type,
+          message: formattedMessage,
+        },
+      ];
+    });
   };
 
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Fetch installed models
+  // Dynamic Model Catalog & Installed Models
   const refreshInstalledModels = () => {
+    invoke<ModelInfo[]>("get_model_catalog")
+      .then((catalog) => {
+        if (catalog && catalog.length > 0) {
+          setSupportedModels(catalog);
+          const installed = catalog.filter((m) => m.installed).map((m) => m.id);
+          setInstalledModels(installed);
+          if (installed.length > 0 && (!selectedModel || !installed.includes(selectedModel))) {
+            setSelectedModel(installed[0]);
+          }
+          return;
+        }
+      })
+      .catch(() => {});
+
     invoke<string[]>("list_installed_models")
       .then((models) => {
         setInstalledModels(models);
@@ -180,6 +215,9 @@ export default function App() {
 
   // Initial load: GPUs, settings, models
   useEffect(() => {
+    if (gpuInitializedRef.current) return;
+    gpuInitializedRef.current = true;
+
     invoke<GpuDevice[]>("list_gpus")
       .then((res) => {
         setGpus(res);
@@ -231,10 +269,15 @@ export default function App() {
   // Global Keyboard Shortcuts (⌘O, ⌘↩, ESC, ⌘S, ⌘H)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput = activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA" || (activeEl as HTMLElement).isContentEditable);
+
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
+        if (isInput) return;
         e.preventDefault();
         handleOpenFile();
       } else if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        if (isInput) return;
         e.preventDefault();
         handleStartUpscale();
       } else if (e.key === "Escape") {
@@ -244,9 +287,11 @@ export default function App() {
           setActiveNavTab(null);
         }
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        if (isInput) return;
         e.preventDefault();
         handleToggleNavTab("settings");
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "h") {
+        if (isInput) return;
         e.preventDefault();
         handleToggleNavTab("history");
       }
@@ -408,6 +453,32 @@ export default function App() {
       if (category !== modelCat) {
         setCategory(modelCat);
       }
+    }
+  };
+
+  const handleOpenFolder = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+      });
+
+      if (!selected || typeof selected !== "string") return;
+
+      playDropSound(isMuted);
+
+      setBatchItems((prev) => [
+        ...prev,
+        {
+          id: `folder-${Date.now()}`,
+          name: selected.split(/[\\/]/).pop() || "Folder",
+          path: selected,
+          status: "queued",
+          progress: 0,
+        },
+      ]);
+    } catch (err) {
+      console.error("Failed to select folder:", err);
     }
   };
 
@@ -699,7 +770,14 @@ export default function App() {
           const checkDone = setInterval(() => {
             setBatchItems((currentItems) => {
               const current = currentItems.find((b) => b.id === jobId);
-              if (!current || current.status === "done" || (current.status as string) === "completed" || current.status === "error") {
+              if (
+                !current ||
+                current.status === "done" ||
+                (current.status as string) === "completed" ||
+                current.status === "error" ||
+                current.status === "cancelled" ||
+                current.status === "failed"
+              ) {
                 clearInterval(checkDone);
                 resolve();
               }
@@ -755,10 +833,12 @@ export default function App() {
     });
   };
 
-  const handleLoadHistoryItem = async (item: HistoryItem) => {
-    const origExists = await invoke<boolean>("check_file_exists", { path: item.originalPath }).catch(() => false);
-    const upscaledExists = item.upscaledPath
-      ? await invoke<boolean>("check_file_exists", { path: item.upscaledPath }).catch(() => false)
+  const handleLoadHistoryItem = async (item: HistoryEntry) => {
+    const originalPath = item.inputPath || "";
+    const upscaledPath = item.outputPath || "";
+    const origExists = await invoke<boolean>("check_file_exists", { path: originalPath }).catch(() => false);
+    const upscaledExists = upscaledPath
+      ? await invoke<boolean>("check_file_exists", { path: upscaledPath }).catch(() => false)
       : false;
 
     if (!origExists || !upscaledExists) {
@@ -768,16 +848,16 @@ export default function App() {
       return;
     }
 
-    setFilePath(item.originalPath);
-    setFileName(item.fileName);
-    setUpscaledPath(item.upscaledPath);
-    setIsVideo(item.isVideo);
-    setScale(item.scale);
+    setFilePath(originalPath);
+    setFileName(item.name || "");
+    setUpscaledPath(upscaledPath);
+    setIsVideo(item.isVideo || false);
+    setScale(item.scale || 4);
     setJobStatus("completed");
     setActiveNavTab(null);
     setBatchItems([]);
     setZoomLevel(1);
-    addToast("info", "Loaded from History", item.fileName);
+    addToast("info", "Loaded from History", item.name || "File");
   };
 
   const isVramOverflowing = useMemo(() => {
@@ -814,7 +894,7 @@ export default function App() {
               <DropZone
                 isDragOver={isDragOver}
                 onAddFiles={handleOpenFile}
-                onAddBatch={handleOpenFile}
+                onAddBatch={handleOpenFolder}
               />
             </motion.div>
           ) : (
@@ -964,6 +1044,7 @@ export default function App() {
       {/* Bottom Floating Control Dock */}
       <div style={{ position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)", zIndex: 42 }}>
         <SettingsPanel
+          supportedModels={supportedModels}
           category={category}
           onSelectCategory={handleSelectCategory}
           installedModels={installedModels}
@@ -976,6 +1057,8 @@ export default function App() {
           isBatchMode={batchItems.length > 1}
           onRun={handleStartUpscale}
           onCancel={() => handleCancelUpscale()}
+          isMuted={isMuted}
+          onToggleMute={handleToggleMute}
           onOpenCatalog={() => setActiveNavTab("models")}
         />
       </div>
@@ -1034,6 +1117,7 @@ export default function App() {
 
           {activeNavTab === "models" && (
             <ModelCatalogModal
+              supportedModels={supportedModels}
               installedModelIds={installedModels}
               onDownloadModel={handleDownloadModel}
               downloadingModelId={downloadingModelId}
@@ -1044,10 +1128,9 @@ export default function App() {
 
           {activeNavTab === "history" && (
             <RecentHistoryDrawer
-              history={historyItems as any}
-              onSelectHistoryItem={(item) => {
+              history={historyItems}
+              onSelectHistoryItem={(item: HistoryEntry) => {
                 handleLoadHistoryItem(item);
-                setActiveNavTab(null);
               }}
               onClose={() => setActiveNavTab(null)}
             />

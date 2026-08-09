@@ -65,14 +65,20 @@ export function ComparisonSlider({
 
   // Get image/video dimensions
   useEffect(() => {
+    let isMounted = true;
+
     if (inputSrc) {
       if (isVideoInput) {
         const vid1 = document.createElement("video");
-        vid1.onloadedmetadata = () => setInputDims({ w: vid1.videoWidth, h: vid1.videoHeight });
+        vid1.onloadedmetadata = () => {
+          if (isMounted) setInputDims({ w: vid1.videoWidth, h: vid1.videoHeight });
+        };
         vid1.src = inputSrc;
       } else {
         const img1 = new Image();
-        img1.onload = () => setInputDims({ w: img1.naturalWidth, h: img1.naturalHeight });
+        img1.onload = () => {
+          if (isMounted) setInputDims({ w: img1.naturalWidth, h: img1.naturalHeight });
+        };
         img1.src = inputSrc;
       }
     }
@@ -80,14 +86,22 @@ export function ComparisonSlider({
     if (outputSrc) {
       if (isVideoOutput) {
         const vid2 = document.createElement("video");
-        vid2.onloadedmetadata = () => setOutputDims({ w: vid2.videoWidth, h: vid2.videoHeight });
+        vid2.onloadedmetadata = () => {
+          if (isMounted) setOutputDims({ w: vid2.videoWidth, h: vid2.videoHeight });
+        };
         vid2.src = outputSrc;
       } else {
         const img2 = new Image();
-        img2.onload = () => setOutputDims({ w: img2.naturalWidth, h: img2.naturalHeight });
+        img2.onload = () => {
+          if (isMounted) setOutputDims({ w: img2.naturalWidth, h: img2.naturalHeight });
+        };
         img2.src = outputSrc;
       }
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, [inputSrc, outputSrc, isVideoInput, isVideoOutput]);
 
   // Synchronize dual video playback time for video split & side-by-side comparison

@@ -74,19 +74,25 @@ export function Titlebar({
   const handleMinimize = async () => {
     try {
       await invoke("minimize_window");
-    } catch (_) {}
+    } catch {
+      // Ignored when window control fails in non-Tauri browser preview
+    }
   };
 
   const handleMaximize = async () => {
     try {
       await invoke("toggle_maximize_window");
-    } catch (_) {}
+    } catch {
+      // Ignored when window control fails in non-Tauri browser preview
+    }
   };
 
   const handleClose = async () => {
     try {
       await invoke("close_window");
-    } catch (_) {}
+    } catch {
+      // Ignored when window control fails in non-Tauri browser preview
+    }
   };
 
   return (
