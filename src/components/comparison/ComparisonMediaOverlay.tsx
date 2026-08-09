@@ -24,6 +24,8 @@ export function ComparisonMediaOverlay({
     transformOrigin: 'center center',
     transition: isPanning ? 'none' : 'transform 0.12s cubic-bezier(0.16, 1, 0.3, 1)',
     willChange: 'transform',
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -42,6 +44,7 @@ export function ComparisonMediaOverlay({
           muted
           playsInline
           className="w-full h-full object-contain pointer-events-none"
+          style={{ backfaceVisibility: 'hidden' }}
         />
       </div>
     );
@@ -54,6 +57,7 @@ export function ComparisonMediaOverlay({
         alt=""
         className="w-full h-full object-contain pointer-events-none select-none"
         draggable={false}
+        style={{ backfaceVisibility: 'hidden' }}
       />
     </div>
   );
