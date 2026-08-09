@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelMetadata {
     pub scale: u32,
     pub input_channels: u32,
@@ -17,28 +17,15 @@ pub fn parse_ncnn_param(path: &Path) -> Result<ModelMetadata, String> {
     let reader = BufReader::new(file);
     let mut lines = reader.lines();
 
-    // Line 1: Magic header e.g., "7767 11 11" or "7767"
     let header_line = match lines.next() {
         Some(Ok(line)) => line,
         _ => return Err("Param file is empty or corrupted".to_string()),
     };
 
-    let header_tokens: Vec<&str> = header_line.split_whitespace().collect();
-    if header_tokens.is_empty() {
-        return Err("Invalid NCNN param magic header".to_string());
-    }
-
-    let layer_count = header_tokens
-        .get(1)
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(0);
-    let blob_count = header_tokens
-        .get(2)
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(0);
+    let (layer_count, blob_count) = read_header(&header_line)?;
 
     let mut calculated_scale: u32 = 1;
-    let mut input_channels: u32 = 3; // Default RGB
+    let mut input_channels: u32 = 3;
     let mut parsed_layer_lines = 0;
 
     for line_res in lines {
@@ -53,83 +40,13 @@ pub fn parse_ncnn_param(path: &Path) -> Result<ModelMetadata, String> {
         }
 
         parsed_layer_lines += 1;
-        let tokens: Vec<&str> = trimmed.split_whitespace().collect();
-        if tokens.is_empty() {
-            continue;
-        }
-
-        let layer_type = tokens[0];
-
-        // 1. Input Layer: parse channel count (0=c)
-        if layer_type == "Input" {
-            for param in tokens.iter().skip(1) {
-                if let Some((k, v)) = parse_key_value(param) {
-                    if k == 0 || k == 2 {
-                        if let Ok(chans) = v.parse::<u32>() {
-                            if chans > 0 && chans <= 16 {
-                                input_channels = chans;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 2. Interp / Resample Layer: e.g. 0=2 (height scale), 1=2 (width scale)
-        if layer_type == "Interp" {
-            for param in tokens.iter().skip(1) {
-                if let Some((k, v)) = parse_key_value(param) {
-                    if k == 0 || k == 1 || k == 2 || k == 3 {
-                        if let Ok(scale_val) = v.parse::<f32>() {
-                            let scale_int = scale_val.round() as u32;
-                            if scale_int >= 2 && scale_int <= 8 {
-                                calculated_scale *= scale_int;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3. Deconvolution / Deconv: stride parameters (1=2, 2=2)
-        if layer_type == "Deconvolution"
-            || layer_type == "DeconvolutionDepthWise"
-            || layer_type == "Deconv"
-        {
-            for param in tokens.iter().skip(1) {
-                if let Some((k, v)) = parse_key_value(param) {
-                    if k == 1 || k == 2 {
-                        if let Ok(stride) = v.parse::<u32>() {
-                            if stride >= 2 && stride <= 8 {
-                                calculated_scale *= stride;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 4. PixelShuffle / Subpixel: upscale factor (0=2, 0=3, 0=4)
-        if layer_type == "PixelShuffle" || layer_type == "Subpixel" {
-            for param in tokens.iter().skip(1) {
-                if let Some((k, v)) = parse_key_value(param) {
-                    if k == 0 {
-                        if let Ok(upscale) = v.parse::<u32>() {
-                            if upscale >= 2 && upscale <= 8 {
-                                calculated_scale *= upscale;
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        parse_layer_line(trimmed, &mut input_channels, &mut calculated_scale);
     }
 
     if parsed_layer_lines == 0 {
         return Err("No layer operations found in NCNN param file".to_string());
     }
 
-    // Fallback scale if 1
     let final_scale = if calculated_scale > 1 {
         calculated_scale
     } else {
@@ -149,7 +66,88 @@ pub fn parse_ncnn_param(path: &Path) -> Result<ModelMetadata, String> {
     })
 }
 
-fn parse_key_value(token: &str) -> Option<(u32, String)> {
+fn read_header(header_line: &str) -> Result<(usize, usize), String> {
+    let header_tokens: Vec<&str> = header_line.split_whitespace().collect();
+    if header_tokens.is_empty() {
+        return Err("Invalid NCNN param magic header".to_string());
+    }
+
+    let layer_count = header_tokens
+        .get(1)
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
+    let blob_count = header_tokens
+        .get(2)
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
+
+    Ok((layer_count, blob_count))
+}
+
+fn parse_layer_line(line: &str, input_channels: &mut u32, calculated_scale: &mut u32) {
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+    if tokens.is_empty() {
+        return;
+    }
+
+    let layer_type = tokens[0];
+    let params: Vec<(u32, String)> = tokens
+        .iter()
+        .skip(1)
+        .filter_map(|p| parse_key_value(p))
+        .collect();
+
+    match layer_type {
+        "Input" => {
+            for (k, v) in &params {
+                if *k == 0 || *k == 2 {
+                    if let Ok(chans) = v.parse::<u32>() {
+                        if (1..=16).contains(&chans) {
+                            *input_channels = chans;
+                        }
+                    }
+                }
+            }
+        }
+        "Interp" | "Resample" => {
+            for (k, v) in &params {
+                if (0..=3).contains(k) {
+                    if let Ok(scale_val) = v.parse::<f32>() {
+                        let scale_int = scale_val as u32;
+                        if (2..=8).contains(&scale_int) {
+                            *calculated_scale *= scale_int;
+                        }
+                    }
+                }
+            }
+        }
+        "Deconvolution" | "DeconvolutionDepthWise" | "Deconv" => {
+            for (k, v) in &params {
+                if *k == 1 || *k == 2 {
+                    if let Ok(stride) = v.parse::<u32>() {
+                        if (2..=8).contains(&stride) {
+                            *calculated_scale *= stride;
+                        }
+                    }
+                }
+            }
+        }
+        "PixelShuffle" | "Subpixel" => {
+            for (k, v) in &params {
+                if *k == 0 {
+                    if let Ok(upscale) = v.parse::<u32>() {
+                        if (2..=8).contains(&upscale) {
+                            *calculated_scale *= upscale;
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+pub fn parse_key_value(token: &str) -> Option<(u32, String)> {
     let parts: Vec<&str> = token.split('=').collect();
     if parts.len() == 2 {
         if let Ok(key) = parts[0].parse::<u32>() {
@@ -168,5 +166,30 @@ mod tests {
         assert_eq!(parse_key_value("0=2"), Some((0, "2".to_string())));
         assert_eq!(parse_key_value("1=3.5"), Some((1, "3.5".to_string())));
         assert_eq!(parse_key_value("invalid"), None);
+    }
+
+    #[test]
+    fn test_read_header() {
+        let (layers, blobs) = read_header("7767 12 15").unwrap();
+        assert_eq!(layers, 12);
+        assert_eq!(blobs, 15);
+
+        let (layers_default, blobs_default) = read_header("7767").unwrap();
+        assert_eq!(layers_default, 0);
+        assert_eq!(blobs_default, 0);
+
+        assert!(read_header("").is_err());
+    }
+
+    #[test]
+    fn test_parse_layer_line() {
+        let mut chans = 3;
+        let mut scale = 1;
+
+        parse_layer_line("Input in 0 1 0 0=4", &mut chans, &mut scale);
+        assert_eq!(chans, 4);
+
+        parse_layer_line("Interp interp 1 1 out 0=2 1=2", &mut chans, &mut scale);
+        assert_eq!(scale, 4);
     }
 }

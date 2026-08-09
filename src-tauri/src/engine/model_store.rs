@@ -1,10 +1,41 @@
-use crate::engine::param_parser::parse_ncnn_param;
+use crate::engine::param_parser::{parse_ncnn_param, ModelMetadata};
 use crate::engine::registry_provider::{GitHubReleaseProvider, RegistryModelEntry};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use std::time::SystemTime;
 use tauri::{AppHandle, Emitter};
+
+static PARAM_CACHE: OnceLock<Mutex<HashMap<PathBuf, (SystemTime, ModelMetadata)>>> =
+    OnceLock::new();
+
+fn get_param_cache() -> &'static Mutex<HashMap<PathBuf, (SystemTime, ModelMetadata)>> {
+    PARAM_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub fn parse_ncnn_param_cached(path: &Path) -> Result<ModelMetadata, String> {
+    let mtime = fs::metadata(path)
+        .and_then(|m| m.modified())
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+
+    {
+        let cache = get_param_cache().lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((cached_mtime, meta)) = cache.get(path) {
+            if *cached_mtime == mtime {
+                return Ok(meta.clone());
+            }
+        }
+    }
+
+    let meta = parse_ncnn_param(path)?;
+    {
+        let mut cache = get_param_cache().lock().unwrap_or_else(|p| p.into_inner());
+        cache.insert(path.to_path_buf(), (mtime, meta.clone()));
+    }
+    Ok(meta)
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum ModelStatus {
@@ -33,7 +64,6 @@ pub struct EngineModelItem {
 pub struct ModelStore;
 
 impl ModelStore {
-    /// Dynamically resolves the full catalog fusing remote registry entries with local disk-discovered models.
     pub async fn resolve_catalog(
         _app: &AppHandle,
         models_dir: &Path,
@@ -44,7 +74,6 @@ impl ModelStore {
         let mut catalog = Vec::new();
         let mut seen_ids = HashSet::new();
 
-        // 1. Process entries from registry manifest
         for entry in manifest.models {
             seen_ids.insert(entry.id.clone());
 
@@ -53,9 +82,8 @@ impl ModelStore {
 
             let status = Self::determine_model_status(&entry, &param_path, &bin_path);
 
-            // If installed or corrupt, attempt NCNN param graph math resolution for exact scale ratio
             let calculated_scale = if param_path.exists() {
-                parse_ncnn_param(&param_path)
+                parse_ncnn_param_cached(&param_path)
                     .map(|m| m.scale)
                     .unwrap_or_else(|_| entry.scale.unwrap_or(4))
             } else {
@@ -78,7 +106,6 @@ impl ModelStore {
             });
         }
 
-        // 2. Discover any non-registry custom model files placed in models_dir
         if let Ok(entries) = fs::read_dir(models_dir) {
             for entry_res in entries.flatten() {
                 let path = entry_res.path();
@@ -88,7 +115,7 @@ impl ModelStore {
                             seen_ids.insert(stem.to_string());
                             let bin_path = models_dir.join(format!("{}.bin", stem));
 
-                            let metadata_res = parse_ncnn_param(&path);
+                            let metadata_res = parse_ncnn_param_cached(&path);
                             let is_corrupt = metadata_res.is_err() || !bin_path.exists();
                             let scale = metadata_res.map(|m| m.scale).unwrap_or(4);
 
@@ -136,13 +163,11 @@ impl ModelStore {
             return ModelStatus::NotInstalled;
         }
 
-        // Validate NCNN param graph math
-        let meta_res = parse_ncnn_param(param_path);
+        let meta_res = parse_ncnn_param_cached(param_path);
         if meta_res.is_err() {
             return ModelStatus::Corrupt;
         }
 
-        // Verify non-zero bin size
         let bin_meta = fs::metadata(bin_path);
         if bin_meta.map(|m| m.len() == 0).unwrap_or(true) {
             return ModelStatus::Corrupt;
@@ -151,7 +176,6 @@ impl ModelStore {
         ModelStatus::Installed
     }
 
-    /// Atomic model down-stream with progress and self-healing validation.
     pub async fn download_model(
         app: &AppHandle,
         models_dir: &Path,
@@ -163,7 +187,6 @@ impl ModelStore {
         Self::download_atomic_file(app, &item.id, "param", &item.param_url, &param_target).await?;
         Self::download_atomic_file(app, &item.id, "bin", &item.bin_url, &bin_target).await?;
 
-        // Notify hot-reload event bus
         let _ = app.emit("model-catalog-updated", ());
 
         Ok(())
@@ -201,7 +224,6 @@ impl ModelStore {
         fs::write(&tmp_path, &content)
             .map_err(|e| format!("Failed to write tmp file {}: {}", tmp_path.display(), e))?;
 
-        // Atomic rename
         fs::rename(&tmp_path, target_path)
             .map_err(|e| format!("Atomic rename failed for {}: {}", target_path.display(), e))?;
 
