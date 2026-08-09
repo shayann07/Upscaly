@@ -82,7 +82,7 @@
 ---
 
 ### Phase 4: Extract Frontend Settings, Model Catalog, and Media Selection Hooks
-**Status**: ⬜ Not Started  
+**Status**: ✅ Complete  
 **Objective**: Decompose `src/App.tsx` state management by extracting settings persistence, model catalog status resolution, and media file/folder selection into focused custom hooks.  
 
 #### Tasks
