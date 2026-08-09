@@ -23,7 +23,7 @@ export function TitlebarGpuIsland({
 
   return (
     <div
-      className={`absolute top-3 left-1/2 -translate-x-1/2 z-[41] border bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] overflow-hidden transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)] ${
+      className={`pointer-events-auto absolute top-3 left-1/2 -translate-x-1/2 z-[41] border bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] overflow-hidden transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)] ${
         isVramOverflowing
           ? 'border-[#E88A80] shadow-[0_0_12px_rgba(232,138,128,0.25)]'
           : 'border-[var(--border-subtle)]'
