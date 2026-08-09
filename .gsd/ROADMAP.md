@@ -258,3 +258,17 @@
     cargo fmt --manifest-path src-tauri/Cargo.toml --check
     ```
   - **Rules**: Tests must pass before marking complete; lint/clippy thresholds must not be weakened.
+
+---
+
+### Phase 12: Gap Closure
+**Status**: 🔄 In Progress  
+**Objective**: Resolve all functional wiring regressions identified in milestone audit (folder picker dialogs, batch upscaling CTA execution, and hook parameter order).
+
+#### Tasks
+- **Task 12.1: Wire `handleOpenFolder` and Batch Execution CTA in Studio Hooks**
+  - **Files**: `src/hooks/useStudioContainerSetup.ts`, `src/hooks/useStudioActions.ts`, `src/components/studio/StudioCanvas.tsx`, `src/components/studio/StudioPreviewSection.tsx`
+  - **Acceptance Criteria**: Re-order hook dependencies in `useStudioContainerSetup.ts` so `useBatchSetup` is initialized before `useStudioActions`. Pass `batchItems` and `handleStartBatchUpscale` to `useStudioActions`. Pass `handleOpenFolder` through `StudioCanvas` to `StudioPreviewSection` and `DropZone`.
+  - **Verification Commands**: `npm.cmd run check:ts`, `npm.cmd run test`, `npm.cmd run build`.
+  - **Rules**: Tests must pass before marking complete; lint/clippy thresholds must not be weakened.
+
