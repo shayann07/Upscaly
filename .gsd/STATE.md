@@ -1,15 +1,17 @@
-# GSD Application State
+# GSD Project State
 
-> **Project**: Upscaly
-> **Milestone**: `v2.0-win-gpu-reliability`
-> **Status**: Milestone Complete & Debugged 🎉
+> Updated by /map on 2026-08-09
 
-## Current Position
-- **Debug Session**: Resolved 95% progress hang issue by removing invalid `-x` TTA flag and implementing real-time NCNN engine percentage parsing.
-- **Codebase Audit**: Resolved all 16 TypeScript compilation errors and Vitest runner scoping.
-- **Status**: 100% Pass Rate Across Cargo, Vitest, and Vite Build Suites.
+## Current Milestone
+- **Milestone Name**: Production Architecture & Quality System Upgrade
+- **Status**: Codebase Mapped & Architecture Defined
 
-## Verification & Test Results
-- `cargo test`: **11 passed, 0 failed**
-- `npm.cmd run test`: **10 passed, 0 failed**
-- `npm.cmd run build`: **Clean build (0 errors, 0 warnings)**
+## Last Session Summary
+Codebase mapping completed via `/map` workflow.
+- **16 UI Components & 10 Backend Engine Modules** identified
+- **10 Production Dependencies & 10 Dev Quality Tools** mapped
+- **7 Technical Debt Monolithic Component Items** flagged for refactoring
+
+## Architecture Documents
+- [ARCHITECTURE.md](file:///d:/Work/Extras/image%20upscaler/.gsd/ARCHITECTURE.md)
+- [STACK.md](file:///d:/Work/Extras/image%20upscaler/.gsd/STACK.md)
