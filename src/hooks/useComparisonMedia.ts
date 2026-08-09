@@ -33,12 +33,15 @@ export function useComparisonMedia({
     [realInputPath]
   );
   const isVideoOutput = useMemo(
-    () => /\.(mp4|mkv|mov|avi|webm)$/i.test(realOutputPath),
-    [realOutputPath]
+    () => (realOutputPath ? /\.(mp4|mkv|mov|avi|webm)$/i.test(realOutputPath) : isVideoInput),
+    [realOutputPath, isVideoInput]
   );
 
   const inputSrc = useMemo(() => getMediaSrc(realInputPath), [realInputPath]);
-  const outputSrc = useMemo(() => getMediaSrc(realOutputPath), [realOutputPath]);
+  const outputSrc = useMemo(
+    () => (realOutputPath ? getMediaSrc(realOutputPath) : inputSrc),
+    [realOutputPath, inputSrc]
+  );
 
   useEffect(() => {
     setInputDims(null);
