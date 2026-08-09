@@ -8,7 +8,7 @@ pub mod output_paths;
 pub mod process_runner;
 mod settings;
 mod sidecar_manager;
-mod video_pipeline;
+pub mod video_pipeline;
 
 pub use error::AppError;
 use sidecar_manager::kill_all_processes;
