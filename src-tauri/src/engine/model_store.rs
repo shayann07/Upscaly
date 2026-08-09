@@ -82,13 +82,12 @@ impl ModelStore {
 
             let status = Self::determine_model_status(&entry, &param_path, &bin_path);
 
-            let calculated_scale = if param_path.exists() {
-                parse_ncnn_param_cached(&param_path)
-                    .map(|m| m.scale)
-                    .unwrap_or_else(|_| entry.scale.unwrap_or(4))
-            } else {
-                entry.scale.unwrap_or(4)
-            };
+            let requested_scale_i32 = i32::try_from(entry.scale.unwrap_or(4)).unwrap_or(4);
+            let calculated_scale = crate::job_queue::resolve_effective_scale(
+                &entry.id,
+                requested_scale_i32,
+                Some(models_dir),
+            ) as u32;
 
             catalog.push(EngineModelItem {
                 id: entry.id,
@@ -117,7 +116,7 @@ impl ModelStore {
 
                             let metadata_res = parse_ncnn_param_cached(&path);
                             let is_corrupt = metadata_res.is_err() || !bin_path.exists();
-                            let scale = metadata_res.map(|m| m.scale).unwrap_or(4);
+                            let scale = crate::job_queue::resolve_effective_scale(stem, 4, Some(models_dir)) as u32;
 
                             let cat = if stem.contains("anime") {
                                 "anime".to_string()
