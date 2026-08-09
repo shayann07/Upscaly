@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -17,66 +17,20 @@ import { ModelCatalogModal } from './components/ModelCatalogModal';
 import { ToastContainer, ToastItem } from './components/ToastContainer';
 import { RecentHistoryDrawer } from './components/RecentHistoryDrawer';
 import { AboutModal } from './components/AboutModal';
-import { BatchQueueView, BatchItem } from './components/BatchQueueView';
+import { BatchQueueView } from './components/BatchQueueView';
 
-import { playDropSound, playCompleteSound, playErrorSound } from './lib/sound';
+import { useSettings } from './hooks/useSettings';
+import { useModelCatalog } from './hooks/useModelCatalog';
+import { useMediaSelection } from './hooks/useMediaSelection';
+
+import { playCompleteSound, playErrorSound } from './lib/sound';
 import { getMediaSrc } from './lib/media';
 import { getModelMetadata } from './lib/models';
-import { SUPPORTED_MODELS, ModelInfo, JobProgress, HistoryEntry } from './lib/types';
+import { SUPPORTED_MODELS, JobProgress, HistoryEntry } from './lib/types';
 import { addHistoryItem, getRecentHistory, HistoryItem } from './lib/history';
 
-interface GpuDevice {
-  id: number;
-  name: string;
-  detail?: string;
-}
-
-interface DownloadProgressEvent {
-  model_id: string;
-  percentage: number;
-}
-
-interface BackendSettings {
-  default_gpu_id: number;
-  default_scale: number;
-  default_tile_size: number;
-  output_directory: string | null;
-  sound_muted: boolean;
-  auto_check_updates: boolean;
-}
-
-const getMediaDimensions = (src: string, isVid: boolean): Promise<{ w: number; h: number }> => {
-  return new Promise((resolve) => {
-    if (isVid) {
-      const vid = document.createElement('video');
-      vid.src = src;
-      vid.onloadedmetadata = () => {
-        resolve({ w: vid.videoWidth || 1920, h: vid.videoHeight || 1080 });
-      };
-      vid.onerror = () => resolve({ w: 1920, h: 1080 });
-    } else {
-      const img = new Image();
-      img.src = src;
-      img.onload = () => {
-        resolve({ w: img.width || 1920, h: img.height || 1080 });
-      };
-      img.onerror = () => resolve({ w: 1920, h: 1080 });
-    }
-  });
-};
-
 export default function App() {
-  // --- STATE ---
-  const [gpus, setGpus] = useState<GpuDevice[]>([]);
-  const [selectedGpu, setSelectedGpu] = useState<number>(0);
-  const [installedModels, setInstalledModels] = useState<string[]>([]);
-  const [supportedModels, setSupportedModels] = useState<ModelInfo[]>(SUPPORTED_MODELS);
   const [category, setCategory] = useState<'photos' | 'anime' | 'video'>('photos');
-
-  const [selectedModel, setSelectedModel] = useState<string>('realesrgan-x4plus');
-  const [scale, setScale] = useState<number>(4);
-  const [tileSize, setTileSize] = useState<number>(0); // 0 = Auto
-  const [customOutputPath, setCustomOutputPath] = useState<string>('');
   const [activeNavTab, setActiveNavTab] = useState<
     'models' | 'history' | 'settings' | 'about' | null
   >(null);
@@ -84,15 +38,6 @@ export default function App() {
   const handleToggleNavTab = (tab: 'models' | 'history' | 'settings' | 'about') => {
     setActiveNavTab((prev) => (prev === tab ? null : tab));
   };
-
-  // File & Batch state
-  const [filePath, setFilePath] = useState<string>('');
-  const [fileName, setFileName] = useState<string>('');
-  const [isVideo, setIsVideo] = useState<boolean>(false);
-  const [currentFileDims, setCurrentFileDims] = useState<{ w: number; h: number } | null>(null);
-  const [upscaledPath, setUpscaledPath] = useState<string>('');
-  const [isDragOver] = useState<boolean>(false);
-  const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
 
   // Processing state
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -109,22 +54,6 @@ export default function App() {
   const [comparisonViewMode, setComparisonViewMode] = useState<'split' | 'side-by-side'>('split');
   const [zoomLevel, setZoomLevel] = useState<number>(1);
 
-  // UI state
-  const [downloadingModelId, setDownloadingModelId] = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<number>(0);
-  const [isMuted, setIsMuted] = useState<boolean>(() => {
-    const saved = localStorage.getItem('upscaly_sound_muted');
-    return saved === 'true';
-  });
-
-  const handleToggleMute = () => {
-    setIsMuted((prev) => {
-      const next = !prev;
-      localStorage.setItem('upscaly_sound_muted', String(next));
-      return next;
-    });
-  };
-
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   // History state
@@ -132,7 +61,102 @@ export default function App() {
 
   const pendingOutputPath = useRef<string>('');
   const activeJobIdRef = useRef<string | null>(null);
-  const isInitialLoad = useRef<boolean>(true);
+
+  const handleNotify = useCallback(
+    (type: 'success' | 'error' | 'info' | 'warning', title: string, message: string) => {
+      const formattedMessage = message ? `${title}: ${message}` : title;
+      setToasts((prev) => {
+        if (prev.some((t) => t.message === formattedMessage)) {
+          return prev;
+        }
+        return [
+          ...prev,
+          {
+            id: `${Date.now()}-${Math.random()}`,
+            type,
+            message: formattedMessage,
+          },
+        ];
+      });
+    },
+    []
+  );
+
+  const handleGpuReady = useCallback(
+    (gpuName: string) => {
+      handleNotify('info', `GPU Acceleration Ready`, `${gpuName}`);
+    },
+    [handleNotify]
+  );
+
+  // Extracted Hooks
+  const {
+    gpus,
+    selectedGpu,
+    setSelectedGpu,
+    scale,
+    setScale,
+    tileSize,
+    setTileSize,
+    customOutputPath,
+    setCustomOutputPath,
+    isMuted,
+    handleToggleMute,
+  } = useSettings(handleGpuReady);
+
+  const {
+    supportedModels,
+    installedModels,
+    selectedModel,
+    setSelectedModel,
+    downloadingModelId,
+    downloadProgress,
+    refreshInstalledModels,
+    handleDownloadModel,
+  } = useModelCatalog(handleNotify);
+
+  const handleSelectCategory = useCallback(
+    (cat: 'photos' | 'anime' | 'video') => {
+      setCategory(cat);
+      const filtered = supportedModels.filter((m) => m.cat === cat);
+      if (filtered.length > 0) {
+        const installedFiltered = filtered.filter((m) => installedModels.includes(m.id));
+        if (installedFiltered.length > 0) {
+          setSelectedModel(installedFiltered[0].id);
+        } else {
+          setSelectedModel(filtered[0].id);
+        }
+      }
+    },
+    [supportedModels, installedModels, setSelectedModel]
+  );
+
+  const handleResetJob = useCallback(() => {
+    setJobStatus('idle');
+    setProgressVal(0);
+    setStatusMessage('');
+    setJobPhase('');
+  }, []);
+
+  const {
+    filePath,
+    setFilePath,
+    fileName,
+    setFileName,
+    isVideo,
+    setIsVideo,
+    currentFileDims,
+    setCurrentFileDims,
+    upscaledPath,
+    setUpscaledPath,
+    batchItems,
+    setBatchItems,
+    handleClearFile,
+    handleOpenFile,
+    handleOpenFolder,
+    handleRemoveBatchItem,
+  } = useMediaSelection(isMuted, selectedModel, handleSelectCategory, handleNotify, handleResetJob);
+  const isDragOver = false;
 
   // Dynamic GPU VRAM calculation
   const currentGpuInfo = gpus.find((g) => g.id === selectedGpu) || gpus[0];
@@ -167,8 +191,6 @@ export default function App() {
     setZoomLevel((prev) => (prev === 1 ? 2 : prev === 2 ? 4 : prev === 4 ? 8 : 1));
   };
 
-  const gpuInitializedRef = useRef<boolean>(false);
-
   // Toast Helpers
   const addToast = (
     type: 'success' | 'error' | 'info' | 'warning',
@@ -194,90 +216,6 @@ export default function App() {
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
-
-  // Dynamic Model Catalog & Installed Models
-  const refreshInstalledModels = () => {
-    invoke<ModelInfo[]>('get_model_catalog')
-      .then((catalog) => {
-        if (catalog && catalog.length > 0) {
-          setSupportedModels(catalog);
-          const installed = catalog.filter((m) => m.installed).map((m) => m.id);
-          setInstalledModels(installed);
-          if (installed.length > 0 && (!selectedModel || !installed.includes(selectedModel))) {
-            setSelectedModel(installed[0]);
-          }
-          return;
-        }
-      })
-      .catch(() => {});
-
-    invoke<string[]>('list_installed_models')
-      .then((models) => {
-        setInstalledModels(models);
-        if (models.length > 0 && (!selectedModel || !models.includes(selectedModel))) {
-          setSelectedModel(models[0]);
-        } else if (!selectedModel) {
-          setSelectedModel('realesrgan-x4plus');
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to fetch installed models:', err);
-        if (!selectedModel) setSelectedModel('realesrgan-x4plus');
-      });
-  };
-
-  // Initial load: GPUs, settings, models
-  useEffect(() => {
-    if (gpuInitializedRef.current) return;
-    gpuInitializedRef.current = true;
-
-    invoke<GpuDevice[]>('list_gpus')
-      .then((res) => {
-        setGpus(res);
-        if (res.length > 0) {
-          setSelectedGpu(res[0].id);
-          addToast('info', `GPU Acceleration Ready`, `${res[0].name}`);
-        }
-      })
-      .catch((err) => console.error('Failed to load GPUs:', err));
-
-    invoke<BackendSettings>('get_app_settings')
-      .then((saved) => {
-        if (saved) {
-          if (saved.default_gpu_id !== undefined) setSelectedGpu(saved.default_gpu_id);
-          if (saved.default_scale !== undefined) setScale(saved.default_scale);
-          if (saved.default_tile_size !== undefined) setTileSize(saved.default_tile_size);
-          if (saved.output_directory) {
-            setCustomOutputPath(saved.output_directory);
-          } else {
-            invoke<string>('get_default_output_dir')
-              .then((defaultDir) => setCustomOutputPath(defaultDir))
-              .catch(() => {});
-          }
-        }
-      })
-      .catch(() => {});
-
-    refreshInstalledModels();
-  }, []);
-
-  // Save settings when user preferences change
-  useEffect(() => {
-    if (isInitialLoad.current) {
-      isInitialLoad.current = false;
-      return;
-    }
-    invoke('update_app_settings', {
-      settings: {
-        default_gpu_id: selectedGpu,
-        default_scale: scale,
-        default_tile_size: tileSize,
-        output_directory: customOutputPath || null,
-        sound_muted: false,
-        auto_check_updates: true,
-      },
-    }).catch(() => {});
-  }, [selectedGpu, scale, tileSize, customOutputPath]);
 
   // Global Keyboard Shortcuts (⌘O, ⌘↩, ESC, ⌘S, ⌘H)
   useEffect(() => {
@@ -446,43 +384,10 @@ export default function App() {
       );
     });
 
-    const unlistenDownload = listen<DownloadProgressEvent>('download-progress', (event) => {
-      const { model_id, percentage } = event.payload;
-      setDownloadingModelId(model_id);
-      setDownloadProgress(percentage);
-      if (percentage >= 100) {
-        setDownloadingModelId(null);
-        setDownloadProgress(0);
-        refreshInstalledModels();
-        addToast('success', 'Model Downloaded', `Model ${model_id} installed successfully.`);
-      }
-    });
-
     return () => {
       unlistenJob.then((f) => f());
-      unlistenDownload.then((f) => f());
     };
   }, [activeJobId, filePath, fileName, upscaledPath, selectedModel, scale, isVideo, isMuted]);
-
-  // Synchronized Category Selection
-  const handleSelectCategory = (newCat: 'photos' | 'anime' | 'video') => {
-    setCategory(newCat);
-    const targetCat = newCat === 'photos' ? 'photo' : newCat;
-    const matchModel =
-      SUPPORTED_MODELS.find(
-        (m) =>
-          m.cat === targetCat && (installedModels.length === 0 || installedModels.includes(m.id))
-      ) ||
-      SUPPORTED_MODELS.find((m) => m.cat === targetCat) ||
-      SUPPORTED_MODELS[0];
-
-    if (matchModel) {
-      setSelectedModel(matchModel.id);
-      if (matchModel.scale) {
-        setScale(matchModel.scale);
-      }
-    }
-  };
 
   // Synchronized Model Selection
   const handleSelectModel = (modelId: string) => {
@@ -494,128 +399,6 @@ export default function App() {
       if (category !== modelCat) {
         setCategory(modelCat);
       }
-    }
-  };
-
-  const handleOpenFolder = async () => {
-    try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-      });
-
-      if (!selected || typeof selected !== 'string') return;
-
-      playDropSound(isMuted);
-
-      setBatchItems((prev) => [
-        ...prev,
-        {
-          id: `folder-${Date.now()}`,
-          name: selected.split(/[\\/]/).pop() || 'Folder',
-          path: selected,
-          status: 'queued',
-          progress: 0,
-        },
-      ]);
-    } catch (err) {
-      console.error('Failed to select folder:', err);
-    }
-  };
-
-  // File Select Handler
-  const handleOpenFile = async () => {
-    try {
-      const selected = await open({
-        multiple: true,
-        filters: [
-          {
-            name: 'Media Files',
-            extensions: ['png', 'jpg', 'jpeg', 'webp', 'mp4', 'mkv', 'mov', 'avi'],
-          },
-        ],
-      });
-
-      if (!selected) return;
-
-      const paths = Array.isArray(selected) ? selected : [selected];
-      if (paths.length === 0) return;
-
-      playDropSound(isMuted);
-
-      if (paths.length === 1) {
-        const path = paths[0];
-        const name = path.split(/[\\/]/).pop() || 'media_file';
-        const isVid = /\.(mp4|mkv|mov|avi)$/i.test(name);
-
-        setFilePath(path);
-        setFileName(name);
-        setIsVideo(isVid);
-        setUpscaledPath('');
-        setJobStatus('idle');
-        setProgressVal(0);
-        setStatusMessage('');
-        setJobPhase('');
-
-        if (isVid) {
-          handleSelectCategory('video');
-        } else if (category === 'video') {
-          handleSelectCategory('photos');
-        } else {
-          handleSelectCategory(category);
-        }
-
-        const dims = await getMediaDimensions(getMediaSrc(path), isVid);
-        setCurrentFileDims(dims);
-
-        const calculatedSize = Math.round((dims.w * dims.h * 3) / 2);
-
-        const newBatchItem: BatchItem = {
-          id: Math.random().toString(),
-          filePath: path,
-          fileName: name,
-          w: dims.w,
-          h: dims.h,
-          fileSize: calculatedSize,
-          isVideo: isVid,
-          progress: 0,
-          status: 'ready',
-          model: selectedModel,
-        };
-        setBatchItems([newBatchItem]);
-        addToast('info', 'File Loaded', `${name} (${dims.w}×${dims.h})`);
-      } else {
-        const newItems: BatchItem[] = [];
-        for (const path of paths) {
-          const name = path.split(/[\\/]/).pop() || 'media_file';
-          const isVid = /\.(mp4|mkv|mov|avi)$/i.test(name);
-          const dims = await getMediaDimensions(getMediaSrc(path), isVid);
-          const calculatedSize = Math.round((dims.w * dims.h * 3) / 2);
-
-          newItems.push({
-            id: Math.random().toString(),
-            filePath: path,
-            fileName: name,
-            w: dims.w,
-            h: dims.h,
-            fileSize: calculatedSize,
-            isVideo: isVid,
-            progress: 0,
-            status: 'ready',
-            model: selectedModel,
-          });
-        }
-
-        setBatchItems((prev) => [...prev, ...newItems]);
-        setFilePath(newItems[0].filePath || '');
-        setFileName(newItems[0].fileName || '');
-        setIsVideo(newItems[0].isVideo || false);
-        setCurrentFileDims({ w: newItems[0].w || 1920, h: newItems[0].h || 1080 });
-        addToast('info', 'Batch Loaded', `Added ${paths.length} files to queue.`);
-      }
-    } catch (err) {
-      console.error('Failed to pick files:', err);
-      addToast('error', 'File Picker Error', String(err));
     }
   };
 
@@ -638,36 +421,6 @@ export default function App() {
     } catch (err) {
       console.error('Failed to pick folder:', err);
     }
-  };
-
-  const handleClearFile = () => {
-    setFilePath('');
-    setFileName('');
-    setIsVideo(false);
-    setCurrentFileDims(null);
-    setUpscaledPath('');
-    setJobStatus('idle');
-    setProgressVal(0);
-    setStatusMessage('');
-    setJobPhase('');
-    setBatchItems([]);
-    setZoomLevel(1);
-    addToast('info', 'Queue Cleared', 'Ready for next input.');
-  };
-
-  const handleRemoveBatchItem = (id: string) => {
-    setBatchItems((prev) => {
-      const next = prev.filter((item) => item.id !== id);
-      if (next.length === 0) {
-        handleClearFile();
-      } else if (filePath && !next.some((item) => item.filePath === filePath)) {
-        setFilePath(next[0].filePath || '');
-        setFileName(next[0].fileName || '');
-        setIsVideo(next[0].isVideo || false);
-        if (next[0].w && next[0].h) setCurrentFileDims({ w: next[0].w, h: next[0].h });
-      }
-      return next;
-    });
   };
 
   // Start Upscale Logic
@@ -860,20 +613,6 @@ export default function App() {
       addToast('info', 'Cancelled', 'Upscaling process was cancelled.');
     } catch (err) {
       console.error('Failed to cancel job:', err);
-    }
-  };
-
-  const handleDownloadModel = async (modelId: string) => {
-    try {
-      setDownloadingModelId(modelId);
-      setDownloadProgress(5);
-      addToast('info', 'Downloading Model', `Fetching weights for ${modelId}...`);
-      await invoke('download_model', { modelId });
-    } catch (err) {
-      console.error('Download failed:', err);
-      setDownloadingModelId(null);
-      setDownloadProgress(0);
-      addToast('error', 'Download Failed', String(err));
     }
   };
 

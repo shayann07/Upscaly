@@ -1,65 +1,48 @@
-# Phase 4 Execution Plan: Package a Self-Contained LGPL Windows Video Runtime
+# Phase 4 Plan: Extract Frontend Settings, Model Catalog, and Media Selection Hooks
 
-> **Milestone**: `v2.0-win-gpu-reliability`
-> **Phase**: Phase 4 — Package a self-contained LGPL Windows video runtime
-> **Objective**: Bundle x64 LGPL FFmpeg/FFprobe binaries & sidecar DLLs, implement vendor H.264 hardware encoder search chain (`h264_nvenc` → `h264_qsv` → `h264_amf` → `h264_mf`), `-c:a copy` with AAC 192kbps fallback, and VFR detection/rejection.
-
----
-
-## 1. LGPL Dependency Packaging & License Notices
-
-### Plan
-- Create `docs/THIRD_PARTY_NOTICES.md`:
-  - Document pinned LGPL FFmpeg build: version, source URL, SHA-256 hash, build flags (`--enable-version3 --disable-gpl`), license text (LGPL v2.1/v3), and binary update instructions.
-  - Exclude GPL-only `libx264`.
-- Register FFmpeg binaries in `src-tauri/tauri.conf.json`:
-  ```json
-  "externalBin": [
-    "binaries/realesrgan-ncnn-vulkan",
-    "binaries/ffmpeg",
-    "binaries/ffprobe"
-  ]
-  ```
-- Enforce x64 Windows installer architecture; error explicitly on x86/ARM64.
-- Implement `get_system_diagnostics` IPC command in `src-tauri/src/lib.rs` reporting sidecar binary locations, version checks, GPU discovery, and encoder availability.
+> **Milestone**: `Refactor Modularization Quality Gate`
+> **Phase**: Phase 4 — Extract frontend settings, model catalog, and media selection hooks
+> **Objective**: Decompose `src/App.tsx` state management by extracting settings persistence, model catalog status resolution, and media file/folder selection into focused custom hooks.
 
 ---
 
-## 2. Runtime Vendor H.264 Encoder Fallback Chain
+## Tasks
 
-### Plan
-- Refactor video reassembly in `src-tauri/src/video_pipeline.rs`:
-  - Test encoder availability in strict priority order:
-    1. `h264_nvenc` (NVIDIA)
-    2. `h264_qsv` (Intel QuickSync)
-    3. `h264_amf` (AMD AMF)
-    4. `h264_mf` (Windows Media Foundation)
-  - Probe candidate availability by running a 1-frame test encode or testing sidecar output.
-  - Fail over dynamically if candidate fails during actual video encoding.
-  - Emit clear error if no hardware H.264 encoder is functional ("No supported hardware H.264 encoder available. Please update GPU drivers or install Media Foundation.").
+### Task 4.1: Extract settings state hook
+- **Target Files**: `src/App.tsx`, `src/hooks/useSettings.ts` (new), `src/hooks/__tests__/useSettings.test.ts` (new)
+- **Actions**:
+  - Implement `useSettings` hook encapsulating GPU discovery, tile size selection, custom output path, and sound mute state.
+  - Create Vitest test suite `src/hooks/__tests__/useSettings.test.ts`.
+- **Verification Commands**:
+  - `npm.cmd run check:ts`
+  - `npm.cmd run test`
 
----
+### Task 4.2: Extract model catalog state hook
+- **Target Files**: `src/App.tsx`, `src/hooks/useModelCatalog.ts` (new), `src/hooks/__tests__/useModelCatalog.test.ts` (new)
+- **Actions**:
+  - Implement `useModelCatalog` hook encapsulating catalog discovery, installed models, selected model, download state, and repair actions.
+  - Create Vitest test suite `src/hooks/__tests__/useModelCatalog.test.ts`.
+- **Verification Commands**:
+  - `npm.cmd run check:ts`
+  - `npm.cmd run test`
 
-## 3. Audio & Timing Policy
-
-### Plan
-- **Audio Stream Handling**:
-  - Primary attempt: `-c:a copy` to preserve original bitstream.
-  - If MP4 muxing rejects stream, retry with stereo AAC at 192 kbps (`-c:a aac -b:a 192k -ac 2`).
-  - Pass audio handling result (`audio_copied` vs `audio_transcoded`) in job completion event.
-- **Timing & VFR Processing**:
-  - Use FFprobe to query `is_vfr` status and frame rate mode.
-  - Detect variable frame rate (VFR); if detected, fail before frame extraction with actionable error message:
-    `"Variable frame rate (VFR) videos are not supported in this release. Please convert to constant frame rate (CFR) before upscaling."`
-  - Preserve original CFR frame rate and timing metadata in MP4 container.
+### Task 4.3: Extract media selection state hook
+- **Target Files**: `src/App.tsx`, `src/hooks/useMediaSelection.ts` (new), `src/hooks/__tests__/useMediaSelection.test.ts` (new)
+- **Actions**:
+  - Implement `useMediaSelection` hook encapsulating single file selection, folder batch ingestion, dimension probing, and batch item state.
+  - Create Vitest test suite `src/hooks/__tests__/useMediaSelection.test.ts`.
+- **Verification Commands**:
+  - `npm.cmd run check:ts`
+  - `npm.cmd run test`
+  - `npm.cmd run build`
 
 ---
 
 ## Acceptance Gate Checklist (Phase 4)
-- [ ] `docs/THIRD_PARTY_NOTICES.md` created with LGPL FFmpeg attribution and build specs.
-- [ ] `tauri.conf.json` registers `ffmpeg` and `ffprobe` as target-triple sidecars.
-- [ ] Encoder fallback chain tests `h264_nvenc` → `h264_qsv` → `h264_amf` → `h264_mf` dynamically.
-- [ ] `-c:a copy` falls back to AAC 192kbps stereo when audio copying fails.
-- [ ] VFR videos are rejected before processing with explicit user-facing error message.
-- [ ] `get_system_diagnostics` command returns valid diagnostic metadata.
-- [ ] `cargo test` and `npm.cmd run test` pass 100%.
+- [ ] `useSettings.ts`, `useModelCatalog.ts`, and `useMediaSelection.ts` hooks created.
+- [ ] Unit tests created for all 3 hooks in `src/hooks/__tests__/`.
+- [ ] `App.tsx` state refactored to use extracted hooks.
+- [ ] `npm.cmd run check:ts` passes cleanly.
+- [ ] `npm.cmd run test` passes with all new hook tests.
+- [ ] `npm.cmd run build` compiles production assets cleanly.
+- [ ] `npm.cmd run format:check:all` passes cleanly.
