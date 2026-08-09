@@ -29,4 +29,3 @@ describe('SettingsPanel Component', () => {
     expect(onSelectScale).toHaveBeenCalledWith(2);
   });
 });
-

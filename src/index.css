@@ -1,38 +1,38 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 :root {
   /* ── Color Tokens ── */
-  --bg-base: #0B0A09;
-  --bg-surface: #0F0E0D;
+  --bg-base: #0b0a09;
+  --bg-surface: #0f0e0d;
   --bg-elevated: #121110;
-  --bg-hover: #1C1B19;
+  --bg-hover: #1c1b19;
   --bg-active: #191817;
-  --bg-overlay: rgba(6,5,5,.78);
+  --bg-overlay: rgba(6, 5, 5, 0.78);
 
   --border-default: #232120;
-  --border-subtle: #34312D;
-  --border-hover: #4A453E;
-  --border-danger: #4A211C;
+  --border-subtle: #34312d;
+  --border-hover: #4a453e;
+  --border-danger: #4a211c;
 
-  --text-primary: #F2F0ED;
-  --text-secondary: #B8B2AA;
-  --text-tertiary: #8A847C;
-  --text-muted: #6B655E;
-  --text-dim: #5A554F;
-  --text-ghost: #403B36;
+  --text-primary: #f2f0ed;
+  --text-secondary: #b8b2aa;
+  --text-tertiary: #8a847c;
+  --text-muted: #6b655e;
+  --text-dim: #5a554f;
+  --text-ghost: #403b36;
 
-  --accent: #A80B24;
-  --accent-bg: rgba(168,11,36,.12);
-  --accent-subtle: rgba(168,11,36,.05);
+  --accent: #a80b24;
+  --accent-bg: rgba(168, 11, 36, 0.12);
+  --accent-subtle: rgba(168, 11, 36, 0.05);
 
-  --success: #86AE8D;
-  --success-border: #3A5A3E;
+  --success: #86ae8d;
+  --success-border: #3a5a3e;
   --success-bg: #132015;
 
-  --danger-text: #E88A80;
-  --danger-bg: #1A100E;
-  --danger-hover: #2A1512;
-  --danger-border: #4A211C;
+  --danger-text: #e88a80;
+  --danger-bg: #1a100e;
+  --danger-hover: #2a1512;
+  --danger-border: #4a211c;
 
   /* ── Typography ── */
   --font-ui: 'Archivo', Helvetica, sans-serif;
@@ -45,17 +45,17 @@
   --radius-xl: 16px;
 
   /* ── Shadows ── */
-  --shadow-pill: 0 10px 28px rgba(0,0,0,.5);
-  --shadow-pill-hover: 0 16px 38px rgba(0,0,0,.62);
-  --shadow-panel: 0 20px 50px rgba(0,0,0,.6);
-  --shadow-modal: 0 40px 90px rgba(0,0,0,.75);
-  --shadow-toast: 0 14px 34px rgba(0,0,0,.55);
+  --shadow-pill: 0 10px 28px rgba(0, 0, 0, 0.5);
+  --shadow-pill-hover: 0 16px 38px rgba(0, 0, 0, 0.62);
+  --shadow-panel: 0 20px 50px rgba(0, 0, 0, 0.6);
+  --shadow-modal: 0 40px 90px rgba(0, 0, 0, 0.75);
+  --shadow-toast: 0 14px 34px rgba(0, 0, 0, 0.55);
 
   /* ── Easing ── */
-  --ease-spring: cubic-bezier(.22,1.15,.36,1);
-  --ease-bounce: cubic-bezier(.22,1.3,.36,1);
-  --ease-pop: cubic-bezier(.22,1.4,.36,1);
+  --ease-spring: cubic-bezier(0.22, 1.15, 0.36, 1);
+  --ease-bounce: cubic-bezier(0.22, 1.3, 0.36, 1);
+  --ease-pop: cubic-bezier(0.22, 1.4, 0.36, 1);
 
   /* ── Background pattern ── */
-  --bg-stripe: repeating-linear-gradient(115deg, #171514 0 13px, #0B0A09 13px 26px);
+  --bg-stripe: repeating-linear-gradient(115deg, #171514 0 13px, #0b0a09 13px 26px);
 }

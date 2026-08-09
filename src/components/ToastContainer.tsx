@@ -1,8 +1,8 @@
-import { Toast } from "../lib/types";
+import { Toast } from '../lib/types';
 
 export interface ToastItem {
   id: string;
-  type?: "success" | "error" | "info" | "warning";
+  type?: 'success' | 'error' | 'info' | 'warning';
   kind?: string;
   text?: string;
   message?: string;
@@ -15,37 +15,37 @@ interface ToastContainerProps {
 }
 
 export function ToastContainer({ toasts, onDismiss, settingsOpen = false }: ToastContainerProps) {
-  const EASE = "var(--ease-spring)";
+  const EASE = 'var(--ease-spring)';
   const visible = toasts.slice(-3);
 
   const getToastColors = (type?: string, kind?: string) => {
-    const k = (kind || type || "").toLowerCase();
-    if (k.includes("success") || k === "done" || k === "complete") {
+    const k = (kind || type || '').toLowerCase();
+    if (k.includes('success') || k === 'done' || k === 'complete') {
       return {
-        badgeColor: "#86AE8D",
-        borderColor: "#3A5A3E",
-        bgColor: "rgba(19,32,21,.97)",
+        badgeColor: '#86AE8D',
+        borderColor: '#3A5A3E',
+        bgColor: 'rgba(19,32,21,.97)',
       };
     }
-    if (k.includes("error") || k.includes("fail") || k === "danger") {
+    if (k.includes('error') || k.includes('fail') || k === 'danger') {
       return {
-        badgeColor: "#E88A80",
-        borderColor: "#4A211C",
-        bgColor: "rgba(26,16,14,.97)",
+        badgeColor: '#E88A80',
+        borderColor: '#4A211C',
+        bgColor: 'rgba(26,16,14,.97)',
       };
     }
-    if (k.includes("warn")) {
+    if (k.includes('warn')) {
       return {
-        badgeColor: "#E8BC80",
-        borderColor: "#4A3A21",
-        bgColor: "rgba(26,22,14,.97)",
+        badgeColor: '#E8BC80',
+        borderColor: '#4A3A21',
+        bgColor: 'rgba(26,22,14,.97)',
       };
     }
     // Info / default
     return {
-      badgeColor: "#A80B24",
-      borderColor: "#34312D",
-      bgColor: "rgba(13,12,11,.97)",
+      badgeColor: '#A80B24',
+      borderColor: '#34312D',
+      bgColor: 'rgba(13,12,11,.97)',
     };
   };
 
@@ -58,8 +58,8 @@ export function ToastContainer({ toasts, onDismiss, settingsOpen = false }: Toas
       }}
     >
       {visible.map((t) => {
-        const kind = t.kind || (t.type ? t.type.toUpperCase() : "INFO");
-        const text = t.text || t.message || "";
+        const kind = t.kind || (t.type ? t.type.toUpperCase() : 'INFO');
+        const text = t.text || t.message || '';
         const colors = getToastColors(t.type, t.kind);
 
         return (
@@ -67,7 +67,7 @@ export function ToastContainer({ toasts, onDismiss, settingsOpen = false }: Toas
             key={t.id}
             className="group flex gap-[11px] pointer-events-auto transition-all duration-300 max-h-[72px] overflow-hidden hover:max-h-[400px] hover:w-[360px] hover:-ml-[50px] shadow-[var(--shadow-toast)] hover:scale-[1.03] hover:border-[var(--border-hover)]"
             style={{
-              padding: "12px 13px",
+              padding: '12px 13px',
               border: `1px solid ${colors.borderColor}`,
               borderRadius: 12,
               background: colors.bgColor,

@@ -1,29 +1,29 @@
-import { useState, useEffect, useRef, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { open } from '@tauri-apps/plugin-dialog';
+import { revealItemInDir } from '@tauri-apps/plugin-opener';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // Custom Components & Libs
-import { Titlebar } from "./components/Titlebar";
-import { DropZone } from "./components/DropZone";
-import { ProgressOverlay } from "./components/ProgressOverlay";
-import { CompletionCard } from "./components/CompletionCard";
-import { SettingsPanel } from "./components/SettingsPanel";
-import { AdvancedSettings } from "./components/AdvancedSettings";
-import { ComparisonSlider } from "./components/ComparisonSlider";
-import { ModelCatalogModal } from "./components/ModelCatalogModal";
-import { ToastContainer, ToastItem } from "./components/ToastContainer";
-import { RecentHistoryDrawer } from "./components/RecentHistoryDrawer";
-import { AboutModal } from "./components/AboutModal";
-import { BatchQueueView, BatchItem } from "./components/BatchQueueView";
+import { Titlebar } from './components/Titlebar';
+import { DropZone } from './components/DropZone';
+import { ProgressOverlay } from './components/ProgressOverlay';
+import { CompletionCard } from './components/CompletionCard';
+import { SettingsPanel } from './components/SettingsPanel';
+import { AdvancedSettings } from './components/AdvancedSettings';
+import { ComparisonSlider } from './components/ComparisonSlider';
+import { ModelCatalogModal } from './components/ModelCatalogModal';
+import { ToastContainer, ToastItem } from './components/ToastContainer';
+import { RecentHistoryDrawer } from './components/RecentHistoryDrawer';
+import { AboutModal } from './components/AboutModal';
+import { BatchQueueView, BatchItem } from './components/BatchQueueView';
 
-import { playDropSound, playCompleteSound, playErrorSound } from "./lib/sound";
-import { getMediaSrc } from "./lib/media";
-import { getModelMetadata } from "./lib/models";
-import { SUPPORTED_MODELS, ModelInfo, JobProgress, HistoryEntry } from "./lib/types";
-import { addHistoryItem, getRecentHistory, HistoryItem } from "./lib/history";
+import { playDropSound, playCompleteSound, playErrorSound } from './lib/sound';
+import { getMediaSrc } from './lib/media';
+import { getModelMetadata } from './lib/models';
+import { SUPPORTED_MODELS, ModelInfo, JobProgress, HistoryEntry } from './lib/types';
+import { addHistoryItem, getRecentHistory, HistoryItem } from './lib/history';
 
 interface GpuDevice {
   id: number;
@@ -48,7 +48,7 @@ interface BackendSettings {
 const getMediaDimensions = (src: string, isVid: boolean): Promise<{ w: number; h: number }> => {
   return new Promise((resolve) => {
     if (isVid) {
-      const vid = document.createElement("video");
+      const vid = document.createElement('video');
       vid.src = src;
       vid.onloadedmetadata = () => {
         resolve({ w: vid.videoWidth || 1920, h: vid.videoHeight || 1080 });
@@ -71,36 +71,38 @@ export default function App() {
   const [selectedGpu, setSelectedGpu] = useState<number>(0);
   const [installedModels, setInstalledModels] = useState<string[]>([]);
   const [supportedModels, setSupportedModels] = useState<ModelInfo[]>(SUPPORTED_MODELS);
-  const [category, setCategory] = useState<"photos" | "anime" | "video">("photos");
+  const [category, setCategory] = useState<'photos' | 'anime' | 'video'>('photos');
 
-  const [selectedModel, setSelectedModel] = useState<string>("realesrgan-x4plus");
+  const [selectedModel, setSelectedModel] = useState<string>('realesrgan-x4plus');
   const [scale, setScale] = useState<number>(4);
   const [tileSize, setTileSize] = useState<number>(0); // 0 = Auto
-  const [customOutputPath, setCustomOutputPath] = useState<string>("");
-  const [activeNavTab, setActiveNavTab] = useState<"models" | "history" | "settings" | "about" | null>(null);
+  const [customOutputPath, setCustomOutputPath] = useState<string>('');
+  const [activeNavTab, setActiveNavTab] = useState<
+    'models' | 'history' | 'settings' | 'about' | null
+  >(null);
 
-  const handleToggleNavTab = (tab: "models" | "history" | "settings" | "about") => {
+  const handleToggleNavTab = (tab: 'models' | 'history' | 'settings' | 'about') => {
     setActiveNavTab((prev) => (prev === tab ? null : tab));
   };
 
   // File & Batch state
-  const [filePath, setFilePath] = useState<string>("");
-  const [fileName, setFileName] = useState<string>("");
+  const [filePath, setFilePath] = useState<string>('');
+  const [fileName, setFileName] = useState<string>('');
   const [isVideo, setIsVideo] = useState<boolean>(false);
   const [currentFileDims, setCurrentFileDims] = useState<{ w: number; h: number } | null>(null);
-  const [upscaledPath, setUpscaledPath] = useState<string>("");
+  const [upscaledPath, setUpscaledPath] = useState<string>('');
   const [isDragOver] = useState<boolean>(false);
   const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
 
   // Processing state
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [jobStatus, setJobStatus] = useState<string>("idle");
+  const [jobStatus, setJobStatus] = useState<string>('idle');
   const [progressVal, setProgressVal] = useState<number>(0);
-  const [statusMessage, setStatusMessage] = useState<string>("");
-  const [jobPhase, setJobPhase] = useState<string>("");
+  const [statusMessage, setStatusMessage] = useState<string>('');
+  const [jobPhase, setJobPhase] = useState<string>('');
   const [etaSeconds, setEtaSeconds] = useState<number | undefined>(undefined);
   const [fps, setFps] = useState<number | undefined>(undefined);
-  const [rateStr, setRateStr] = useState<string>("14.2 MP/s");
+  const [rateStr, setRateStr] = useState<string>('14.2 MP/s');
   const jobStartTimeRef = useRef<number | null>(null);
 
   // Studio Interactive Modes & Zoom
@@ -111,14 +113,14 @@ export default function App() {
   const [downloadingModelId, setDownloadingModelId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(() => {
-    const saved = localStorage.getItem("upscaly_sound_muted");
-    return saved === "true";
+    const saved = localStorage.getItem('upscaly_sound_muted');
+    return saved === 'true';
   });
 
   const handleToggleMute = () => {
     setIsMuted((prev) => {
       const next = !prev;
-      localStorage.setItem("upscaly_sound_muted", String(next));
+      localStorage.setItem('upscaly_sound_muted', String(next));
       return next;
     });
   };
@@ -128,7 +130,7 @@ export default function App() {
   // History state
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>(() => getRecentHistory());
 
-  const pendingOutputPath = useRef<string>("");
+  const pendingOutputPath = useRef<string>('');
   const activeJobIdRef = useRef<string | null>(null);
   const isInitialLoad = useRef<boolean>(true);
 
@@ -136,17 +138,24 @@ export default function App() {
   const currentGpuInfo = gpus.find((g) => g.id === selectedGpu) || gpus[0];
   const totalGpuVramGb = (() => {
     if (!currentGpuInfo) return 8;
-    const match = currentGpuInfo.name.match(/(\d+)\s*GB/i) || (currentGpuInfo.detail && currentGpuInfo.detail.match(/(\d+)\s*GB/i));
+    const match =
+      currentGpuInfo.name.match(/(\d+)\s*GB/i) ||
+      (currentGpuInfo.detail && currentGpuInfo.detail.match(/(\d+)\s*GB/i));
     if (match && match[1]) return parseInt(match[1], 10);
-    if (currentGpuInfo.name.toLowerCase().includes("intel") || currentGpuInfo.name.toLowerCase().includes("uhd")) return 2;
+    if (
+      currentGpuInfo.name.toLowerCase().includes('intel') ||
+      currentGpuInfo.name.toLowerCase().includes('uhd')
+    )
+      return 2;
     return 8;
   })();
 
   const activeVramGb = (() => {
-    if (selectedGpu === -1) return "SYSTEM RAM";
-    const isProc = jobStatus === "processing" || jobStatus === "queued";
+    if (selectedGpu === -1) return 'SYSTEM RAM';
+    const isProc = jobStatus === 'processing' || jobStatus === 'queued';
     if (isProc) {
-      const tileMult = tileSize === 512 ? 0.75 : tileSize === 256 ? 0.45 : tileSize === 128 ? 0.25 : 0.55;
+      const tileMult =
+        tileSize === 512 ? 0.75 : tileSize === 256 ? 0.45 : tileSize === 128 ? 0.25 : 0.55;
       const used = Math.min(totalGpuVramGb, Math.round(totalGpuVramGb * tileMult * 10) / 10);
       return `${used.toFixed(1)} GB`;
     }
@@ -161,7 +170,11 @@ export default function App() {
   const gpuInitializedRef = useRef<boolean>(false);
 
   // Toast Helpers
-  const addToast = (type: "success" | "error" | "info" | "warning", title: string, message: string) => {
+  const addToast = (
+    type: 'success' | 'error' | 'info' | 'warning',
+    title: string,
+    message: string
+  ) => {
     const formattedMessage = message ? `${title}: ${message}` : title;
     setToasts((prev) => {
       if (prev.some((t) => t.message === formattedMessage)) {
@@ -184,7 +197,7 @@ export default function App() {
 
   // Dynamic Model Catalog & Installed Models
   const refreshInstalledModels = () => {
-    invoke<ModelInfo[]>("get_model_catalog")
+    invoke<ModelInfo[]>('get_model_catalog')
       .then((catalog) => {
         if (catalog && catalog.length > 0) {
           setSupportedModels(catalog);
@@ -198,18 +211,18 @@ export default function App() {
       })
       .catch(() => {});
 
-    invoke<string[]>("list_installed_models")
+    invoke<string[]>('list_installed_models')
       .then((models) => {
         setInstalledModels(models);
         if (models.length > 0 && (!selectedModel || !models.includes(selectedModel))) {
           setSelectedModel(models[0]);
         } else if (!selectedModel) {
-          setSelectedModel("realesrgan-x4plus");
+          setSelectedModel('realesrgan-x4plus');
         }
       })
       .catch((err) => {
-        console.error("Failed to fetch installed models:", err);
-        if (!selectedModel) setSelectedModel("realesrgan-x4plus");
+        console.error('Failed to fetch installed models:', err);
+        if (!selectedModel) setSelectedModel('realesrgan-x4plus');
       });
   };
 
@@ -218,17 +231,17 @@ export default function App() {
     if (gpuInitializedRef.current) return;
     gpuInitializedRef.current = true;
 
-    invoke<GpuDevice[]>("list_gpus")
+    invoke<GpuDevice[]>('list_gpus')
       .then((res) => {
         setGpus(res);
         if (res.length > 0) {
           setSelectedGpu(res[0].id);
-          addToast("info", `GPU Acceleration Ready`, `${res[0].name}`);
+          addToast('info', `GPU Acceleration Ready`, `${res[0].name}`);
         }
       })
-      .catch((err) => console.error("Failed to load GPUs:", err));
+      .catch((err) => console.error('Failed to load GPUs:', err));
 
-    invoke<BackendSettings>("get_app_settings")
+    invoke<BackendSettings>('get_app_settings')
       .then((saved) => {
         if (saved) {
           if (saved.default_gpu_id !== undefined) setSelectedGpu(saved.default_gpu_id);
@@ -237,7 +250,7 @@ export default function App() {
           if (saved.output_directory) {
             setCustomOutputPath(saved.output_directory);
           } else {
-            invoke<string>("get_default_output_dir")
+            invoke<string>('get_default_output_dir')
               .then((defaultDir) => setCustomOutputPath(defaultDir))
               .catch(() => {});
           }
@@ -254,7 +267,7 @@ export default function App() {
       isInitialLoad.current = false;
       return;
     }
-    invoke("update_app_settings", {
+    invoke('update_app_settings', {
       settings: {
         default_gpu_id: selectedGpu,
         default_scale: scale,
@@ -270,53 +283,70 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement;
-      const isInput = activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA" || (activeEl as HTMLElement).isContentEditable);
+      const isInput =
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          (activeEl as HTMLElement).isContentEditable);
 
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'o') {
         if (isInput) return;
         e.preventDefault();
         handleOpenFile();
-      } else if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
         if (isInput) return;
         e.preventDefault();
         handleStartUpscale();
-      } else if (e.key === "Escape") {
+      } else if (e.key === 'Escape') {
         if (activeJobId) {
           handleCancelUpscale();
         } else {
           setActiveNavTab(null);
         }
-      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         if (isInput) return;
         e.preventDefault();
-        handleToggleNavTab("settings");
-      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "h") {
+        handleToggleNavTab('settings');
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'h') {
         if (isInput) return;
         e.preventDefault();
-        handleToggleNavTab("history");
+        handleToggleNavTab('history');
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeJobId, filePath, batchItems]);
 
   // Job and download event listeners
   useEffect(() => {
-    const unlistenJob = listen<JobProgress>("job-status-changed", (event) => {
-      const { job_id, percentage, status, error, phase, eta_seconds, fps: jobFps, output_path: eventOutPath } = event.payload;
+    const unlistenJob = listen<JobProgress>('job-status-changed', (event) => {
+      const {
+        job_id,
+        percentage,
+        status,
+        error,
+        phase,
+        eta_seconds,
+        fps: jobFps,
+        output_path: eventOutPath,
+      } = event.payload;
 
       // Update single studio job
-      const isCurrentStudioJob = (activeJobId && job_id === activeJobId) || (activeJobIdRef.current && job_id === activeJobIdRef.current);
+      const isCurrentStudioJob =
+        (activeJobId && job_id === activeJobId) ||
+        (activeJobIdRef.current && job_id === activeJobIdRef.current);
       if (isCurrentStudioJob) {
         if (activeJobIdRef.current !== job_id) {
           activeJobIdRef.current = job_id;
           setActiveJobId(job_id);
         }
-        const effectiveStatus = 
-          (status === "succeeded" || status === "completed") ? "completed" :
-          (status === "running" || status === "processing") ? "processing" :
-          status;
+        const effectiveStatus =
+          status === 'succeeded' || status === 'completed'
+            ? 'completed'
+            : status === 'running' || status === 'processing'
+              ? 'processing'
+              : status;
         setProgressVal(percentage);
         setJobStatus(effectiveStatus);
         if (phase) setJobPhase(phase);
@@ -348,12 +378,12 @@ export default function App() {
           setRateStr(`${mps.toFixed(1)} MP/s`);
         }
 
-        if (status === "running" || status === "processing") {
+        if (status === 'running' || status === 'processing') {
           setStatusMessage(`Upscaling in progress... ${percentage.toFixed(1)}%`);
-        } else if (status === "queued") {
-          setStatusMessage("Queued in GPU worker thread...");
-        } else if (status === "succeeded" || status === "completed") {
-          setStatusMessage("Upscaling Completed Successfully!");
+        } else if (status === 'queued') {
+          setStatusMessage('Queued in GPU worker thread...');
+        } else if (status === 'succeeded' || status === 'completed') {
+          setStatusMessage('Upscaling Completed Successfully!');
           const finalPath = eventOutPath || pendingOutputPath.current || upscaledPath;
           if (finalPath) {
             setUpscaledPath(finalPath);
@@ -372,19 +402,19 @@ export default function App() {
           setActiveJobId(null);
           refreshInstalledModels();
           playCompleteSound(isMuted);
-          addToast("success", "Upscaling Complete", "Enhanced output saved.");
-        } else if (status === "failed") {
+          addToast('success', 'Upscaling Complete', 'Enhanced output saved.');
+        } else if (status === 'failed') {
           activeJobIdRef.current = null;
           setActiveJobId(null);
-          setJobStatus("idle");
+          setJobStatus('idle');
           playErrorSound(isMuted);
-          const errStr = error || "Processing failed during sidecar execution.";
-          addToast("error", "Upscaling Failed", errStr);
-        } else if (status === "cancelled") {
+          const errStr = error || 'Processing failed during sidecar execution.';
+          addToast('error', 'Upscaling Failed', errStr);
+        } else if (status === 'cancelled') {
           activeJobIdRef.current = null;
           setActiveJobId(null);
-          setJobStatus("idle");
-          addToast("info", "Cancelled", "Upscaling task was cancelled.");
+          setJobStatus('idle');
+          addToast('info', 'Cancelled', 'Upscaling task was cancelled.');
         }
       }
 
@@ -392,13 +422,21 @@ export default function App() {
       setBatchItems((prev) =>
         prev.map((item) => {
           if (item.id === job_id) {
-            const isDone = status === "succeeded" || status === "completed";
-            const isErr = status === "failed";
-            const isCanc = status === "cancelled";
+            const isDone = status === 'succeeded' || status === 'completed';
+            const isErr = status === 'failed';
+            const isCanc = status === 'cancelled';
             return {
               ...item,
               progress: percentage,
-              status: isDone ? "done" : isErr ? "error" : isCanc ? "cancelled" : status === "running" || status === "processing" ? "processing" : "queued",
+              status: isDone
+                ? 'done'
+                : isErr
+                  ? 'error'
+                  : isCanc
+                    ? 'cancelled'
+                    : status === 'running' || status === 'processing'
+                      ? 'processing'
+                      : 'queued',
               outputPath: isDone ? pendingOutputPath.current || item.outputPath : item.outputPath,
               error: isErr ? error : item.error,
             };
@@ -408,8 +446,7 @@ export default function App() {
       );
     });
 
-
-    const unlistenDownload = listen<DownloadProgressEvent>("download-progress", (event) => {
+    const unlistenDownload = listen<DownloadProgressEvent>('download-progress', (event) => {
       const { model_id, percentage } = event.payload;
       setDownloadingModelId(model_id);
       setDownloadProgress(percentage);
@@ -417,7 +454,7 @@ export default function App() {
         setDownloadingModelId(null);
         setDownloadProgress(0);
         refreshInstalledModels();
-        addToast("success", "Model Downloaded", `Model ${model_id} installed successfully.`);
+        addToast('success', 'Model Downloaded', `Model ${model_id} installed successfully.`);
       }
     });
 
@@ -428,12 +465,16 @@ export default function App() {
   }, [activeJobId, filePath, fileName, upscaledPath, selectedModel, scale, isVideo, isMuted]);
 
   // Synchronized Category Selection
-  const handleSelectCategory = (newCat: "photos" | "anime" | "video") => {
+  const handleSelectCategory = (newCat: 'photos' | 'anime' | 'video') => {
     setCategory(newCat);
-    const targetCat = newCat === "photos" ? "photo" : newCat;
-    const matchModel = SUPPORTED_MODELS.find(
-      (m) => m.cat === targetCat && (installedModels.length === 0 || installedModels.includes(m.id))
-    ) || SUPPORTED_MODELS.find((m) => m.cat === targetCat) || SUPPORTED_MODELS[0];
+    const targetCat = newCat === 'photos' ? 'photo' : newCat;
+    const matchModel =
+      SUPPORTED_MODELS.find(
+        (m) =>
+          m.cat === targetCat && (installedModels.length === 0 || installedModels.includes(m.id))
+      ) ||
+      SUPPORTED_MODELS.find((m) => m.cat === targetCat) ||
+      SUPPORTED_MODELS[0];
 
     if (matchModel) {
       setSelectedModel(matchModel.id);
@@ -449,7 +490,7 @@ export default function App() {
     const modelInfo = SUPPORTED_MODELS.find((m) => m.id === modelId);
     if (modelInfo) {
       if (modelInfo.scale) setScale(modelInfo.scale);
-      const modelCat = modelInfo.cat === "photo" ? "photos" : (modelInfo.cat as "anime" | "video");
+      const modelCat = modelInfo.cat === 'photo' ? 'photos' : (modelInfo.cat as 'anime' | 'video');
       if (category !== modelCat) {
         setCategory(modelCat);
       }
@@ -463,7 +504,7 @@ export default function App() {
         multiple: false,
       });
 
-      if (!selected || typeof selected !== "string") return;
+      if (!selected || typeof selected !== 'string') return;
 
       playDropSound(isMuted);
 
@@ -471,14 +512,14 @@ export default function App() {
         ...prev,
         {
           id: `folder-${Date.now()}`,
-          name: selected.split(/[\\/]/).pop() || "Folder",
+          name: selected.split(/[\\/]/).pop() || 'Folder',
           path: selected,
-          status: "queued",
+          status: 'queued',
           progress: 0,
         },
       ]);
     } catch (err) {
-      console.error("Failed to select folder:", err);
+      console.error('Failed to select folder:', err);
     }
   };
 
@@ -489,8 +530,8 @@ export default function App() {
         multiple: true,
         filters: [
           {
-            name: "Media Files",
-            extensions: ["png", "jpg", "jpeg", "webp", "mp4", "mkv", "mov", "avi"],
+            name: 'Media Files',
+            extensions: ['png', 'jpg', 'jpeg', 'webp', 'mp4', 'mkv', 'mov', 'avi'],
           },
         ],
       });
@@ -504,22 +545,22 @@ export default function App() {
 
       if (paths.length === 1) {
         const path = paths[0];
-        const name = path.split(/[\\/]/).pop() || "media_file";
+        const name = path.split(/[\\/]/).pop() || 'media_file';
         const isVid = /\.(mp4|mkv|mov|avi)$/i.test(name);
 
         setFilePath(path);
         setFileName(name);
         setIsVideo(isVid);
-        setUpscaledPath("");
-        setJobStatus("idle");
+        setUpscaledPath('');
+        setJobStatus('idle');
         setProgressVal(0);
-        setStatusMessage("");
-        setJobPhase("");
+        setStatusMessage('');
+        setJobPhase('');
 
         if (isVid) {
-          handleSelectCategory("video");
-        } else if (category === "video") {
-          handleSelectCategory("photos");
+          handleSelectCategory('video');
+        } else if (category === 'video') {
+          handleSelectCategory('photos');
         } else {
           handleSelectCategory(category);
         }
@@ -538,15 +579,15 @@ export default function App() {
           fileSize: calculatedSize,
           isVideo: isVid,
           progress: 0,
-          status: "ready",
+          status: 'ready',
           model: selectedModel,
         };
         setBatchItems([newBatchItem]);
-        addToast("info", "File Loaded", `${name} (${dims.w}×${dims.h})`);
+        addToast('info', 'File Loaded', `${name} (${dims.w}×${dims.h})`);
       } else {
         const newItems: BatchItem[] = [];
         for (const path of paths) {
-          const name = path.split(/[\\/]/).pop() || "media_file";
+          const name = path.split(/[\\/]/).pop() || 'media_file';
           const isVid = /\.(mp4|mkv|mov|avi)$/i.test(name);
           const dims = await getMediaDimensions(getMediaSrc(path), isVid);
           const calculatedSize = Math.round((dims.w * dims.h * 3) / 2);
@@ -560,26 +601,26 @@ export default function App() {
             fileSize: calculatedSize,
             isVideo: isVid,
             progress: 0,
-            status: "ready",
+            status: 'ready',
             model: selectedModel,
           });
         }
 
         setBatchItems((prev) => [...prev, ...newItems]);
-        setFilePath(newItems[0].filePath || "");
-        setFileName(newItems[0].fileName || "");
+        setFilePath(newItems[0].filePath || '');
+        setFileName(newItems[0].fileName || '');
         setIsVideo(newItems[0].isVideo || false);
         setCurrentFileDims({ w: newItems[0].w || 1920, h: newItems[0].h || 1080 });
-        addToast("info", "Batch Loaded", `Added ${paths.length} files to queue.`);
+        addToast('info', 'Batch Loaded', `Added ${paths.length} files to queue.`);
       }
     } catch (err) {
-      console.error("Failed to pick files:", err);
-      addToast("error", "File Picker Error", String(err));
+      console.error('Failed to pick files:', err);
+      addToast('error', 'File Picker Error', String(err));
     }
   };
 
   const joinPath = (dir: string, filename: string): string => {
-    const cleanDir = dir.replace(/[/\\]+$/, "");
+    const cleanDir = dir.replace(/[/\\]+$/, '');
     return `${cleanDir}\\${filename}`;
   };
 
@@ -589,29 +630,29 @@ export default function App() {
         directory: true,
         multiple: false,
       });
-      if (selected && typeof selected === "string") {
-        const normalized = selected.replace(/\//g, "\\");
+      if (selected && typeof selected === 'string') {
+        const normalized = selected.replace(/\//g, '\\');
         setCustomOutputPath(normalized);
-        addToast("info", "Output Folder Set", normalized);
+        addToast('info', 'Output Folder Set', normalized);
       }
     } catch (err) {
-      console.error("Failed to pick folder:", err);
+      console.error('Failed to pick folder:', err);
     }
   };
 
   const handleClearFile = () => {
-    setFilePath("");
-    setFileName("");
+    setFilePath('');
+    setFileName('');
     setIsVideo(false);
     setCurrentFileDims(null);
-    setUpscaledPath("");
-    setJobStatus("idle");
+    setUpscaledPath('');
+    setJobStatus('idle');
     setProgressVal(0);
-    setStatusMessage("");
-    setJobPhase("");
+    setStatusMessage('');
+    setJobPhase('');
     setBatchItems([]);
     setZoomLevel(1);
-    addToast("info", "Queue Cleared", "Ready for next input.");
+    addToast('info', 'Queue Cleared', 'Ready for next input.');
   };
 
   const handleRemoveBatchItem = (id: string) => {
@@ -620,8 +661,8 @@ export default function App() {
       if (next.length === 0) {
         handleClearFile();
       } else if (filePath && !next.some((item) => item.filePath === filePath)) {
-        setFilePath(next[0].filePath || "");
-        setFileName(next[0].fileName || "");
+        setFilePath(next[0].filePath || '');
+        setFileName(next[0].fileName || '');
         setIsVideo(next[0].isVideo || false);
         if (next[0].w && next[0].h) setCurrentFileDims({ w: next[0].w, h: next[0].h });
       }
@@ -637,46 +678,49 @@ export default function App() {
     }
 
     if (gpus.length === 0) {
-      addToast("error", "No Vulkan GPU Found", "No Vulkan-compatible GPU detected. Please install updated graphics display drivers.");
+      addToast(
+        'error',
+        'No Vulkan GPU Found',
+        'No Vulkan-compatible GPU detected. Please install updated graphics display drivers.'
+      );
       return;
     }
 
     if (!filePath) {
-      addToast("warning", "No File Selected", "Please drag and drop or open an image/video first.");
+      addToast('warning', 'No File Selected', 'Please drag and drop or open an image/video first.');
       return;
     }
 
     try {
-
       const clientJobId = crypto.randomUUID();
       activeJobIdRef.current = clientJobId;
       setActiveJobId(clientJobId);
 
       jobStartTimeRef.current = Date.now();
       setEtaSeconds(8);
-      setRateStr("14.2 MP/s");
+      setRateStr('14.2 MP/s');
 
-      setJobStatus("queued");
+      setJobStatus('queued');
       setProgressVal(0);
-      setStatusMessage("Queued in GPU worker thread...");
-      setJobPhase("PREPARING");
+      setStatusMessage('Queued in GPU worker thread...');
+      setJobPhase('PREPARING');
 
-      const ext = isVideo ? ".mp4" : ".png";
-      const baseName = fileName.replace(/\.[^/.]+$/, "");
+      const ext = isVideo ? '.mp4' : '.png';
+      const baseName = fileName.replace(/\.[^/.]+$/, '');
       const outputFilename = `${baseName}_upscaled_${scale}x${ext}`;
 
-      let outPath = "";
+      let outPath = '';
       if (customOutputPath) {
         outPath = joinPath(customOutputPath, outputFilename);
       } else {
-        const lastSlash = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
+        const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
         const parentDir = filePath.substring(0, lastSlash);
         outPath = joinPath(parentDir, outputFilename);
       }
 
       pendingOutputPath.current = outPath;
 
-      const jobId = await invoke<string>("run_upscale", {
+      const jobId = await invoke<string>('run_upscale', {
         request: {
           job_id: clientJobId,
           input_path: filePath,
@@ -689,51 +733,59 @@ export default function App() {
         },
       });
 
-      setJobStatus("processing");
-      addToast("info", "Upscaling Started", `Job ID: ${jobId.slice(0, 8)}...`);
+      setJobStatus('processing');
+      addToast('info', 'Upscaling Started', `Job ID: ${jobId.slice(0, 8)}...`);
     } catch (err) {
-      console.error("Upscale failed to start:", err);
+      console.error('Upscale failed to start:', err);
       setActiveJobId(null);
-      setJobStatus("idle");
+      setJobStatus('idle');
       playErrorSound(isMuted);
-      addToast("error", "Error Starting Upscale", String(err));
+      addToast('error', 'Error Starting Upscale', String(err));
     }
-
   };
 
   // Batch Upscale Logic
   const handleStartBatchUpscale = async () => {
     if (gpus.length === 0) {
-      addToast("error", "No Vulkan GPU Found", "No Vulkan-compatible GPU detected. Please install updated graphics display drivers.");
+      addToast(
+        'error',
+        'No Vulkan GPU Found',
+        'No Vulkan-compatible GPU detected. Please install updated graphics display drivers.'
+      );
       return;
     }
 
-    const readyItems = batchItems.filter((i) => i.status === "ready" || i.status === "error" || (i.status as string) === "idle");
+    const readyItems = batchItems.filter(
+      (i) => i.status === 'ready' || i.status === 'error' || (i.status as string) === 'idle'
+    );
 
     if (readyItems.length === 0) {
-      addToast("warning", "Queue Complete", "All items in batch have already completed.");
+      addToast('warning', 'Queue Complete', 'All items in batch have already completed.');
       return;
     }
 
-    addToast("info", "Batch Started", `Processing ${readyItems.length} queued items...`);
+    addToast('info', 'Batch Started', `Processing ${readyItems.length} queued items...`);
 
     for (const item of readyItems) {
       if (!item.filePath || !item.fileName) continue;
       try {
         setBatchItems((prev) =>
-          prev.map((b) => (b.id === item.id ? { ...b, status: "queued", progress: 0 } : b))
+          prev.map((b) => (b.id === item.id ? { ...b, status: 'queued', progress: 0 } : b))
         );
 
         const isVid = Boolean(item.isVideo);
-        const ext = isVid ? ".mp4" : ".png";
-        const baseName = item.fileName.replace(/\.[^/.]+$/, "");
+        const ext = isVid ? '.mp4' : '.png';
+        const baseName = item.fileName.replace(/\.[^/.]+$/, '');
         const outputFilename = `${baseName}_upscaled_${scale}x${ext}`;
 
-        let outPath = "";
+        let outPath = '';
         if (customOutputPath) {
           outPath = joinPath(customOutputPath, outputFilename);
         } else {
-          const lastSlash = Math.max(item.filePath.lastIndexOf("/"), item.filePath.lastIndexOf("\\"));
+          const lastSlash = Math.max(
+            item.filePath.lastIndexOf('/'),
+            item.filePath.lastIndexOf('\\')
+          );
           const parentDir = item.filePath.substring(0, lastSlash);
           outPath = joinPath(parentDir, outputFilename);
         }
@@ -745,7 +797,7 @@ export default function App() {
         setIsVideo(Boolean(item.isVideo));
         if (item.w && item.h) setCurrentFileDims({ w: item.w, h: item.h });
 
-        const jobId = await invoke<string>("run_upscale", {
+        const jobId = await invoke<string>('run_upscale', {
           request: {
             job_id: item.id,
             input_path: item.filePath,
@@ -758,12 +810,11 @@ export default function App() {
           },
         });
 
-
         setActiveJobId(jobId);
-        setJobStatus("processing");
+        setJobStatus('processing');
 
         setBatchItems((prev) =>
-          prev.map((b) => (b.id === item.id ? { ...b, id: jobId, status: "processing" } : b))
+          prev.map((b) => (b.id === item.id ? { ...b, id: jobId, status: 'processing' } : b))
         );
 
         await new Promise<void>((resolve) => {
@@ -772,11 +823,11 @@ export default function App() {
               const current = currentItems.find((b) => b.id === jobId);
               if (
                 !current ||
-                current.status === "done" ||
-                (current.status as string) === "completed" ||
-                current.status === "error" ||
-                current.status === "cancelled" ||
-                current.status === "failed"
+                current.status === 'done' ||
+                (current.status as string) === 'completed' ||
+                current.status === 'error' ||
+                current.status === 'cancelled' ||
+                current.status === 'failed'
               ) {
                 clearInterval(checkDone);
                 resolve();
@@ -786,16 +837,16 @@ export default function App() {
           }, 300);
         });
       } catch (err) {
-        console.error("Batch item failed:", err);
+        console.error('Batch item failed:', err);
         setBatchItems((prev) =>
-          prev.map((b) => (b.id === item.id ? { ...b, status: "error" } : b))
+          prev.map((b) => (b.id === item.id ? { ...b, status: 'error' } : b))
         );
       }
     }
 
     setActiveJobId(null);
-    setJobStatus("completed");
-    addToast("success", "Batch Complete", "All batch jobs processed.");
+    setJobStatus('completed');
+    addToast('success', 'Batch Complete', 'All batch jobs processed.');
   };
 
   const handleCancelUpscale = async (idToCancel?: string) => {
@@ -803,12 +854,12 @@ export default function App() {
     if (!targetId) return;
 
     try {
-      await invoke("cancel_upscale", { jobId: targetId });
+      await invoke('cancel_upscale', { jobId: targetId });
       setActiveJobId(null);
-      setJobStatus("idle");
-      addToast("info", "Cancelled", "Upscaling process was cancelled.");
+      setJobStatus('idle');
+      addToast('info', 'Cancelled', 'Upscaling process was cancelled.');
     } catch (err) {
-      console.error("Failed to cancel job:", err);
+      console.error('Failed to cancel job:', err);
     }
   };
 
@@ -816,81 +867,124 @@ export default function App() {
     try {
       setDownloadingModelId(modelId);
       setDownloadProgress(5);
-      addToast("info", "Downloading Model", `Fetching weights for ${modelId}...`);
-      await invoke("download_model", { modelId });
+      addToast('info', 'Downloading Model', `Fetching weights for ${modelId}...`);
+      await invoke('download_model', { modelId });
     } catch (err) {
-      console.error("Download failed:", err);
+      console.error('Download failed:', err);
       setDownloadingModelId(null);
       setDownloadProgress(0);
-      addToast("error", "Download Failed", String(err));
+      addToast('error', 'Download Failed', String(err));
     }
   };
 
   const handleShowInExplorerNative = (path: string) => {
     revealItemInDir(path).catch((err: unknown) => {
-      console.error("Failed to reveal item:", err);
-      addToast("error", "Explorer Error", String(err));
+      console.error('Failed to reveal item:', err);
+      addToast('error', 'Explorer Error', String(err));
     });
   };
 
   const handleLoadHistoryItem = async (item: HistoryEntry) => {
-    const originalPath = item.inputPath || "";
-    const upscaledPath = item.outputPath || "";
-    const origExists = await invoke<boolean>("check_file_exists", { path: originalPath }).catch(() => false);
+    const originalPath = item.inputPath || '';
+    const upscaledPath = item.outputPath || '';
+    const origExists = await invoke<boolean>('check_file_exists', { path: originalPath }).catch(
+      () => false
+    );
     const upscaledExists = upscaledPath
-      ? await invoke<boolean>("check_file_exists", { path: upscaledPath }).catch(() => false)
+      ? await invoke<boolean>('check_file_exists', { path: upscaledPath }).catch(() => false)
       : false;
 
     if (!origExists || !upscaledExists) {
-      const missingLabel = !origExists ? "Original source file" : "Upscaled output file";
-      addToast("error", "File Missing from Disk", `${missingLabel} no longer exists on disk.`);
+      const missingLabel = !origExists ? 'Original source file' : 'Upscaled output file';
+      addToast('error', 'File Missing from Disk', `${missingLabel} no longer exists on disk.`);
       setActiveNavTab(null);
       return;
     }
 
     setFilePath(originalPath);
-    setFileName(item.name || "");
+    setFileName(item.name || '');
     setUpscaledPath(upscaledPath);
     setIsVideo(item.isVideo || false);
     setScale(item.scale || 4);
-    setJobStatus("completed");
+    setJobStatus('completed');
     setActiveNavTab(null);
     setBatchItems([]);
     setZoomLevel(1);
-    addToast("info", "Loaded from History", item.name || "File");
+    addToast('info', 'Loaded from History', item.name || 'File');
   };
 
   const isVramOverflowing = useMemo(() => {
     const currentGpu = gpus.find((g) => g.id === selectedGpu);
     let totalVram = 8;
     if (currentGpu) {
-      const match = currentGpu.name.match(/(\d+)\s*GB/i) || (currentGpu.detail && currentGpu.detail.match(/(\d+)\s*GB/i));
+      const match =
+        currentGpu.name.match(/(\d+)\s*GB/i) ||
+        (currentGpu.detail && currentGpu.detail.match(/(\d+)\s*GB/i));
       if (match && match[1]) totalVram = parseInt(match[1], 10);
-      else if (currentGpu.name.toLowerCase().includes("intel") || currentGpu.name.toLowerCase().includes("uhd")) totalVram = 2;
+      else if (
+        currentGpu.name.toLowerCase().includes('intel') ||
+        currentGpu.name.toLowerCase().includes('uhd')
+      )
+        totalVram = 2;
     }
     const baseIdle = Math.round(totalVram * 0.12 * 10) / 10;
-    const tileFootprint = tileSize === 512 ? 3.0 : tileSize === 256 ? 1.5 : tileSize === 128 ? 0.7 : 1.2;
+    const tileFootprint =
+      tileSize === 512 ? 3.0 : tileSize === 256 ? 1.5 : tileSize === 128 ? 0.7 : 1.2;
     const used = Math.round((baseIdle + tileFootprint * 0.85) * 10) / 10;
     return used > totalVram;
   }, [gpus, selectedGpu, tileSize]);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "var(--bg-stripe)", color: "var(--text-primary)", fontFamily: "var(--font-ui)", fontSize: "13px", overflow: "hidden", userSelect: "none", WebkitFontSmoothing: "antialiased" }}>
-
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'var(--bg-stripe)',
+        color: 'var(--text-primary)',
+        fontFamily: 'var(--font-ui)',
+        fontSize: '13px',
+        overflow: 'hidden',
+        userSelect: 'none',
+        WebkitFontSmoothing: 'antialiased',
+      }}
+    >
       {/* Center Workspace Canvas Stage - Full Bleed Window */}
-      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+        }}
+      >
         <AnimatePresence mode="wait">
           {!filePath && batchItems.length === 0 ? (
             /* EMPTY DROPZONE STAGE WITH ULTRA-SMOOTH SPRING REVEAL */
             <motion.div
               key="empty-stage"
-              initial={{ opacity: 0, scale: 0.96, filter: "blur(8px)" }}
-              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-              exit={{ opacity: 0, scale: 0.96, filter: "blur(8px)" }}
+              initial={{ opacity: 0, scale: 0.96, filter: 'blur(8px)' }}
+              animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, scale: 0.96, filter: 'blur(8px)' }}
               transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-              style={{ position: "relative", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}
+              style={{
+                position: 'relative',
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              <div style={{ position: "absolute", inset: 0, background: "radial-gradient(105% 75% at 50% 45%, rgba(11,10,9,.55), rgba(11,10,9,.88) 78%)" }} />
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background:
+                    'radial-gradient(105% 75% at 50% 45%, rgba(11,10,9,.55), rgba(11,10,9,.88) 78%)',
+                }}
+              />
               <DropZone
                 isDragOver={isDragOver}
                 onAddFiles={handleOpenFile}
@@ -900,21 +994,21 @@ export default function App() {
           ) : (
             /* ACTIVE MEDIA STAGE - FULL BLEED WINDOW WITH ULTRA-SILKY REVEAL & DISSOLVE EXIT */
             <motion.div
-              key={filePath || "active-stage"}
-              initial={{ opacity: 0, scale: 0.97, filter: "blur(10px) brightness(0.8)" }}
-              animate={{ opacity: 1, scale: 1, filter: "blur(0px) brightness(1)" }}
-              exit={{ opacity: 0, scale: 1.02, filter: "blur(14px) brightness(0.6)" }}
+              key={filePath || 'active-stage'}
+              initial={{ opacity: 0, scale: 0.97, filter: 'blur(10px) brightness(0.8)' }}
+              animate={{ opacity: 1, scale: 1, filter: 'blur(0px) brightness(1)' }}
+              exit={{ opacity: 0, scale: 1.02, filter: 'blur(14px) brightness(0.6)' }}
               transition={{
                 duration: 0.6,
                 ease: [0.22, 1, 0.36, 1],
               }}
               style={{
-                position: "absolute",
+                position: 'absolute',
                 inset: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                overflow: "hidden",
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
               }}
             >
               {/* Premium Canvas Light Bloom Overlay on Media Entry */}
@@ -923,74 +1017,99 @@ export default function App() {
                 animate={{ opacity: 0, scale: 1.2 }}
                 transition={{ duration: 0.85, ease: [0.22, 1, 0.36, 1] }}
                 style={{
-                  position: "absolute",
+                  position: 'absolute',
                   inset: 0,
-                  pointerEvents: "none",
+                  pointerEvents: 'none',
                   zIndex: 15,
-                  background: "radial-gradient(circle at 50% 50%, rgba(241,254,200,0.14), transparent 70%)",
+                  background:
+                    'radial-gradient(circle at 50% 50%, rgba(241,254,200,0.14), transparent 70%)',
                 }}
               />
-              {jobStatus === "completed" && upscaledPath ? (
+              {jobStatus === 'completed' && upscaledPath ? (
                 <ComparisonSlider
                   originalPath={filePath}
                   upscaledPath={upscaledPath}
                   viewMode={comparisonViewMode}
                   zoom={zoomLevel}
                   onZoomChange={setZoomLevel}
-                  onToggleViewMode={() => setComparisonViewMode((prev) => (prev === 'split' ? 'side-by-side' : 'split'))}
+                  onToggleViewMode={() =>
+                    setComparisonViewMode((prev) => (prev === 'split' ? 'side-by-side' : 'split'))
+                  }
                 />
               ) : (
                 <>
                   {isVideo ? (
                     <video
                       src={getMediaSrc(filePath)}
-                      controls={jobStatus !== "processing" && jobStatus !== "queued"}
-                      autoPlay={jobStatus === "processing" || jobStatus === "queued"}
+                      controls={jobStatus !== 'processing' && jobStatus !== 'queued'}
+                      autoPlay={jobStatus === 'processing' || jobStatus === 'queued'}
                       loop
                       muted
                       style={{
-                        position: "absolute",
+                        position: 'absolute',
                         inset: 0,
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        filter: jobStatus === "processing" || jobStatus === "queued" ? "opacity(0.3) blur(2px)" : "none",
-                        transition: "filter .2s ease",
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        filter:
+                          jobStatus === 'processing' || jobStatus === 'queued'
+                            ? 'opacity(0.3) blur(2px)'
+                            : 'none',
+                        transition: 'filter .2s ease',
                       }}
                     />
                   ) : (
                     <div
                       style={{
-                        position: "absolute",
+                        position: 'absolute',
                         inset: 0,
                         backgroundImage: `url(${getMediaSrc(filePath)})`,
-                        backgroundSize: "cover",
-                        backgroundPosition: "center",
-                        backgroundRepeat: "no-repeat",
-                        filter: jobStatus === "processing" || jobStatus === "queued" ? "opacity(0.3) blur(2px)" : "none",
-                        transition: "filter .2s ease",
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        backgroundRepeat: 'no-repeat',
+                        filter:
+                          jobStatus === 'processing' || jobStatus === 'queued'
+                            ? 'opacity(0.3) blur(2px)'
+                            : 'none',
+                        transition: 'filter .2s ease',
                       }}
                     />
                   )}
 
                   {/* 8x6 Tile Grid Scanning Overlay matching HTML handoff */}
-                  {(jobStatus === "processing" || jobStatus === "queued") && (
-                    <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gridTemplateRows: "repeat(6, 1fr)", gap: "1px", pointerEvents: "none", zIndex: 10 }}>
+                  {(jobStatus === 'processing' || jobStatus === 'queued') && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(8, 1fr)',
+                        gridTemplateRows: 'repeat(6, 1fr)',
+                        gap: '1px',
+                        pointerEvents: 'none',
+                        zIndex: 10,
+                      }}
+                    >
                       {Array.from({ length: 48 }).map((_, i) => {
                         const cutoff = (progressVal / 100) * 48;
-                        const state = i < Math.floor(cutoff) ? "done" : i < Math.ceil(cutoff) ? "active" : "pending";
+                        const state =
+                          i < Math.floor(cutoff)
+                            ? 'done'
+                            : i < Math.ceil(cutoff)
+                              ? 'active'
+                              : 'pending';
                         return (
                           <div
                             key={i}
                             style={{
                               background:
-                                state === "done"
-                                  ? "transparent"
-                                  : state === "active"
-                                  ? "rgba(168,11,36,.16)"
-                                  : "rgba(9,8,8,.72)",
-                              boxShadow: state === "active" ? "inset 0 0 0 1px #A80B24" : "none",
-                              transition: "background .3s ease",
+                                state === 'done'
+                                  ? 'transparent'
+                                  : state === 'active'
+                                    ? 'rgba(168,11,36,.16)'
+                                    : 'rgba(9,8,8,.72)',
+                              boxShadow: state === 'active' ? 'inset 0 0 0 1px #A80B24' : 'none',
+                              transition: 'background .3s ease',
                             }}
                           />
                         );
@@ -1009,10 +1128,16 @@ export default function App() {
         hasFiles={Boolean(filePath || batchItems.length > 0)}
         currentFile={filePath || (batchItems.length > 0 ? batchItems[0].fileName : null)}
         originalDims={currentFileDims}
-        outputDims={currentFileDims ? { w: currentFileDims.w * scale, h: currentFileDims.h * scale } : null}
-        isDone={jobStatus === "completed"}
+        outputDims={
+          currentFileDims ? { w: currentFileDims.w * scale, h: currentFileDims.h * scale } : null
+        }
+        isDone={jobStatus === 'completed'}
         selectedGpu={selectedGpu}
-        availableGpus={gpus.map((g) => ({ id: g.id, name: g.name, detail: g.detail || (g.id === 0 ? "Default GPU" : "Vulkan Device") }))}
+        availableGpus={gpus.map((g) => ({
+          id: g.id,
+          name: g.name,
+          detail: g.detail || (g.id === 0 ? 'Default GPU' : 'Vulkan Device'),
+        }))}
         onSelectGpu={setSelectedGpu}
         isVramOverflowing={isVramOverflowing}
         activeNavTab={activeNavTab}
@@ -1037,12 +1162,24 @@ export default function App() {
         onAddFiles={handleOpenFile}
         onAddMoreFiles={handleOpenFile}
         onClear={handleClearFile}
-        onClearCompleted={() => setBatchItems((prev) => prev.filter((b) => b.status !== "done" && (b.status as string) !== "completed"))}
+        onClearCompleted={() =>
+          setBatchItems((prev) =>
+            prev.filter((b) => b.status !== 'done' && (b.status as string) !== 'completed')
+          )
+        }
         onRemoveItem={handleRemoveBatchItem}
       />
 
       {/* Bottom Floating Control Dock */}
-      <div style={{ position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)", zIndex: 42 }}>
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 14,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 42,
+        }}
+      >
         <SettingsPanel
           supportedModels={supportedModels}
           category={category}
@@ -1052,41 +1189,45 @@ export default function App() {
           onSelectModel={handleSelectModel}
           scale={scale}
           onSelectScale={setScale}
-          isProcessing={jobStatus === "processing" || jobStatus === "queued"}
+          isProcessing={jobStatus === 'processing' || jobStatus === 'queued'}
           hasFiles={Boolean(filePath || batchItems.length > 0)}
           isBatchMode={batchItems.length > 1}
           onRun={handleStartUpscale}
           onCancel={() => handleCancelUpscale()}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
-          onOpenCatalog={() => setActiveNavTab("models")}
+          onOpenCatalog={() => setActiveNavTab('models')}
         />
       </div>
 
       {/* Telemetry Progress Floating Overlay */}
-      {(jobStatus === "processing" || jobStatus === "queued") && (
+      {(jobStatus === 'processing' || jobStatus === 'queued') && (
         <ProgressOverlay
           percentage={progressVal}
           statusText={statusMessage}
-          phase={jobPhase || "UPSCALE 4X"}
+          phase={jobPhase || 'UPSCALE 4X'}
           etaSeconds={etaSeconds}
           fps={fps}
           rate={rateStr}
           vram={activeVramGb}
-          tileCount={tileSize === 0 ? "AUTO" : `${tileSize}px`}
+          tileCount={tileSize === 0 ? 'AUTO' : `${tileSize}px`}
           onCancel={() => handleCancelUpscale()}
         />
       )}
 
       {/* Completion Card Floating Banner */}
-      {jobStatus === "completed" && upscaledPath && (
+      {jobStatus === 'completed' && upscaledPath && (
         <CompletionCard
           outputPath={upscaledPath}
-          outputDims={currentFileDims ? { w: currentFileDims.w * scale, h: currentFileDims.h * scale } : undefined}
-          compareMode={comparisonViewMode === "split" ? "split" : "side"}
+          outputDims={
+            currentFileDims
+              ? { w: currentFileDims.w * scale, h: currentFileDims.h * scale }
+              : undefined
+          }
+          compareMode={comparisonViewMode === 'split' ? 'split' : 'side'}
           zoom={zoomLevel}
-          onSetSplit={() => setComparisonViewMode("split")}
-          onSetSide={() => setComparisonViewMode("side-by-side")}
+          onSetSplit={() => setComparisonViewMode('split')}
+          onSetSide={() => setComparisonViewMode('side-by-side')}
           onCycleZoom={handleCycleZoom}
           onOpen={() => handleShowInExplorerNative(upscaledPath)}
           onReset={handleClearFile}
@@ -1095,8 +1236,18 @@ export default function App() {
 
       {/* Right Header Navigation Drawer Cards (Aligned to Top-Right below Nav Island) */}
       {activeNavTab && (
-        <div style={{ position: "absolute", top: 56, right: 12, bottom: 78, width: 312, zIndex: 38, animation: "slidein .3s var(--ease-spring) both" }}>
-          {activeNavTab === "settings" && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 56,
+            right: 12,
+            bottom: 78,
+            width: 312,
+            zIndex: 38,
+            animation: 'slidein .3s var(--ease-spring) both',
+          }}
+        >
+          {activeNavTab === 'settings' && (
             <AdvancedSettings
               gpus={gpus}
               selectedGpu={selectedGpu}
@@ -1106,16 +1257,20 @@ export default function App() {
               customOutputPath={customOutputPath}
               onSetOutputDir={(dir) => setCustomOutputPath(dir)}
               onSelectOutputPath={handleSelectDestinationFolder}
-              isProcessing={jobStatus === "processing" || jobStatus === "queued"}
+              isProcessing={jobStatus === 'processing' || jobStatus === 'queued'}
               onAutoTune={(recTile, vramText) => {
                 setTileSize(recTile);
-                addToast("info", "Auto-Tuned Tile Size", `Set to ${recTile === 0 ? "AUTO" : recTile + "px"} based on ${vramText}`);
+                addToast(
+                  'info',
+                  'Auto-Tuned Tile Size',
+                  `Set to ${recTile === 0 ? 'AUTO' : recTile + 'px'} based on ${vramText}`
+                );
               }}
               onClose={() => setActiveNavTab(null)}
             />
           )}
 
-          {activeNavTab === "models" && (
+          {activeNavTab === 'models' && (
             <ModelCatalogModal
               supportedModels={supportedModels}
               installedModelIds={installedModels}
@@ -1126,7 +1281,7 @@ export default function App() {
             />
           )}
 
-          {activeNavTab === "history" && (
+          {activeNavTab === 'history' && (
             <RecentHistoryDrawer
               history={historyItems}
               onSelectHistoryItem={(item: HistoryEntry) => {
@@ -1136,11 +1291,7 @@ export default function App() {
             />
           )}
 
-          {activeNavTab === "about" && (
-            <AboutModal
-              onClose={() => setActiveNavTab(null)}
-            />
-          )}
+          {activeNavTab === 'about' && <AboutModal onClose={() => setActiveNavTab(null)} />}
         </div>
       )}
 

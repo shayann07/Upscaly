@@ -1,13 +1,13 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc } from '@tauri-apps/api/core';
 
 export function getMediaSrc(path: string | undefined | null): string {
-  if (!path) return "";
-  
+  if (!path) return '';
+
   if (
-    path.startsWith("blob:") ||
-    path.startsWith("data:") ||
-    path.startsWith("http://") ||
-    path.startsWith("https://")
+    path.startsWith('blob:') ||
+    path.startsWith('data:') ||
+    path.startsWith('http://') ||
+    path.startsWith('https://')
   ) {
     return path;
   }
@@ -15,7 +15,7 @@ export function getMediaSrc(path: string | undefined | null): string {
   try {
     return convertFileSrc(path);
   } catch (err) {
-    console.warn("convertFileSrc fallback to path:", err);
+    console.warn('convertFileSrc fallback to path:', err);
     return path;
   }
 }

@@ -46,16 +46,16 @@ export const UpdateBadge: React.FC<UpdateBadgeProps> = ({
                 <Sparkle size={22} weight="fill" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-[#F1FEC8]">
-                  New Model Release Available
-                </h3>
+                <h3 className="text-sm font-bold text-[#F1FEC8]">New Model Release Available</h3>
                 <p className="text-xs text-[#D2C3F6]/70">Version {latestVersion}</p>
               </div>
             </div>
 
             {/* Release Notes */}
             <div className="p-3 rounded-2xl bg-[#23212C]/80 border border-[#D2C3F6]/15 text-xs text-[#D2C3F6]/90 space-y-1">
-              <span className="text-[10px] uppercase font-bold text-[#F1FEC8]">Release Highlights:</span>
+              <span className="text-[10px] uppercase font-bold text-[#F1FEC8]">
+                Release Highlights:
+              </span>
               <p className="leading-relaxed">{releaseNotes}</p>
             </div>
 

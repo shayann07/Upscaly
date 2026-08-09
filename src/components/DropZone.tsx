@@ -13,12 +13,12 @@ export function DropZone({
   isDragOver,
   onAddFiles,
   onAddBatch,
-  accentColor = "var(--accent)",
+  accentColor = 'var(--accent)',
   onFileSelect: _onFileSelect,
   onBrowseClick,
   setIsDragOver: _setIsDragOver,
 }: DropZoneProps) {
-  const borderColor = isDragOver ? accentColor : "#312C27";
+  const borderColor = isDragOver ? accentColor : '#312C27';
 
   const handleAdd = onAddFiles || onBrowseClick || (() => {});
   const handleBatch = onAddBatch || onBrowseClick || (() => {});
@@ -27,18 +27,18 @@ export function DropZone({
     <div
       className="relative border rounded-2xl overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-modal)]"
       style={{
-        width: "min(516px, calc(100% - 48px))",
+        width: 'min(516px, calc(100% - 48px))',
         border: `1px solid var(--border-subtle)`,
-        background: "rgba(13,12,11,.97)",
-        boxShadow: "0 30px 74px rgba(0,0,0,.62)",
-        animation: "pop .4s var(--ease-spring) both",
+        background: 'rgba(13,12,11,.97)',
+        boxShadow: '0 30px 74px rgba(0,0,0,.62)',
+        animation: 'pop .4s var(--ease-spring) both',
       }}
     >
       <div
         className="relative flex flex-col items-center justify-center text-center cursor-pointer transition-colors duration-200"
         style={{
-          padding: "44px 32px 40px",
-          background: isDragOver ? "var(--accent-subtle)" : "transparent",
+          padding: '44px 32px 40px',
+          background: isDragOver ? 'var(--accent-subtle)' : 'transparent',
         }}
       >
         {/* Decorative blocks matching design handoff */}
@@ -47,21 +47,29 @@ export function DropZone({
           <div
             className="w-8 h-8 rounded-[3px] border border-[#3A352F]"
             style={{
-              background: "linear-gradient(#0B0A09 1px, transparent 1px) 0 0/100% 16px, linear-gradient(90deg, #0B0A09 1px, transparent 1px) 0 0/16px 100%, #312C27",
+              background:
+                'linear-gradient(#0B0A09 1px, transparent 1px) 0 0/100% 16px, linear-gradient(90deg, #0B0A09 1px, transparent 1px) 0 0/16px 100%, #312C27',
             }}
           />
           <div
             className="w-[46px] h-[46px] rounded-[4px] transition-colors duration-200"
             style={{
               border: `1px solid ${borderColor}`,
-              background: "linear-gradient(#0B0A09 1px, transparent 1px) 0 0/100% 8px, linear-gradient(90deg, #0B0A09 1px, transparent 1px) 0 0/8px 100%, #443E37",
+              background:
+                'linear-gradient(#0B0A09 1px, transparent 1px) 0 0/100% 8px, linear-gradient(90deg, #0B0A09 1px, transparent 1px) 0 0/8px 100%, #443E37',
             }}
           />
         </div>
 
-        <div className="text-[21px] font-semibold tracking-[-0.02em] mb-2">{isDragOver ? "Release to queue" : "Drop media to upscale"}</div>
-        <div className="text-[12.5px] text-[var(--text-tertiary)] leading-[1.5] max-w-[300px]">Images or video, a single file or a whole folder. Nothing leaves your machine.</div>
-        <div className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.07em] text-[var(--text-ghost)] mt-3.5">PNG JPG WEBP &nbsp;·&nbsp; MP4 MKV MOV</div>
+        <div className="text-[21px] font-semibold tracking-[-0.02em] mb-2">
+          {isDragOver ? 'Release to queue' : 'Drop media to upscale'}
+        </div>
+        <div className="text-[12.5px] text-[var(--text-tertiary)] leading-[1.5] max-w-[300px]">
+          Images or video, a single file or a whole folder. Nothing leaves your machine.
+        </div>
+        <div className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.07em] text-[var(--text-ghost)] mt-3.5">
+          PNG JPG WEBP &nbsp;·&nbsp; MP4 MKV MOV
+        </div>
 
         <div className="flex items-center gap-2 mt-6">
           <button

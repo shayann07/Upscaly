@@ -1,59 +1,45 @@
 # GSD Workflow Validation Script
 # Validates all workflow files for required structure
 
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
 $ErrorCount = 0
 $WarningCount = 0
 $WorkflowsChecked = 0
 
-Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-Write-Host " GSD ► VALIDATING WORKFLOWS" -ForegroundColor Cyan
-Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-Write-Host ""
+Write-Host "=====================================================" -ForegroundColor Cyan
+Write-Host " GSD -> VALIDATING WORKFLOWS" -ForegroundColor Cyan
+Write-Host "=====================================================" -ForegroundColor Cyan
 
-$workflows = Get-ChildItem ".agent/workflows/*.md"
+$WorkflowFiles = Get-ChildItem -Path "$PSScriptRoot\..\.agent\workflows\*.md"
 
-foreach ($file in $workflows) {
+foreach ($file in $WorkflowFiles) {
     $WorkflowsChecked++
     $content = Get-Content $file.FullName -Raw
-    $hasErrors = $false
-    
-    # Check for frontmatter
-    if ($content -notmatch "^---") {
-        Write-Host "❌ $($file.Name): Missing frontmatter" -ForegroundColor Red
+
+    Write-Host "Checking $($file.Name)..." -NoNewline
+
+    $hasRole = $content -match '<role>'
+    $hasProcess = $content -match '<process>'
+    $hasObjective = $content -match '<objective>'
+
+    if ($hasRole -and $hasProcess -and $hasObjective) {
+        Write-Host " [OK]" -ForegroundColor Green
+    } else {
+        Write-Host " [FAILED]" -ForegroundColor Red
+        if (-not $hasRole) { Write-Host "  - Missing <role> tag" -ForegroundColor Red }
+        if (-not $hasProcess) { Write-Host "  - Missing <process> tag" -ForegroundColor Red }
+        if (-not $hasObjective) { Write-Host "  - Missing <objective> tag" -ForegroundColor Red }
         $ErrorCount++
-        $hasErrors = $true
-    }
-    
-    # Check for description
-    if ($content -notmatch "description:") {
-        Write-Host "❌ $($file.Name): Missing description in frontmatter" -ForegroundColor Red
-        $ErrorCount++
-        $hasErrors = $true
-    }
-    
-    # Check for process tags (optional but recommended)
-    if ($content -notmatch "<process>") {
-        Write-Host "⚠️  $($file.Name): Missing <process> tag" -ForegroundColor Yellow
-        $WarningCount++
-    }
-    
-    if (-not $hasErrors) {
-        Write-Host "✅ $($file.Name)" -ForegroundColor Green
     }
 }
 
 Write-Host ""
-Write-Host "───────────────────────────────────────────────────────" -ForegroundColor Gray
-Write-Host ""
-Write-Host "Workflows checked: $WorkflowsChecked"
-Write-Host "Errors: $ErrorCount" -ForegroundColor $(if ($ErrorCount -gt 0) { "Red" } else { "Green" })
-Write-Host "Warnings: $WarningCount" -ForegroundColor $(if ($WarningCount -gt 0) { "Yellow" } else { "Green" })
-Write-Host ""
+Write-Host "Checked $WorkflowsChecked workflows: $ErrorCount errors, $WarningCount warnings"
 
-if ($ErrorCount -eq 0) {
-    Write-Host "✅ All workflows valid!" -ForegroundColor Green
-    exit 0
-} else {
-    Write-Host "❌ Validation failed" -ForegroundColor Red
+if ($ErrorCount -gt 0) {
     exit 1
+} else {
+    exit 0
 }

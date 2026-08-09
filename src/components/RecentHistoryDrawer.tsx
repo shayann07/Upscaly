@@ -1,5 +1,5 @@
-import { HistoryEntry } from "../lib/types";
-import { getMediaSrc } from "../lib/media";
+import { HistoryEntry } from '../lib/types';
+import { getMediaSrc } from '../lib/media';
 
 interface RecentHistoryDrawerProps {
   history: HistoryEntry[];
@@ -26,7 +26,7 @@ export function RecentHistoryDrawer({
   };
 
   const getFormattedTime = (timestamp?: number) => {
-    if (!timestamp) return "NOW";
+    if (!timestamp) return 'NOW';
     const date = new Date(timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
@@ -36,9 +36,11 @@ export function RecentHistoryDrawer({
       {/* Header */}
       <div className="flex-none h-[38px] flex items-center justify-between px-3 border-b border-[#232120]">
         <div className="flex items-baseline gap-2">
-          <span className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.1em] text-[#6B655E]">RECENT JOBS</span>
+          <span className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.1em] text-[#6B655E]">
+            RECENT JOBS
+          </span>
           <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)]">
-            ({String(history.length).padStart(2, "0")})
+            ({String(history.length).padStart(2, '0')})
           </span>
         </div>
         <button
@@ -57,8 +59,8 @@ export function RecentHistoryDrawer({
           </div>
         ) : (
           history.map((h) => {
-            const mediaPath = h.upscaledPath || h.originalPath || h.inputPath || "";
-            const src = mediaPath ? getMediaSrc(mediaPath) : "";
+            const mediaPath = h.upscaledPath || h.originalPath || h.inputPath || '';
+            const src = mediaPath ? getMediaSrc(mediaPath) : '';
 
             return (
               <div
@@ -72,16 +74,17 @@ export function RecentHistoryDrawer({
                     <img src={src} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center font-['Martian_Mono',monospace] text-[8px] text-[var(--text-muted)]">
-                      {h.isVideo ? "VID" : "IMG"}
+                      {h.isVideo ? 'VID' : 'IMG'}
                     </div>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-medium text-[#EDEAE6] whitespace-nowrap overflow-hidden text-ellipsis mb-0.5">
-                    {h.fileName || h.name || "Upscaled Media"}
+                    {h.fileName || h.name || 'Upscaled Media'}
                   </div>
                   <div className="font-['Martian_Mono',monospace] text-[8.5px] text-[var(--text-dim)] tracking-[0.04em]">
-                    {h.meta || `${(h.modelName || h.model || 'RealESRGAN').toUpperCase()} · ${h.scale || 4}×`}
+                    {h.meta ||
+                      `${(h.modelName || h.model || 'RealESRGAN').toUpperCase()} · ${h.scale || 4}×`}
                   </div>
                 </div>
                 <div className="font-['Martian_Mono',monospace] text-[8px] text-[#4A453F] flex-none">

@@ -1,4 +1,4 @@
-import { SUPPORTED_MODELS, ModelInfo } from "../lib/types";
+import { SUPPORTED_MODELS, ModelInfo } from '../lib/types';
 
 export interface ModelItem {
   id: string;
@@ -26,7 +26,7 @@ interface ModelCatalogModalProps {
 
 export function ModelCatalogModal({
   onClose,
-  accentColor = "var(--accent)",
+  accentColor = 'var(--accent)',
   isOpen = true,
   supportedModels,
   installedModelIds = [],
@@ -36,7 +36,8 @@ export function ModelCatalogModal({
 }: ModelCatalogModalProps) {
   if (isOpen === false) return null;
 
-  const modelsList = supportedModels && supportedModels.length > 0 ? supportedModels : SUPPORTED_MODELS;
+  const modelsList =
+    supportedModels && supportedModels.length > 0 ? supportedModels : SUPPORTED_MODELS;
   const activeInstalled = installedModelIds;
   const activeDownloading = downloadingModelId;
   const activeDlPct = downloadProgress;
@@ -46,7 +47,9 @@ export function ModelCatalogModal({
       {/* Header */}
       <div className="flex-none h-[38px] flex items-center justify-between px-3 border-b border-[#232120]">
         <div className="flex items-baseline gap-2">
-          <span className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.1em] text-[#6B655E]">MODEL CATALOG</span>
+          <span className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.1em] text-[#6B655E]">
+            MODEL CATALOG
+          </span>
           <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.06em]">
             ({activeInstalled.length}/{modelsList.length})
           </span>
@@ -70,12 +73,16 @@ export function ModelCatalogModal({
               className="p-2.5 rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] transition-all duration-200 hover:scale-[1.02] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
             >
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-[12px] font-semibold text-[var(--text-primary)] truncate">{m.name}</span>
+                <span className="text-[12px] font-semibold text-[var(--text-primary)] truncate">
+                  {m.name}
+                </span>
                 <span className="font-['Martian_Mono',monospace] text-[8.5px] tracking-[0.05em] px-1.5 py-0.5 rounded border border-[var(--border-default)] text-[var(--text-dim)]">
                   {m.cat.toUpperCase()}
                 </span>
               </div>
-              <div className="text-[11px] text-[var(--text-muted)] mb-1.5 line-clamp-2">{m.note}</div>
+              <div className="text-[11px] text-[var(--text-muted)] mb-1.5 line-clamp-2">
+                {m.note}
+              </div>
               <div className="flex items-center justify-between gap-2">
                 <div className="font-['Martian_Mono',monospace] text-[8.5px] text-[#5A554F] tracking-[0.04em] truncate">
                   {m.size} · {m.scale}×
@@ -105,11 +112,17 @@ export function ModelCatalogModal({
                   )}
                   {isDl && (
                     <div className="w-[80px]">
-                      <div className="font-['Martian_Mono',monospace] text-[8.5px] tracking-[0.04em] mb-1" style={{ color: accentColor }}>
+                      <div
+                        className="font-['Martian_Mono',monospace] text-[8.5px] tracking-[0.04em] mb-1"
+                        style={{ color: accentColor }}
+                      >
                         {Math.round(activeDlPct)}%
                       </div>
                       <div className="h-[3px] rounded-sm bg-[#1B1917] overflow-hidden">
-                        <div className="h-full" style={{ width: `${activeDlPct}%`, background: accentColor }} />
+                        <div
+                          className="h-full"
+                          style={{ width: `${activeDlPct}%`, background: accentColor }}
+                        />
                       </div>
                     </div>
                   )}
