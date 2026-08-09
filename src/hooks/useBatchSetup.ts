@@ -17,7 +17,7 @@ interface BatchSetupOptions {
   activeJobId: string | null;
   setHistoryItems: React.Dispatch<React.SetStateAction<HistoryItem[]>>;
   handleOpenFile: () => void;
-  handleCancelUpscale: () => void;
+  handleCancelUpscale: (idToCancel?: string) => void;
   handleToggleNavTab: (tab: 'models' | 'history' | 'settings' | 'about') => void;
   setActiveNavTab: (tab: 'models' | 'history' | 'settings' | 'about' | null) => void;
   onNotify: (

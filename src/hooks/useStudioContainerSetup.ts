@@ -21,6 +21,27 @@ export function useStudioContainerSetup() {
     state.handleResetJob
   );
 
+  let handleCancelRef = (_id?: string) => {};
+
+  const batch = useBatchSetup({
+    selectedGpu: settings.selectedGpu,
+    selectedModel: catalog.selectedModel,
+    scale: settings.scale,
+    tileSize: settings.tileSize,
+    customOutputPath: settings.customOutputPath,
+    isMuted: settings.isMuted,
+    fileName: media.fileName,
+    filePath: media.filePath,
+    isVideo: media.isVideo,
+    activeJobId: state.activeJobId,
+    setHistoryItems: state.setHistoryItems,
+    handleOpenFile: media.handleOpenFile,
+    handleCancelUpscale: (id?: string) => handleCancelRef(id),
+    handleToggleNavTab: state.handleToggleNavTab,
+    setActiveNavTab: state.setActiveNavTab,
+    onNotify: state.handleNotify,
+  });
+
   const actions = useStudioActions({
     filePath: media.filePath,
     fileName: media.fileName,
@@ -31,8 +52,8 @@ export function useStudioContainerSetup() {
     tileSize: settings.tileSize,
     customOutputPath: settings.customOutputPath,
     isMuted: settings.isMuted,
-    batchItems: [],
-    handleStartBatchUpscale: undefined,
+    batchItems: batch.batchItems,
+    handleStartBatchUpscale: batch.handleStartBatchUpscale,
     supportedModels: catalog.supportedModels,
     installedModels: catalog.installedModels,
     activeJobId: state.activeJobId,
@@ -52,24 +73,7 @@ export function useStudioContainerSetup() {
     onNotify: state.handleNotify,
   });
 
-  const batch = useBatchSetup({
-    selectedGpu: settings.selectedGpu,
-    selectedModel: catalog.selectedModel,
-    scale: settings.scale,
-    tileSize: settings.tileSize,
-    customOutputPath: settings.customOutputPath,
-    isMuted: settings.isMuted,
-    fileName: media.fileName,
-    filePath: media.filePath,
-    isVideo: media.isVideo,
-    activeJobId: state.activeJobId,
-    setHistoryItems: state.setHistoryItems,
-    handleOpenFile: media.handleOpenFile,
-    handleCancelUpscale: actions.handleCancelUpscale,
-    handleToggleNavTab: state.handleToggleNavTab,
-    setActiveNavTab: state.setActiveNavTab,
-    onNotify: state.handleNotify,
-  });
+  handleCancelRef = actions.handleCancelUpscale;
 
   const studioJobState = useStudioJobStateSetup({
     activeJobId: state.activeJobId,
