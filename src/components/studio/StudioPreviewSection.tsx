@@ -30,7 +30,7 @@ export function StudioPreviewSection({
   const inputMedia = filePath || (batchItems.length > 0 ? batchItems[0].filePath : undefined);
 
   return (
-    <div className="absolute inset-0 bg-[#090808]">
+    <div className="absolute inset-0 bg-[var(--bg-stripe)]">
       <AnimatePresence mode="wait">
         {!filePath && batchItems.length === 0 ? (
           <motion.div
