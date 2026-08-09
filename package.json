@@ -11,9 +11,13 @@
     "lint:ts": "eslint src --max-warnings 0",
     "check:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings",
     "format:ts": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "format:ts:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
     "format:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml",
+    "format:rust:check": "cargo fmt --manifest-path src-tauri/Cargo.toml --check",
     "format:all": "npm run format:ts && npm run format:rust",
+    "format:check:all": "npm run format:ts:check && npm run format:rust:check",
     "check:all": "npm run check:ts && npm run lint:ts && npm run test && npm run check:rust",
+    "check:quality": "npm run check:ts && npm run lint:ts && npm run test && npm run check:rust && npm run format:check:all",
     "benchmark": "npx tsx scripts/benchmark.ts",
     "preview": "vite preview",
     "tauri": "tauri"
