@@ -195,7 +195,7 @@
 ---
 
 ### Phase 9: Decompose Video Pipeline
-**Status**: ⬜ Not Started  
+**Status**: ✅ Complete  
 **Objective**: Refactor the monolithic 405-line `run_video_job` function into structured phase runner modules with fallible path conversion and explicit encoder fallback metadata.  
 
 #### Tasks
