@@ -127,14 +127,45 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
       return;
     }
 
-    pendingQueueRef.current = [...readyItems];
     setIsBatchRunning(true);
     isBatchRunningRef.current = true;
     if (onNotify) {
       onNotify('info', 'Batch Started', `Processing ${readyItems.length} queued items...`);
     }
-    await runNextInQueue();
-  }, [batchItems, onNotify, runNextInQueue]);
+
+    for (const item of readyItems) {
+      if (!item.filePath || !item.fileName) continue;
+      try {
+        setBatchItems((prev) =>
+          prev.map((b) => (b.id === item.id ? { ...b, status: 'queued', progress: 0 } : b))
+        );
+
+        const outPath = resolveOutputPath(item, scale, customOutputPath);
+
+        const jobId = await invoke<string>('run_upscale', {
+          request: {
+            job_id: item.id,
+            input_path: item.filePath,
+            output_path: outPath,
+            model_id: selectedModel,
+            gpu_id: selectedGpu,
+            scale,
+            tile_size: tileSize,
+            is_video: Boolean(item.isVideo),
+          },
+        });
+
+        setBatchItems((prev) =>
+          prev.map((b) => (b.id === item.id ? { ...b, id: jobId, outputPath: outPath } : b))
+        );
+      } catch (err) {
+        console.error('Failed to start batch item:', err);
+        setBatchItems((prev) =>
+          prev.map((b) => (b.id === item.id ? { ...b, status: 'error' } : b))
+        );
+      }
+    }
+  }, [batchItems, scale, tileSize, selectedGpu, selectedModel, customOutputPath, onNotify]);
 
   const handleJobProgress = useCallback(
     (progress: JobProgress) => {
@@ -142,6 +173,13 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
       const isDone = status === 'succeeded' || status === 'completed';
       const isErr = status === 'failed';
       const isCanc = status === 'cancelled';
+      const isProc = status === 'running' || status === 'processing';
+
+      if (isProc) {
+        setActiveJobId(job_id);
+      } else if (isDone || isErr || isCanc) {
+        setActiveJobId((prev) => (prev === job_id ? null : prev));
+      }
 
       setBatchItems((prev) =>
         prev.map((item) => {
@@ -156,7 +194,7 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
                   ? 'error'
                   : isCanc
                     ? 'cancelled'
-                    : status === 'running' || status === 'processing'
+                    : isProc
                       ? 'processing'
                       : 'queued',
               outputPath: finalOut,
@@ -170,15 +208,8 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
           return item;
         })
       );
-
-      if ((isDone || isErr || isCanc) && job_id === activeJobIdRef.current) {
-        setActiveJobId(null);
-        if (isBatchRunningRef.current) {
-          runNextInQueue();
-        }
-      }
     },
-    [onItemCompleted, runNextInQueue]
+    [onItemCompleted]
   );
 
   return {

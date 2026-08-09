@@ -6,6 +6,8 @@ interface StudioJobStateSetupOptions {
   activeJobId: string | null;
   activeJobIdRef: React.MutableRefObject<string | null>;
   pendingOutputPath: React.MutableRefObject<string>;
+  jobStartTimeRef?: React.MutableRefObject<number | null>;
+  currentFileDims?: { w: number; h: number } | null;
   upscaledPath: string | null;
   selectedModel: string;
   fileName: string | null;
@@ -19,6 +21,7 @@ interface StudioJobStateSetupOptions {
   setJobPhase: (phase: string) => void;
   setEtaSeconds: (eta: number) => void;
   setFps: (fps: number) => void;
+  setRateStr?: (rate: string) => void;
   setStatusMessage: (msg: string) => void;
   setUpscaledPath: (path: string) => void;
   setHistoryItems: React.Dispatch<React.SetStateAction<HistoryItem[]>>;
@@ -34,6 +37,8 @@ export function useStudioJobStateSetup({
   activeJobId,
   activeJobIdRef,
   pendingOutputPath,
+  jobStartTimeRef,
+  currentFileDims,
   upscaledPath,
   selectedModel,
   fileName,
@@ -47,6 +52,7 @@ export function useStudioJobStateSetup({
   setJobPhase,
   setEtaSeconds,
   setFps,
+  setRateStr,
   setStatusMessage,
   setUpscaledPath,
   setHistoryItems,
@@ -58,6 +64,8 @@ export function useStudioJobStateSetup({
       activeJobId,
       activeJobIdRef,
       pendingOutputPath,
+      jobStartTimeRef,
+      currentFileDims,
       upscaledPath: upscaledPath || '',
       selectedModel,
       fileName: fileName || '',
@@ -71,6 +79,7 @@ export function useStudioJobStateSetup({
       setJobPhase,
       setEtaSeconds,
       setFps,
+      setRateStr,
       setStatusMessage,
       setUpscaledPath,
       setHistoryItems,
@@ -81,6 +90,8 @@ export function useStudioJobStateSetup({
       activeJobId,
       activeJobIdRef,
       pendingOutputPath,
+      jobStartTimeRef,
+      currentFileDims,
       upscaledPath,
       selectedModel,
       fileName,
@@ -94,6 +105,7 @@ export function useStudioJobStateSetup({
       setJobPhase,
       setEtaSeconds,
       setFps,
+      setRateStr,
       setStatusMessage,
       setUpscaledPath,
       setHistoryItems,

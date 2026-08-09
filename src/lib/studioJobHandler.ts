@@ -7,6 +7,8 @@ export interface StudioJobState {
   activeJobId: string | null;
   activeJobIdRef: React.MutableRefObject<string | null>;
   pendingOutputPath: React.MutableRefObject<string>;
+  jobStartTimeRef?: React.MutableRefObject<number | null>;
+  currentFileDims?: { w: number; h: number } | null;
   upscaledPath: string;
   selectedModel: string;
   fileName: string;
@@ -20,6 +22,7 @@ export interface StudioJobState {
   setJobPhase: (phase: string) => void;
   setEtaSeconds: (eta: number) => void;
   setFps: (fps: number) => void;
+  setRateStr?: (rate: string) => void;
   setStatusMessage: (msg: string) => void;
   setUpscaledPath: (path: string) => void;
   setHistoryItems: React.Dispatch<React.SetStateAction<HistoryItem[]>>;
@@ -100,8 +103,33 @@ export function handleStudioJobStatus(progress: JobProgress, state: StudioJobSta
   state.setProgressVal(percentage);
   state.setJobStatus(effectiveStatus);
   if (phase) state.setJobPhase(phase);
-  if (eta_seconds && eta_seconds > 0) state.setEtaSeconds(eta_seconds);
-  if (jobFps && jobFps > 0) state.setFps(jobFps);
+
+  if (eta_seconds !== undefined && eta_seconds > 0) {
+    state.setEtaSeconds(eta_seconds);
+  } else if (state.jobStartTimeRef?.current && percentage > 0) {
+    const elapsedSec = (Date.now() - state.jobStartTimeRef.current) / 1000;
+    if (elapsedSec > 0.2) {
+      const pctPerSec = percentage / elapsedSec;
+      const remPct = Math.max(0, 100 - percentage);
+      const calcEta = Math.max(1, Math.ceil(remPct / Math.max(0.1, pctPerSec)));
+      state.setEtaSeconds(calcEta);
+    }
+  }
+
+  if (jobFps !== undefined && jobFps > 0) {
+    state.setFps(jobFps);
+  }
+
+  if (state.jobStartTimeRef?.current && percentage > 0 && state.setRateStr) {
+    const elapsedSec = Math.max(0.1, (Date.now() - state.jobStartTimeRef.current) / 1000);
+    let totalMp = 12.0;
+    if (state.currentFileDims && state.currentFileDims.w && state.currentFileDims.h) {
+      totalMp = (state.currentFileDims.w * state.currentFileDims.h * state.scale) / 1_000_000;
+    }
+    const processedMp = totalMp * (percentage / 100);
+    const mps = Math.max(0.5, processedMp / elapsedSec);
+    state.setRateStr(`${mps.toFixed(1)} MP/s`);
+  }
 
   if (isProc) {
     state.setStatusMessage(`Upscaling in progress... ${percentage.toFixed(1)}%`);

@@ -65,7 +65,7 @@ export function TileSizeSection({
         {isOverflowing
           ? `Projected VRAM usage (${usedVramGb.toFixed(1)} GB) exceeds GPU memory (${totalVramGb.toFixed(1)} GB). Consider selecting 256px or 128px.`
           : tileSize === 0
-            ? 'Tile size is derived automatically from GPU VRAM at job start.'
+            ? 'AUTO selects optimal 256px tile size for smooth GPU VRAM processing.'
             : `Selected tile size: ${tileSize}px. Projected VRAM usage: ${usedVramGb.toFixed(1)} GB.`}
       </div>
     </div>

@@ -110,15 +110,21 @@ fn parse_layer_line(line: &str, input_channels: &mut u32, calculated_scale: &mut
             }
         }
         "Interp" | "Resample" => {
+            // Keys 1 and 2 are width/height scale (same value for isotropic upscale).
+            // Only apply the factor once per layer, not per-parameter.
+            let mut layer_scale: u32 = 0;
             for (k, v) in &params {
-                if (0..=3).contains(k) {
+                if (1..=2).contains(k) {
                     if let Ok(scale_val) = v.parse::<f32>() {
                         let scale_int = scale_val as u32;
-                        if (2..=8).contains(&scale_int) {
-                            *calculated_scale *= scale_int;
+                        if (2..=8).contains(&scale_int) && scale_int > layer_scale {
+                            layer_scale = scale_int;
                         }
                     }
                 }
+            }
+            if layer_scale > 0 {
+                *calculated_scale *= layer_scale;
             }
         }
         "Deconvolution" | "DeconvolutionDepthWise" | "Deconv" => {
@@ -189,7 +195,12 @@ mod tests {
         parse_layer_line("Input in 0 1 0 0=4", &mut chans, &mut scale);
         assert_eq!(chans, 4);
 
-        parse_layer_line("Interp interp 1 1 out 0=2 1=2", &mut chans, &mut scale);
+        // Interp layer with width=2, height=2 should count as a single 2x upscale per layer
+        parse_layer_line("Interp interp 1 1 out 0=1 1=2 2=2", &mut chans, &mut scale);
+        assert_eq!(scale, 2);
+
+        // A second Interp layer multiplies further: 2 * 2 = 4
+        parse_layer_line("Interp interp2 1 1 out2 0=1 1=2 2=2", &mut chans, &mut scale);
         assert_eq!(scale, 4);
     }
 }

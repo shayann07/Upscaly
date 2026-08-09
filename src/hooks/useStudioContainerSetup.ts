@@ -49,6 +49,7 @@ export function useStudioContainerSetup() {
     scale: settings.scale,
     selectedModel: catalog.selectedModel,
     selectedGpu: settings.selectedGpu,
+    gpus: settings.gpus,
     tileSize: settings.tileSize,
     customOutputPath: settings.customOutputPath,
     isMuted: settings.isMuted,
@@ -79,6 +80,7 @@ export function useStudioContainerSetup() {
     activeJobId: state.activeJobId,
     activeJobIdRef: actions.activeJobIdRef,
     pendingOutputPath: actions.pendingOutputPath,
+    currentFileDims: media.currentFileDims,
     upscaledPath: media.upscaledPath,
     selectedModel: catalog.selectedModel,
     fileName: media.fileName,
@@ -92,6 +94,7 @@ export function useStudioContainerSetup() {
     setJobPhase: state.setJobPhase,
     setEtaSeconds: state.setEtaSeconds,
     setFps: state.setFps,
+    setRateStr: state.setRateStr,
     setStatusMessage: state.setStatusMessage,
     setUpscaledPath: media.setUpscaledPath,
     setHistoryItems: state.setHistoryItems,
@@ -103,6 +106,8 @@ export function useStudioContainerSetup() {
     handleQueueJobProgress: batch.handleQueueJobProgress,
     studioJobState,
     refreshInstalledModels: catalog.refreshInstalledModels,
+    setDownloadingModelId: catalog.setDownloadingModelId,
+    setDownloadProgress: catalog.setDownloadProgress,
     onNotify: state.handleNotify,
   });
 

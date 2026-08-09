@@ -360,6 +360,35 @@ pub fn normalize_tile_size(user_tile: i32) -> i32 {
     }
 }
 
+pub fn resolve_effective_scale(
+    model_name: &str,
+    requested_scale: i32,
+    models_dir: Option<&Path>,
+) -> i32 {
+    if let Some(dir) = models_dir {
+        let param_path = dir.join(format!("{model_name}.param"));
+        if param_path.exists() {
+            if let Ok(meta) = crate::engine::model_store::parse_ncnn_param_cached(&param_path) {
+                if meta.scale > 0 {
+                    #[allow(clippy::cast_possible_wrap)]
+                    return meta.scale as i32;
+                }
+            }
+        }
+    }
+
+    let name_lower = model_name.to_lowercase();
+    if name_lower.contains("x4") || name_lower.contains("4x") || name_lower.contains("ultra") {
+        4
+    } else if name_lower.contains("x3") || name_lower.contains("3x") {
+        3
+    } else if name_lower.contains("x2") || name_lower.contains("2x") {
+        2
+    } else {
+        requested_scale
+    }
+}
+
 pub fn compute_workload_threads(_input_path: &str, _is_video: bool) -> &'static str {
     "1:2:2"
 }
@@ -375,16 +404,7 @@ fn run_single_image_job(
 
     let thread_profile = compute_workload_threads(&job.input_path, job.is_video);
     let tile_size = normalize_tile_size(job.tile_size);
-
-    let effective_scale = if job.model_name.contains("x4") || job.model_name.contains("ultra") {
-        4
-    } else if job.model_name.contains("x3") {
-        3
-    } else if job.model_name.contains("x2") {
-        2
-    } else {
-        job.scale
-    };
+    let effective_scale = resolve_effective_scale(&job.model_name, job.scale, Some(&models_dir));
 
     let args = vec![
         "-i".to_string(),
@@ -442,9 +462,23 @@ fn run_single_image_job(
             let mut handle_guard = process_handle.lock().unwrap_or_else(|p| p.into_inner());
             if let Some(ref mut child) = *handle_guard {
                 match child.try_wait() {
-                    Ok(Some(0)) => break,
+                    Ok(Some(0)) => {
+                        let stderr_log = child.get_stderr_log();
+                        if stderr_log.contains("vkAllocateMemory failed")
+                            || stderr_log.contains("vkQueueSubmit failed")
+                        {
+                            return Err("GPU VRAM allocation failed (Vulkan memory overflow). Try selecting a smaller tile size (e.g. 256px or 128px).".to_string());
+                        }
+                        break;
+                    }
                     Ok(Some(code)) => {
-                        return Err(format!("Engine exited with non-zero exit code: {}", code))
+                        let stderr_log = child.get_stderr_log();
+                        if stderr_log.trim().is_empty() {
+                            return Err(format!("Engine exited with non-zero exit code: {code}"));
+                        }
+                        return Err(format!(
+                            "Engine exited with non-zero exit code {code}: {stderr_log}"
+                        ));
                     }
                     Ok(None) => child.latest_progress(),
                     Err(e) => return Err(e.to_string()),
@@ -523,5 +557,16 @@ mod tests {
         assert!(JobState::Succeeded.is_terminal());
         assert!(JobState::Cancelled.is_terminal());
         assert!(JobState::Failed("err".into()).is_terminal());
+    }
+
+    #[test]
+    fn test_resolve_effective_scale() {
+        assert_eq!(resolve_effective_scale("realesrgan-x4plus", 2, None), 4);
+        assert_eq!(resolve_effective_scale("realesrgan-x4plus-anime", 2, None), 4);
+        assert_eq!(resolve_effective_scale("realesr-animevideov3-x2", 4, None), 2);
+        assert_eq!(resolve_effective_scale("realesr-animevideov3-x3", 4, None), 3);
+        assert_eq!(resolve_effective_scale("realesr-animevideov3-x4", 2, None), 4);
+        assert_eq!(resolve_effective_scale("custom-model-4x", 2, None), 4);
+        assert_eq!(resolve_effective_scale("unknown-model", 3, None), 3);
     }
 }
