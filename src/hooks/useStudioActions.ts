@@ -81,10 +81,42 @@ export function useStudioActions({
       const filtered = supportedModels.filter((m) => m.cat === cat);
       if (filtered.length > 0) {
         const installedFiltered = filtered.filter((m) => installedModels.includes(m.id));
-        setSelectedModel(installedFiltered.length > 0 ? installedFiltered[0].id : filtered[0].id);
+        const chosen = installedFiltered.length > 0 ? installedFiltered[0] : filtered[0];
+        setSelectedModel(chosen.id);
+        if (chosen.scale) setScale(chosen.scale);
       }
     },
-    [supportedModels, installedModels, setCategory, setSelectedModel]
+    [supportedModels, installedModels, setCategory, setSelectedModel, setScale]
+  );
+
+  const handleSelectModel = useCallback(
+    (modelId: string) => {
+      setSelectedModel(modelId);
+      const modelInfo = supportedModels.find((m) => m.id === modelId);
+      if (modelInfo) {
+        if (modelInfo.scale) setScale(modelInfo.scale);
+        const modelCat = modelInfo.cat === 'photo' ? 'photos' : (modelInfo.cat as 'anime' | 'video');
+        setCategory(modelCat);
+      }
+    },
+    [supportedModels, setSelectedModel, setScale, setCategory]
+  );
+
+  const handleSelectScale = useCallback(
+    (newScale: number) => {
+      setScale(newScale);
+      const currentModelInfo = supportedModels.find((m) => m.id === selectedModel);
+      if (currentModelInfo && currentModelInfo.scale !== newScale) {
+        const matchingModel =
+          supportedModels.find(
+            (m) => m.scale === newScale && (installedModels.length === 0 || installedModels.includes(m.id))
+          ) || supportedModels.find((m) => m.scale === newScale);
+        if (matchingModel) {
+          setSelectedModel(matchingModel.id);
+        }
+      }
+    },
+    [supportedModels, selectedModel, installedModels, setScale, setSelectedModel]
   );
 
   const handleStartUpscale = async () => {
@@ -202,6 +234,8 @@ export function useStudioActions({
     pendingOutputPath,
     activeJobIdRef,
     handleSelectCategory,
+    handleSelectModel,
+    handleSelectScale,
     handleStartUpscale,
     handleCancelUpscale,
     handleShowInExplorerNative,
