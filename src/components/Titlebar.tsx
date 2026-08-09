@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { GpuInfo } from '../lib/types';
+import { WindowControls } from './titlebar/WindowControls';
+import { TitlebarNav } from './titlebar/TitlebarNav';
 
 interface TitlebarProps {
   hasFiles?: boolean;
@@ -21,7 +22,6 @@ interface TitlebarProps {
   onOpenAbout?: () => void;
   onRemoveFile?: () => void;
   accentColor?: string;
-  // Alternate prop names support
   onShowModelCatalog?: () => void;
   onShowSettings?: () => void;
   onShowAbout?: () => void;
@@ -62,74 +62,25 @@ export function Titlebar({
     onToggleSettings || onToggleInspector || onShowSettings || (() => {});
   const handleHistory = onOpenHistory || onShowHistory || (() => {});
   const handleAbout = onOpenAbout || onShowAbout || (() => {});
-  const inspectorActive = activeNavTab === 'settings' || settingsOpen || isInspectorOpen || false;
+  const inspectorActive =
+    activeNavTab === 'settings' || settingsOpen || isInspectorOpen || false;
 
   const currentGpu = availableGpus.find((g) => g.id === selectedGpu);
   const gpuLabel = currentGpu ? currentGpu.name : 'GPU Acceleration';
 
-  const fileName = currentFile ? currentFile.split('/').pop()?.split('\\').pop() : '';
-  const isVideo = fileName ? /\.(mp4|mkv|mov|avi|webm)$/i.test(fileName) : false;
+  const fileName = currentFile
+    ? currentFile.split('/').pop()?.split('\\').pop()
+    : '';
+  const isVideo = fileName
+    ? /\.(mp4|mkv|mov|avi|webm)$/i.test(fileName)
+    : false;
   const kindTag = isVideo ? 'VID' : 'IMG';
   const outDims = outputDims ? `${outputDims.w}×${outputDims.h}` : '';
 
-  const handleMinimize = async () => {
-    try {
-      await invoke('minimize_window');
-    } catch {
-      // Ignored when window control fails in non-Tauri browser preview
-    }
-  };
-
-  const handleMaximize = async () => {
-    try {
-      await invoke('toggle_maximize_window');
-    } catch {
-      // Ignored when window control fails in non-Tauri browser preview
-    }
-  };
-
-  const handleClose = async () => {
-    try {
-      await invoke('close_window');
-    } catch {
-      // Ignored when window control fails in non-Tauri browser preview
-    }
-  };
-
   return (
     <header className="absolute top-0 left-0 right-0 h-14 z-[40] flex items-center justify-between px-3 select-none pointer-events-none">
-      {/* Left Brand Header Island */}
-      <div className="pointer-events-auto">
-        <div className="flex items-center gap-2.5 h-[34px] px-3 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]">
-          <div className="flex items-center gap-1.5 group">
-            <div
-              onClick={handleClose}
-              className="w-[11px] h-[11px] rounded-full bg-[#FF5F56] flex items-center justify-center font-['Martian_Mono',monospace] text-[8px] font-bold leading-none text-transparent cursor-pointer transition-colors duration-150 hover:text-[#4C0000]"
-            >
-              ×
-            </div>
-            <div
-              onClick={handleMinimize}
-              className="w-[11px] h-[11px] rounded-full bg-[#FFBD2E] flex items-center justify-center font-['Martian_Mono',monospace] text-[8px] font-bold leading-none text-transparent cursor-pointer transition-colors duration-150 hover:text-[#523A00]"
-            >
-              −
-            </div>
-            <div
-              onClick={handleMaximize}
-              className="w-[11px] h-[11px] rounded-full bg-[#28C840] flex items-center justify-center font-['Martian_Mono',monospace] text-[8px] font-bold leading-none text-transparent cursor-pointer transition-colors duration-150 hover:text-[#032C09]"
-            >
-              ▢
-            </div>
-          </div>
-          <div className="w-px h-[15px] bg-[var(--border-default)]" />
-          <span className="font-bold text-[12.5px] tracking-[-0.01em]">Upscaly</span>
-          <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.06em]">
-            0.1.0
-          </span>
-        </div>
-      </div>
+      <WindowControls />
 
-      {/* File Chip (shown when file is loaded) */}
       {hasFiles && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-auto">
           <div className="flex items-center gap-[11px] h-[34px] pl-3 pr-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]">
@@ -155,7 +106,6 @@ export function Titlebar({
         </div>
       )}
 
-      {/* GPU Island (shown when no active single file) */}
       {!hasFiles && (
         <div
           className={`absolute top-3 left-1/2 -translate-x-1/2 z-[41] border bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] overflow-hidden transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)] ${
@@ -199,7 +149,8 @@ export function Titlebar({
             style={{
               maxHeight: gpuMenuOpen ? 210 : 0,
               opacity: gpuMenuOpen ? 1 : 0,
-              transition: 'max-height .28s var(--ease-spring), opacity .2s ease',
+              transition:
+                'max-height .28s var(--ease-spring), opacity .2s ease',
             }}
           >
             <div className="p-1.5 border-t border-[var(--border-default)]">
@@ -212,7 +163,10 @@ export function Titlebar({
                   }}
                   className="flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors duration-150 hover:bg-[var(--bg-hover)]"
                   style={{
-                    background: selectedGpu === gpu.id ? 'var(--bg-active)' : 'transparent',
+                    background:
+                      selectedGpu === gpu.id
+                        ? 'var(--bg-active)'
+                        : 'transparent',
                   }}
                 >
                   <div className="flex-1 min-w-0 pr-2">
@@ -235,49 +189,15 @@ export function Titlebar({
         </div>
       )}
 
-      {/* Right Studio Header Nav Island */}
-      <div className="pointer-events-auto flex items-center gap-1.5 h-[34px] px-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]">
-        <button
-          onClick={() => (onToggleNavTab ? onToggleNavTab('models') : handleCatalog())}
-          className={`px-2.5 py-1 border-none rounded-lg font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 ${
-            activeNavTab === 'models'
-              ? 'bg-[var(--bg-active)] text-[var(--text-primary)]'
-              : 'bg-transparent text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Models
-        </button>
-        <button
-          onClick={() => (onToggleNavTab ? onToggleNavTab('history') : handleHistory())}
-          className={`px-2.5 py-1 border-none rounded-lg font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 ${
-            activeNavTab === 'history'
-              ? 'bg-[var(--bg-active)] text-[var(--text-primary)]'
-              : 'bg-transparent text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          History
-        </button>
-        <button
-          onClick={() => (onToggleNavTab ? onToggleNavTab('settings') : handleToggleInspector())}
-          className={`px-2.5 py-1 border-none rounded-lg font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 ${
-            activeNavTab === 'settings' || inspectorActive
-              ? 'bg-[var(--bg-active)] text-[var(--text-primary)]'
-              : 'bg-transparent text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          Settings
-        </button>
-        <button
-          onClick={() => (onToggleNavTab ? onToggleNavTab('about') : handleAbout())}
-          className={`w-6 h-6 flex items-center justify-center border-none rounded-md font-['Martian_Mono',monospace] text-xs font-semibold cursor-pointer transition-all duration-150 ${
-            activeNavTab === 'about'
-              ? 'bg-[var(--bg-active)] text-[var(--text-primary)]'
-              : 'bg-transparent text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          ?
-        </button>
-      </div>
+      <TitlebarNav
+        activeNavTab={activeNavTab}
+        onToggleNavTab={onToggleNavTab}
+        inspectorActive={inspectorActive}
+        handleCatalog={handleCatalog}
+        handleHistory={handleHistory}
+        handleToggleInspector={handleToggleInspector}
+        handleAbout={handleAbout}
+      />
     </header>
   );
 }
