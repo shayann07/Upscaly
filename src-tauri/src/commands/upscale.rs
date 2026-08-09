@@ -1,6 +1,7 @@
 use crate::job_queue::{add_job_to_queue, cancel_job, Job};
 use crate::UpscaleRequest;
 
+#[tauri::command]
 pub fn upscale_image(
     app_handle: tauri::AppHandle,
     request: UpscaleRequest,

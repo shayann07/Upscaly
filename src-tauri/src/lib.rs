@@ -43,6 +43,7 @@ pub fn run() {
             commands::models::download_model_files,
             commands::models::download_model,
             commands::models::repair_model,
+            commands::upscale::upscale_image,
             commands::upscale::run_upscale,
             commands::upscale::cancel_upscale,
             commands::upscale::enqueue_job,

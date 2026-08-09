@@ -83,7 +83,7 @@ describe('useUpscaleQueue hook', () => {
     expect(onItemCompleted).toHaveBeenCalled();
   });
 
-  it('runs sequential batch execution on startBatch without polling', async () => {
+  it('enqueues all ready items on startBatch and updates progress via events', async () => {
     let result: { current: ReturnType<typeof useUpscaleQueue> };
 
     await act(async () => {
@@ -122,7 +122,19 @@ describe('useUpscaleQueue hook', () => {
       await result!.current.startBatch();
     });
 
+    expect(result!.current.batchItems[0].status).toBe('queued');
+    expect(result!.current.batchItems[1].status).toBe('queued');
+
+    await act(async () => {
+      result!.current.handleJobProgress({
+        job_id: 'item-1',
+        percentage: 50,
+        status: 'running',
+      });
+    });
+
     expect(result!.current.activeJobId).toBe('item-1');
+    expect(result!.current.batchItems[0].status).toBe('processing');
 
     await act(async () => {
       result!.current.handleJobProgress({
@@ -133,6 +145,6 @@ describe('useUpscaleQueue hook', () => {
       });
     });
 
-    expect(result!.current.activeJobId).toBe('item-2');
+    expect(result!.current.batchItems[0].status).toBe('done');
   });
 });

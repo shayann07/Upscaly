@@ -109,6 +109,12 @@ pub fn upscale_frames(ctx: &VideoJobContext, total_frames: usize) -> Result<(), 
 fn spawn_upscale_engine(ctx: &VideoJobContext) -> Result<(), String> {
     let sidecar_path = resolve_sidecar_path(ctx.app, "realesrgan-ncnn-vulkan")?;
     let models_dir = get_models_dir(ctx.app);
+    let effective_scale = crate::job_queue::resolve_effective_scale(
+        &ctx.job.model_name,
+        ctx.job.scale,
+        Some(&models_dir),
+    );
+    let tile_size = crate::job_queue::normalize_tile_size(ctx.job.tile_size);
 
     let upscale_args = vec![
         "-i".to_string(),
@@ -122,9 +128,9 @@ fn spawn_upscale_engine(ctx: &VideoJobContext) -> Result<(), String> {
         "-g".to_string(),
         ctx.job.gpu_id.to_string(),
         "-s".to_string(),
-        ctx.job.scale.to_string(),
+        effective_scale.to_string(),
         "-t".to_string(),
-        ctx.job.tile_size.to_string(),
+        tile_size.to_string(),
         "-f".to_string(),
         "png".to_string(),
         "-j".to_string(),
@@ -164,9 +170,23 @@ fn poll_upscale_progress(ctx: &VideoJobContext, total_frames: usize) -> Result<(
             let mut handle_guard = lock_handle(ctx);
             if let Some(ref mut h) = *handle_guard {
                 match h.try_wait() {
-                    Ok(Some(0)) => true,
+                    Ok(Some(0)) => {
+                        let stderr_log = h.get_stderr_log();
+                        if stderr_log.contains("vkAllocateMemory failed")
+                            || stderr_log.contains("vkQueueSubmit failed")
+                        {
+                            return Err("GPU VRAM allocation failed (Vulkan memory overflow). Try selecting a smaller tile size (e.g. 256px or 128px).".to_string());
+                        }
+                        true
+                    }
                     Ok(Some(code)) => {
-                        return Err(format!("NCNN upscale engine failed with exit code: {code}"))
+                        let stderr_log = h.get_stderr_log();
+                        if stderr_log.trim().is_empty() {
+                            return Err(format!("NCNN upscale engine failed with exit code: {code}"));
+                        }
+                        return Err(format!(
+                            "NCNN upscale engine failed with exit code {code}: {stderr_log}"
+                        ));
                     }
                     Ok(None) => false,
                     Err(e) => return Err(e.to_string()),

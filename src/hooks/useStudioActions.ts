@@ -13,6 +13,7 @@ interface StudioActionsOptions {
   scale: number;
   selectedModel: string;
   selectedGpu: number;
+  gpus?: { id: number; name: string }[];
   tileSize: number;
   customOutputPath: string;
   isMuted: boolean;
@@ -48,6 +49,7 @@ export function useStudioActions({
   scale,
   selectedModel,
   selectedGpu,
+  gpus,
   tileSize,
   customOutputPath,
   isMuted,
@@ -78,7 +80,8 @@ export function useStudioActions({
   const handleSelectCategory = useCallback(
     (cat: 'photos' | 'anime' | 'video') => {
       setCategory(cat);
-      const filtered = supportedModels.filter((m) => m.cat === cat);
+      const targetCat = cat === 'photos' ? 'photo' : cat;
+      const filtered = supportedModels.filter((m) => m.cat === targetCat);
       if (filtered.length > 0) {
         const installedFiltered = filtered.filter((m) => installedModels.includes(m.id));
         const chosen = installedFiltered.length > 0 ? installedFiltered[0] : filtered[0];
@@ -125,9 +128,20 @@ export function useStudioActions({
       handleStartBatchUpscale();
       return;
     }
-    if (!filePath || !fileName) return;
+    if (gpus && gpus.length === 0) {
+      onNotify(
+        'error',
+        'No Vulkan GPU Found',
+        'No Vulkan-compatible GPU detected. Please install updated graphics display drivers.'
+      );
+      return;
+    }
+    if (!filePath || !fileName) {
+      onNotify('warning', 'No File Selected', 'Please drag and drop or open an image/video first.');
+      return;
+    }
     try {
-      const clientJobId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const clientJobId = crypto.randomUUID();
       activeJobIdRef.current = clientJobId;
       setActiveJobId(clientJobId);
       jobStartTimeRef.current = Date.now();
@@ -203,9 +217,13 @@ export function useStudioActions({
     setUpscaledPath('');
     setIsVideo(false);
     setJobStatus('idle');
+    setProgressVal(0);
+    setStatusMessage('');
+    setJobPhase('');
     pendingOutputPath.current = '';
     activeJobIdRef.current = null;
     setActiveJobId(null);
+    onNotify('info', 'Queue Cleared', 'Ready for next input.');
   };
 
   const handleSelectHistoryItem = (item: HistoryEntry) => {
