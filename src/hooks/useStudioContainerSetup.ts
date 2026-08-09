@@ -13,10 +13,14 @@ export function useStudioContainerSetup() {
   const settings = useSettings(state.handleGpuReady);
   const catalog = useModelCatalog(state.handleNotify);
 
+  const onCategorySelectRef = useRef<(cat: 'photos' | 'anime' | 'video') => void>(
+    (cat) => state.setCategory(cat)
+  );
+
   const media = useMediaSelection(
     settings.isMuted,
     catalog.selectedModel,
-    (cat) => state.setCategory(cat),
+    (cat) => onCategorySelectRef.current(cat),
     state.handleNotify,
     state.handleResetJob
   );
@@ -74,6 +78,7 @@ export function useStudioContainerSetup() {
     onNotify: state.handleNotify,
   });
 
+  onCategorySelectRef.current = actions.handleSelectCategory;
   handleCancelRef = actions.handleCancelUpscale;
 
   const studioJobState = useStudioJobStateSetup({
