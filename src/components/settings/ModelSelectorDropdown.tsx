@@ -62,8 +62,7 @@ export function ModelSelectorDropdown({
               }}
               className="flex items-start gap-3 p-3 rounded-[10px] cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:bg-[var(--bg-elevated)] hover:border-[var(--border-hover)]"
               style={{
-                background:
-                  m.id === selectedModel ? 'var(--bg-active)' : 'transparent',
+                background: m.id === selectedModel ? 'var(--bg-active)' : 'transparent',
               }}
             >
               <div className="flex-1 min-w-0">
@@ -80,10 +79,7 @@ export function ModelSelectorDropdown({
                 </div>
               </div>
               {m.id === selectedModel && (
-                <span
-                  className="flex-none w-3 text-[11px]"
-                  style={{ color: accentColor }}
-                >
+                <span className="flex-none w-3 text-[11px]" style={{ color: accentColor }}>
                   ✓
                 </span>
               )}

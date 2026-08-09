@@ -1,0 +1,40 @@
+interface TitlebarFileChipProps {
+  fileName: string;
+  kindTag: string;
+  outDims: string;
+  isDone: boolean;
+  onRemoveFile: () => void;
+}
+
+export function TitlebarFileChip({
+  fileName,
+  kindTag,
+  outDims,
+  isDone,
+  onRemoveFile,
+}: TitlebarFileChipProps) {
+  return (
+    <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-auto">
+      <div className="flex items-center gap-[11px] h-[34px] pl-3 pr-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]">
+        <span className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis min-w-0 max-w-[230px]">
+          {fileName}
+        </span>
+        <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.05em] whitespace-nowrap">
+          {kindTag}
+        </span>
+        {isDone && outDims && (
+          <span className="inline-block px-[7px] py-[3px] rounded-[6px] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] font-semibold whitespace-nowrap bg-[var(--accent-bg)] text-[var(--text-primary)] border border-[var(--border-subtle)]">
+            {outDims}
+          </span>
+        )}
+        <button
+          onClick={onRemoveFile}
+          title="Remove from queue"
+          className="w-6 h-6 flex-none flex items-center justify-center border border-[var(--border-danger)] rounded-lg bg-[var(--danger-bg)] text-[var(--danger-text)] text-sm leading-none cursor-pointer transition-all duration-150 hover:bg-[var(--danger-hover)] hover:text-[#F2C4BE]"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}

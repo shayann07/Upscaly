@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { DeviceSelectorSection } from './settings/DeviceSelectorSection';
+import { TileSizeSection } from './settings/TileSizeSection';
 
 export interface GpuInfo {
   id: number;
@@ -54,8 +55,7 @@ export function AdvancedSettings({
         }))
       : []);
   const handleTileSize = onSetTileSize || onSelectTileSize || (() => {});
-  const displayOutputDir =
-    customOutputPath !== undefined ? customOutputPath : outputDir;
+  const displayOutputDir = customOutputPath !== undefined ? customOutputPath : outputDir;
 
   const currentGpu = useMemo(() => {
     return devices.find((g) => g.id === selectedGpu) || devices[0];
@@ -81,13 +81,7 @@ export function AdvancedSettings({
   const usedVramGb = useMemo(() => {
     const baseIdle = Math.round(totalVramGb * 0.12 * 10) / 10;
     const tileFootprint =
-      tileSize === 512
-        ? 3.0
-        : tileSize === 256
-          ? 1.5
-          : tileSize === 128
-            ? 0.7
-            : 1.2;
+      tileSize === 512 ? 3.0 : tileSize === 256 ? 1.5 : tileSize === 128 ? 0.7 : 1.2;
     if (isProcessing) {
       return Math.round((baseIdle + tileFootprint * 1.1) * 10) / 10;
     }
@@ -150,61 +144,15 @@ export function AdvancedSettings({
           EASE={EASE}
         />
 
-        <div className="p-3.5 border-b border-[var(--border-default)]">
-          <div className="flex items-baseline justify-between mb-2.5">
-            <span className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.1em] text-[var(--text-dim)]">
-              TILE SIZE
-            </span>
-            <button
-              onClick={handleAutoTuneClick}
-              className="border border-[var(--accent-border)] px-1.5 py-0.5 rounded bg-[var(--accent-bg)] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] cursor-pointer transition-all duration-200 hover:scale-[1.05] hover:bg-[var(--bg-hover)] hover:border-[var(--border-hover)]"
-              style={{ color: accentColor }}
-            >
-              AUTO-TUNE
-            </button>
-          </div>
-          <div className="grid grid-cols-4 gap-1.5">
-            {[
-              { v: 0, label: 'AUTO' },
-              { v: 128, label: '128' },
-              { v: 256, label: '256' },
-              { v: 512, label: '512' },
-            ].map((t) => (
-              <button
-                key={t.v}
-                onClick={() => handleTileSize(t.v)}
-                className="h-8 rounded-lg font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.03em] cursor-pointer transition-all duration-200 hover:scale-[1.05] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
-                style={{
-                  border: `1px solid ${tileSize === t.v ? (isOverflowing ? '#E88A80' : accentColor) : 'var(--border-default)'}`,
-                  background:
-                    tileSize === t.v
-                      ? isOverflowing
-                        ? 'rgba(232,138,128,.15)'
-                        : 'var(--accent-bg)'
-                      : 'var(--bg-elevated)',
-                  color:
-                    tileSize === t.v
-                      ? isOverflowing
-                        ? '#E88A80'
-                        : 'var(--text-primary)'
-                      : '#7E7871',
-                }}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <div
-            className="text-[11.5px] leading-[1.5] mt-2 transition-colors duration-200"
-            style={{ color: isOverflowing ? '#E88A80' : 'var(--text-muted)' }}
-          >
-            {isOverflowing
-              ? `Projected VRAM usage (${usedVramGb.toFixed(1)} GB) exceeds GPU memory (${totalVramGb.toFixed(1)} GB). Consider selecting 256px or 128px.`
-              : tileSize === 0
-                ? 'Tile size is derived automatically from GPU VRAM at job start.'
-                : `Selected tile size: ${tileSize}px. Projected VRAM usage: ${usedVramGb.toFixed(1)} GB.`}
-          </div>
-        </div>
+        <TileSizeSection
+          tileSize={tileSize}
+          handleTileSize={handleTileSize}
+          handleAutoTuneClick={handleAutoTuneClick}
+          isOverflowing={isOverflowing}
+          usedVramGb={usedVramGb}
+          totalVramGb={totalVramGb}
+          accentColor={accentColor}
+        />
 
         <div className="p-3.5">
           <div className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.1em] text-[var(--text-dim)] mb-2.5">
@@ -214,9 +162,7 @@ export function AdvancedSettings({
             <input
               type="text"
               value={displayOutputDir}
-              onChange={(e) =>
-                onSetOutputDir && onSetOutputDir(e.target.value)
-              }
+              onChange={(e) => onSetOutputDir && onSetOutputDir(e.target.value)}
               placeholder="System Default"
               className="flex-1 min-w-0 px-2.5 py-2 border border-[var(--border-default)] rounded-lg bg-[var(--bg-elevated)] font-['Martian_Mono',monospace] text-[10px] text-[var(--text-secondary)] outline-none transition-all duration-200 focus:border-[var(--border-hover)] focus:text-[var(--text-primary)]"
             />

@@ -49,9 +49,7 @@ export function WindowControls() {
           </div>
         </div>
         <div className="w-px h-[15px] bg-[var(--border-default)]" />
-        <span className="font-bold text-[12.5px] tracking-[-0.01em]">
-          Upscaly
-        </span>
+        <span className="font-bold text-[12.5px] tracking-[-0.01em]">Upscaly</span>
         <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.06em]">
           0.1.0
         </span>

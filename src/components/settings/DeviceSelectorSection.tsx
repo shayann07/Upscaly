@@ -35,8 +35,7 @@ export function DeviceSelectorSection({
           className="flex items-center gap-2.5 p-2.5 mb-1.5 cursor-pointer rounded-[10px] transition-all duration-200 hover:scale-[1.02] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
           style={{
             border: `1px solid ${selectedGpu === gpu.id ? 'var(--border-subtle)' : 'var(--border-default)'}`,
-            background:
-              selectedGpu === gpu.id ? 'var(--bg-active)' : 'transparent',
+            background: selectedGpu === gpu.id ? 'var(--bg-active)' : 'transparent',
           }}
         >
           <div className="flex-1 min-w-0">
@@ -48,10 +47,7 @@ export function DeviceSelectorSection({
             </div>
           </div>
           {selectedGpu === gpu.id && (
-            <span
-              className="flex-none w-3 text-[11px]"
-              style={{ color: accentColor }}
-            >
+            <span className="flex-none w-3 text-[11px]" style={{ color: accentColor }}>
               ✓
             </span>
           )}
@@ -60,21 +56,14 @@ export function DeviceSelectorSection({
 
       <div className="mt-3">
         <div className="flex justify-between items-baseline font-['Martian_Mono',monospace] text-[9px] tracking-[0.05em] mb-1.5">
-          <span
-            style={{ color: isOverflowing ? '#E88A80' : 'var(--text-dim)' }}
-          >
+          <span style={{ color: isOverflowing ? '#E88A80' : 'var(--text-dim)' }}>
             VRAM {isOverflowing ? '· OVERFLOW' : ''}
           </span>
           <span>
-            <span
-              style={{ color: isOverflowing ? '#E88A80' : '#DDD8D2' }}
-            >
+            <span style={{ color: isOverflowing ? '#E88A80' : '#DDD8D2' }}>
               {usedVramGb.toFixed(1)} GB
             </span>
-            <span className="text-[var(--text-dim)]">
-              {' '}
-              / {totalVramGb.toFixed(1)} GB
-            </span>
+            <span className="text-[var(--text-dim)]"> / {totalVramGb.toFixed(1)} GB</span>
           </span>
         </div>
         <div className="h-1 rounded-sm bg-[#1B1917] overflow-hidden shadow-[inset_0_0_0_1px_var(--border-default)]">
