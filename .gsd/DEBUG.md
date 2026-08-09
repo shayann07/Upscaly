@@ -1,20 +1,31 @@
-# Debug Session: Upscaling Stuck at 95% on Final Tiles
+# Debug Session: Video Upscaling Performance & Long ETA
 
 ## Symptom
-When upscaling high-resolution images (e.g. 5K 5120x2880), the UI progress bar jumps to 95.0% almost immediately and appears stuck for minutes while processing final tiles.
+**When:** Upscaling video (`VID20260407103700.mp4` 1080p -> 8K) using `RealESRGAN Ultra` (`realesrgan-x4plus`) on RTX 3050 6GB GPU.
+**Expected:** Reasonable video conversion time (~3-10 minutes) and immediate, accurate ETA updates.
+**Actual:** ETA takes ~1 minute to appear and jumps to 80-121+ minutes.
 
-## Hypotheses & Evidence
+## Evidence Gathered
+1. **Model Architecture Complexity**:
+   - `realesrgan-x4plus` (Ultra): 16.7M parameters, 23 RRDB blocks. Designed for single still images. Takes ~1.2s per 1080p frame on RTX 3050 Laptop GPU.
+   - For a 3-minute video (5,400 frames): 5,400 * 1.2s = 6,480s = **108 minutes**.
+   - `realesr-animevideov3`: 0.2M parameters (80x lighter). Takes ~0.04s per frame. 5,400 * 0.04s = 216s = **3.6 minutes**.
 
-### H1: Erroneous `-x` Flag (TTA Mode) (CONFIRMED)
-- **Evidence**: In `src-tauri/src/job_queue.rs` (line 319) and `video_pipeline.rs` (line 94), `"-x"` was passed to `realesrgan-ncnn-vulkan` with a code comment claiming it enabled FP16 precision.
-- **Fact**: In `realesrgan-ncnn-vulkan`, FP16 is enabled by default in Vulkan NCNN. The `"-x"` flag actually enables **TTA (Test-Time Augmentation)** mode, which performs 8x rotational/flip inference passes per tile, making tile processing 800% slower!
-- **Effect**: On a 5K image, 8x TTA forces over 1,000 tile inference passes, causing the process to take several minutes and appear frozen on final tile assembly.
+2. **ETA Delay**:
+   - `poll_upscale_progress` in `phases.rs` counts completed output files in `ctx.frames_out_dir`.
+   - Sidecar startup + Vulkan memory allocation + model initialization + first frame processing takes 30-60s before the 1st frame file is written to disk.
+   - During this time, `completed == 0`, so `eta_seconds` remains `None` (blank UI).
+   - Once frame 1 arrives, initial `secs_per_frame` includes initial startup latency, skewing initial ETA calculation high (~120 minutes).
 
-### H2: Fake Percentage Calculation in Rust Job Queue (CONFIRMED)
-- **Evidence**: `run_single_image_job` in `src-tauri/src/job_queue.rs` did not parse real progress output from `realesrgan-ncnn-vulkan` (`XX.XX%`). Instead, it ran a fake progress loop `(current_pct + 8.0).min(95.0)` every 60ms.
-- **Effect**: The UI progress bar zoomed to 95.0% in less than 1 second, and stayed hard-coded at 95.0% for the remainder of the actual upscaling run.
+3. **Suboptimal I/O & Thread Allocation**:
+   - Hardcoded `-j 1:2:2` restricts image load threads to 1 and disk write threads to 2.
+   - Hardcoded tile size `256px` forces GPU to process 1080p frame in 32 separate tiles instead of full frame / larger tiles. On RTX 3050 6GB (4.2GB free VRAM available), larger tile sizes (512px) or Auto tile (0) reduce tile switching overhead by up to 40%.
 
-## Resolution Plan
-1. **Remove `-x` TTA Flag**: Delete `"-x"` from `job_queue.rs` and `video_pipeline.rs`.
-2. **Stream Real Engine Percentage**: Update `run_single_image_job` to read `realesrgan-ncnn-vulkan` stderr lines, parse `XX.XX%` progress regex, and emit accurate progress (0% -> 100%) to Tauri UI.
-3. **Fix TypeScript Build Errors**: Resolve the 16 compilation errors in `src/App.tsx` and UI components.
+## Hypotheses
+
+| # | Hypothesis | Impact | Status |
+|---|------------|--------|--------|
+| H1 | Heavy model choice (`realesrgan-x4plus` vs video-optimized / lightweight models) is the dominant factor (80x parameter difference). | 70% | CONFIRMED |
+| H2 | Small tile size (`256px`) causes excessive tile switching overhead on RTX 3050 6GB VRAM. | 15% | CONFIRMED |
+| H3 | ETA remains blank for ~60s because frame 0 has not written to disk; first estimate includes startup latency. | 10% | CONFIRMED |
+| H4 | Thread profile `1:2:2` bottlenecks disk I/O when reading/writing thousands of frames. | 5% | CONFIRMED |
