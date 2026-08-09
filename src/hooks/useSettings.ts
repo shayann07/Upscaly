@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 import { GpuInfo as GpuDevice } from '../lib/types';
 
 export interface BackendSettings {
@@ -29,6 +30,17 @@ export function useSettings(onGpuReady?: (gpuName: string) => void) {
       localStorage.setItem('upscaly_sound_muted', String(next));
       return next;
     });
+  };
+
+  const handleSelectDestinationFolder = async () => {
+    try {
+      const selected = await open({ directory: true, multiple: false });
+      if (selected && typeof selected === 'string') {
+        setCustomOutputPath(selected);
+      }
+    } catch (err) {
+      console.error('Failed to select destination folder:', err);
+    }
   };
 
   const gpuInitializedRef = useRef<boolean>(false);
@@ -96,6 +108,7 @@ export function useSettings(onGpuReady?: (gpuName: string) => void) {
     setTileSize,
     customOutputPath,
     setCustomOutputPath,
+    handleSelectDestinationFolder,
     isMuted,
     handleToggleMute,
   };

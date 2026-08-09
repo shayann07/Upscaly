@@ -4,6 +4,7 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { playErrorSound } from '../lib/sound';
 import { ModelInfo, BatchItem, HistoryEntry } from '../lib/types';
 import { SUPPORTED_MODELS } from '../lib/types';
+import { joinPath } from '../lib/outputPaths';
 
 interface StudioActionsOptions {
   filePath: string | null;
@@ -22,10 +23,12 @@ interface StudioActionsOptions {
   activeJobId: string | null;
   setActiveJobId: (id: string | null) => void;
   setJobStatus: (status: string) => void;
+  setProgressVal: (val: number) => void;
+  setStatusMessage: (msg: string) => void;
+  setJobPhase: (phase: string) => void;
   setCategory: (cat: 'photos' | 'anime' | 'video') => void;
   setSelectedModel: (id: string) => void;
   setScale: (s: number) => void;
-  setCustomOutputPath: (path: string) => void;
   setFilePath: (path: string) => void;
   setFileName: (name: string) => void;
   setUpscaledPath: (path: string) => void;
@@ -55,10 +58,12 @@ export function useStudioActions({
   activeJobId,
   setActiveJobId,
   setJobStatus,
+  setProgressVal,
+  setStatusMessage,
+  setJobPhase,
   setCategory,
   setSelectedModel,
   setScale,
-  setCustomOutputPath,
   setFilePath,
   setFileName,
   setUpscaledPath,
@@ -94,16 +99,24 @@ export function useStudioActions({
       activeJobIdRef.current = clientJobId;
       setActiveJobId(clientJobId);
       jobStartTimeRef.current = Date.now();
+
+      setJobStatus('queued');
+      setProgressVal(0);
+      setStatusMessage('Queued in GPU worker thread...');
+      setJobPhase('PREPARING');
+
       const ext = isVideo ? '.mp4' : '.png';
       const baseName = fileName.replace(/\.[^/.]+$/, '');
       const outputFilename = `${baseName}_upscaled_${scale}x${ext}`;
-      const parentDir = filePath.substring(
-        0,
-        Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
-      );
-      const outPath = customOutputPath
-        ? `${customOutputPath}\\${outputFilename}`
-        : `${parentDir}\\${outputFilename}`;
+
+      let outPath = '';
+      if (customOutputPath) {
+        outPath = joinPath(customOutputPath, outputFilename);
+      } else {
+        const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+        const parentDir = lastSlash >= 0 ? filePath.substring(0, lastSlash) : '';
+        outPath = joinPath(parentDir, outputFilename);
+      }
       pendingOutputPath.current = outPath;
 
       const jobId = await invoke<string>('run_upscale', {
@@ -138,45 +151,51 @@ export function useStudioActions({
       setJobStatus('idle');
       onNotify('info', 'Cancelled', 'Upscaling cancelled.');
     } catch (err) {
-      onNotify('error', 'Error Cancelling', String(err));
+      console.error('Cancel upscale failed:', err);
     }
   };
 
-  const handleSelectDestinationFolder = async () => {
+  const handleShowInExplorerNative = async (outPath?: string) => {
+    const target = outPath || pendingOutputPath.current;
+    if (!target) return;
     try {
-      const selected = await invoke<string | null>('select_folder');
-      if (selected) setCustomOutputPath(selected);
+      await revealItemInDir(target);
     } catch (err) {
-      onNotify('error', 'Folder Picker Error', String(err));
+      console.error('Failed to reveal file in explorer:', err);
     }
   };
 
-  const handleShowInExplorerNative = async (targetPath: string) => {
-    if (!targetPath) return;
-    try {
-      await revealItemInDir(targetPath);
-    } catch {
-      onNotify('info', 'Output File Location', targetPath);
-    }
+  const handleClearFile = () => {
+    setFilePath('');
+    setFileName('');
+    setUpscaledPath('');
+    setIsVideo(false);
+    setJobStatus('idle');
+    pendingOutputPath.current = '';
+    activeJobIdRef.current = null;
+    setActiveJobId(null);
   };
 
-  const handleLoadHistoryItem = (item: HistoryEntry) => {
-    setFilePath(item.originalPath || '');
-    setFileName(item.fileName || '');
-    setUpscaledPath(item.upscaledPath || '');
-    setIsVideo(item.isVideo ?? false);
-    setJobStatus('completed');
+  const handleSelectHistoryItem = (item: HistoryEntry) => {
+    if (item.originalPath) {
+      setFilePath(item.originalPath);
+      setFileName(item.fileName || item.originalPath.split(/[\\/]/).pop() || '');
+      setIsVideo(Boolean(item.isVideo));
+    }
+    if (item.upscaledPath) {
+      setUpscaledPath(item.upscaledPath);
+      setJobStatus('completed');
+    }
+    if (item.scale) {
+      setScale(item.scale);
+    }
+    const matchingModel = SUPPORTED_MODELS.find(
+      (m) => item.modelName && m.name.toLowerCase() === item.modelName.toLowerCase()
+    );
+    if (matchingModel) {
+      setSelectedModel(matchingModel.id);
+    }
     setActiveNavTab(null);
-  };
-
-  const handleSelectModel = (modelId: string) => {
-    setSelectedModel(modelId);
-    const modelInfo = SUPPORTED_MODELS.find((m) => m.id === modelId);
-    if (modelInfo) {
-      if (modelInfo.scale) setScale(modelInfo.scale);
-      const modelCat = modelInfo.cat === 'photo' ? 'photos' : (modelInfo.cat as 'anime' | 'video');
-      setCategory(modelCat);
-    }
   };
 
   return {
@@ -185,9 +204,8 @@ export function useStudioActions({
     handleSelectCategory,
     handleStartUpscale,
     handleCancelUpscale,
-    handleSelectDestinationFolder,
     handleShowInExplorerNative,
-    handleLoadHistoryItem,
-    handleSelectModel,
+    handleClearFile,
+    handleSelectHistoryItem,
   };
 }
