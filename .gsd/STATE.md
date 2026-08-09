@@ -1,18 +1,21 @@
 # GSD Project State
 
-> Updated by /map on 2026-08-09
+> Updated by /new-milestone on 2026-08-09
 
 ## Current Milestone
-- **Milestone Name**: Production Architecture & Quality System Upgrade
-- **Status**: Codebase Mapped & Architecture Defined
+- **Milestone Name**: `Refactor Modularization Quality Gate`
+- **Goal**: Execute the audit-backed modularization roadmap without changing product behavior, while driving the branch from the documented failing baseline to a clean quality gate.
+- **Phase**: Not started (Phase 1 planned)
+- **Status**: Milestone planned (11 Phases, 24 Tasks defined)
 
 ## Last Session Summary
-Codebase mapping complete via `/map` workflow.
-- **16 UI Components & 11 Backend Engine Modules** identified and documented
-- **10 Production Dependencies & 13 Dev/Quality Tools** mapped
-- **6 Monolithic UI Components & Rust Clippy Lints** flagged under Technical Debt
-- **4 Outdated Packages** analyzed for upgrade risk
+Created milestone `Refactor Modularization Quality Gate` based on `docs/REFACTORING_PLAN.md`.
+- **11 Phases & 24 Tasks** mapped with exact file targets, acceptance criteria, verification commands, and non-negotiable quality gate constraints.
+- **No refactoring initiated** in accordance with planning constraints.
 
-## Architecture Documents
+## Architecture & Planning Documents
+- [SPEC.md](file:///d:/Work/Extras/image%20upscaler/.gsd/SPEC.md)
+- [ROADMAP.md](file:///d:/Work/Extras/image%20upscaler/.gsd/ROADMAP.md)
 - [ARCHITECTURE.md](file:///d:/Work/Extras/image%20upscaler/.gsd/ARCHITECTURE.md)
 - [STACK.md](file:///d:/Work/Extras/image%20upscaler/.gsd/STACK.md)
+- [REFACTORING_PLAN.md](file:///d:/Work/Extras/image%20upscaler/docs/REFACTORING_PLAN.md)
