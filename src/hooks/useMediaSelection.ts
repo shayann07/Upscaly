@@ -79,6 +79,8 @@ export function useMediaSelection(
       const selected = await open({ directory: true, multiple: false });
       if (!selected || typeof selected !== 'string') return;
       playDropSound(isMuted);
+      setUpscaledPath('');
+      if (onResetJob) onResetJob();
       setBatchItems((prev) => [
         ...prev,
         {
@@ -92,7 +94,7 @@ export function useMediaSelection(
     } catch (err) {
       console.error('Failed to select folder:', err);
     }
-  }, [isMuted]);
+  }, [isMuted, onResetJob]);
 
   const handleOpenFile = useCallback(async () => {
     try {
@@ -109,6 +111,8 @@ export function useMediaSelection(
       const paths = Array.isArray(selected) ? selected : [selected];
       if (paths.length === 0) return;
       playDropSound(isMuted);
+      setUpscaledPath('');
+      if (onResetJob) onResetJob();
 
       const newItems: BatchItem[] = [];
       for (const path of paths) {
