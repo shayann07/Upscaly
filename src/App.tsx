@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -22,11 +21,13 @@ import { BatchQueueView } from './components/BatchQueueView';
 import { useSettings } from './hooks/useSettings';
 import { useModelCatalog } from './hooks/useModelCatalog';
 import { useMediaSelection } from './hooks/useMediaSelection';
+import { useJobEvents } from './hooks/useJobEvents';
+import { useUpscaleQueue } from './hooks/useUpscaleQueue';
 
 import { playCompleteSound, playErrorSound } from './lib/sound';
 import { getMediaSrc } from './lib/media';
 import { getModelMetadata } from './lib/models';
-import { SUPPORTED_MODELS, JobProgress, HistoryEntry } from './lib/types';
+import { SUPPORTED_MODELS, JobProgress, BatchItem, HistoryEntry } from './lib/types';
 import { addHistoryItem, getRecentHistory, HistoryItem } from './lib/history';
 
 export default function App() {
@@ -149,14 +150,44 @@ export default function App() {
     setCurrentFileDims,
     upscaledPath,
     setUpscaledPath,
-    batchItems,
-    setBatchItems,
     handleClearFile,
     handleOpenFile,
     handleOpenFolder,
-    handleRemoveBatchItem,
   } = useMediaSelection(isMuted, selectedModel, handleSelectCategory, handleNotify, handleResetJob);
   const isDragOver = false;
+
+  const onItemCompleted = useCallback(
+    (item: BatchItem, outputPath: string) => {
+      const meta = getModelMetadata(selectedModel);
+      const newHist = addHistoryItem({
+        fileName: item.fileName || fileName,
+        originalPath: item.filePath || filePath,
+        upscaledPath: outputPath,
+        modelName: meta.name,
+        scale,
+        isVideo: item.isVideo ?? isVideo,
+      });
+      setHistoryItems(newHist);
+      playCompleteSound(isMuted);
+    },
+    [selectedModel, fileName, filePath, scale, isVideo, isMuted]
+  );
+
+  const {
+    batchItems,
+    setBatchItems,
+    startBatch: handleStartBatchUpscale,
+    handleJobProgress: handleQueueJobProgress,
+    removeItem: handleRemoveBatchItem,
+  } = useUpscaleQueue({
+    selectedGpu,
+    selectedModel,
+    scale,
+    tileSize,
+    customOutputPath,
+    onNotify: handleNotify,
+    onItemCompleted,
+  });
 
   // Dynamic GPU VRAM calculation
   const currentGpuInfo = gpus.find((g) => g.id === selectedGpu) || gpus[0];
@@ -257,8 +288,10 @@ export default function App() {
   }, [activeJobId, filePath, batchItems]);
 
   // Job and download event listeners
-  useEffect(() => {
-    const unlistenJob = listen<JobProgress>('job-status-changed', (event) => {
+  const handleJobStatusChanged = useCallback(
+    (progress: JobProgress) => {
+      handleQueueJobProgress(progress);
+
       const {
         job_id,
         percentage,
@@ -268,9 +301,8 @@ export default function App() {
         eta_seconds,
         fps: jobFps,
         output_path: eventOutPath,
-      } = event.payload;
+      } = progress;
 
-      // Update single studio job
       const isCurrentStudioJob =
         (activeJobId && job_id === activeJobId) ||
         (activeJobIdRef.current && job_id === activeJobIdRef.current);
@@ -291,29 +323,10 @@ export default function App() {
 
         if (eta_seconds !== undefined && eta_seconds > 0) {
           setEtaSeconds(eta_seconds);
-        } else if (jobStartTimeRef.current && percentage > 0) {
-          const elapsedSec = (Date.now() - jobStartTimeRef.current) / 1000;
-          if (elapsedSec > 0.2) {
-            const pctPerSec = percentage / elapsedSec;
-            const remPct = Math.max(0, 100 - percentage);
-            const calcEta = Math.max(1, Math.ceil(remPct / Math.max(0.1, pctPerSec)));
-            setEtaSeconds(calcEta);
-          }
         }
 
         if (jobFps !== undefined && jobFps > 0) {
           setFps(jobFps);
-        }
-
-        if (jobStartTimeRef.current && percentage > 0) {
-          const elapsedSec = Math.max(0.1, (Date.now() - jobStartTimeRef.current) / 1000);
-          let totalMp = 12.0;
-          if (currentFileDims && currentFileDims.w && currentFileDims.h) {
-            totalMp = (currentFileDims.w * currentFileDims.h * scale) / 1_000_000;
-          }
-          const processedMp = totalMp * (percentage / 100);
-          const mps = Math.max(0.5, processedMp / elapsedSec);
-          setRateStr(`${mps.toFixed(1)} MP/s`);
         }
 
         if (status === 'running' || status === 'processing') {
@@ -340,54 +353,52 @@ export default function App() {
           setActiveJobId(null);
           refreshInstalledModels();
           playCompleteSound(isMuted);
-          addToast('success', 'Upscaling Complete', 'Enhanced output saved.');
+          handleNotify('success', 'Upscaling Complete', 'Enhanced output saved.');
         } else if (status === 'failed') {
           activeJobIdRef.current = null;
           setActiveJobId(null);
           setJobStatus('idle');
           playErrorSound(isMuted);
           const errStr = error || 'Processing failed during sidecar execution.';
-          addToast('error', 'Upscaling Failed', errStr);
+          handleNotify('error', 'Upscaling Failed', errStr);
         } else if (status === 'cancelled') {
           activeJobIdRef.current = null;
           setActiveJobId(null);
           setJobStatus('idle');
-          addToast('info', 'Cancelled', 'Upscaling task was cancelled.');
+          handleNotify('info', 'Cancelled', 'Upscaling task was cancelled.');
         }
       }
+    },
+    [
+      activeJobId,
+      upscaledPath,
+      selectedModel,
+      fileName,
+      filePath,
+      scale,
+      isVideo,
+      isMuted,
+      handleQueueJobProgress,
+      refreshInstalledModels,
+      handleNotify,
+    ]
+  );
 
-      // Update batch queue items cleanly by stable job_id
-      setBatchItems((prev) =>
-        prev.map((item) => {
-          if (item.id === job_id) {
-            const isDone = status === 'succeeded' || status === 'completed';
-            const isErr = status === 'failed';
-            const isCanc = status === 'cancelled';
-            return {
-              ...item,
-              progress: percentage,
-              status: isDone
-                ? 'done'
-                : isErr
-                  ? 'error'
-                  : isCanc
-                    ? 'cancelled'
-                    : status === 'running' || status === 'processing'
-                      ? 'processing'
-                      : 'queued',
-              outputPath: isDone ? pendingOutputPath.current || item.outputPath : item.outputPath,
-              error: isErr ? error : item.error,
-            };
-          }
-          return item;
-        })
-      );
-    });
+  const handleDownloadProgress = useCallback(
+    (payload: { model_id: string; percentage: number }) => {
+      if (payload.percentage >= 100) {
+        refreshInstalledModels();
+        handleNotify(
+          'success',
+          'Model Downloaded',
+          `Model ${payload.model_id} installed successfully.`
+        );
+      }
+    },
+    [refreshInstalledModels, handleNotify]
+  );
 
-    return () => {
-      unlistenJob.then((f) => f());
-    };
-  }, [activeJobId, filePath, fileName, upscaledPath, selectedModel, scale, isVideo, isMuted]);
+  useJobEvents(handleJobStatusChanged, handleDownloadProgress);
 
   // Synchronized Model Selection
   const handleSelectModel = (modelId: string) => {
@@ -495,111 +506,6 @@ export default function App() {
       playErrorSound(isMuted);
       addToast('error', 'Error Starting Upscale', String(err));
     }
-  };
-
-  // Batch Upscale Logic
-  const handleStartBatchUpscale = async () => {
-    if (gpus.length === 0) {
-      addToast(
-        'error',
-        'No Vulkan GPU Found',
-        'No Vulkan-compatible GPU detected. Please install updated graphics display drivers.'
-      );
-      return;
-    }
-
-    const readyItems = batchItems.filter(
-      (i) => i.status === 'ready' || i.status === 'error' || (i.status as string) === 'idle'
-    );
-
-    if (readyItems.length === 0) {
-      addToast('warning', 'Queue Complete', 'All items in batch have already completed.');
-      return;
-    }
-
-    addToast('info', 'Batch Started', `Processing ${readyItems.length} queued items...`);
-
-    for (const item of readyItems) {
-      if (!item.filePath || !item.fileName) continue;
-      try {
-        setBatchItems((prev) =>
-          prev.map((b) => (b.id === item.id ? { ...b, status: 'queued', progress: 0 } : b))
-        );
-
-        const isVid = Boolean(item.isVideo);
-        const ext = isVid ? '.mp4' : '.png';
-        const baseName = item.fileName.replace(/\.[^/.]+$/, '');
-        const outputFilename = `${baseName}_upscaled_${scale}x${ext}`;
-
-        let outPath = '';
-        if (customOutputPath) {
-          outPath = joinPath(customOutputPath, outputFilename);
-        } else {
-          const lastSlash = Math.max(
-            item.filePath.lastIndexOf('/'),
-            item.filePath.lastIndexOf('\\')
-          );
-          const parentDir = item.filePath.substring(0, lastSlash);
-          outPath = joinPath(parentDir, outputFilename);
-        }
-
-        pendingOutputPath.current = outPath;
-
-        setFilePath(item.filePath);
-        setFileName(item.fileName);
-        setIsVideo(Boolean(item.isVideo));
-        if (item.w && item.h) setCurrentFileDims({ w: item.w, h: item.h });
-
-        const jobId = await invoke<string>('run_upscale', {
-          request: {
-            job_id: item.id,
-            input_path: item.filePath,
-            output_path: outPath,
-            model_id: selectedModel,
-            gpu_id: selectedGpu,
-            scale,
-            tile_size: tileSize,
-            is_video: isVid,
-          },
-        });
-
-        setActiveJobId(jobId);
-        setJobStatus('processing');
-
-        setBatchItems((prev) =>
-          prev.map((b) => (b.id === item.id ? { ...b, id: jobId, status: 'processing' } : b))
-        );
-
-        await new Promise<void>((resolve) => {
-          const checkDone = setInterval(() => {
-            setBatchItems((currentItems) => {
-              const current = currentItems.find((b) => b.id === jobId);
-              if (
-                !current ||
-                current.status === 'done' ||
-                (current.status as string) === 'completed' ||
-                current.status === 'error' ||
-                current.status === 'cancelled' ||
-                current.status === 'failed'
-              ) {
-                clearInterval(checkDone);
-                resolve();
-              }
-              return currentItems;
-            });
-          }, 300);
-        });
-      } catch (err) {
-        console.error('Batch item failed:', err);
-        setBatchItems((prev) =>
-          prev.map((b) => (b.id === item.id ? { ...b, status: 'error' } : b))
-        );
-      }
-    }
-
-    setActiveJobId(null);
-    setJobStatus('completed');
-    addToast('success', 'Batch Complete', 'All batch jobs processed.');
   };
 
   const handleCancelUpscale = async (idToCancel?: string) => {

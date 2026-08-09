@@ -1,45 +1,35 @@
-# Phase 5 Execution Plan: Apply Only Output-Preserving GPU Optimizations
+# Phase 5 Plan: Replace Batch Polling with Event-Driven Queue State
 
-> **Milestone**: `v2.0-win-gpu-reliability`
-> **Phase**: Phase 5 — Apply only output-preserving GPU optimizations
-> **Objective**: Implement dynamic NCNN workload thread profiling (`load:proc:save`), clamp custom tile sizes, accurately document TTA (`-x`), and preserve pixel-identical inference output across image/video jobs.
+## Objective
+Eliminate interval polling in batch upscaling in favor of a reducer-driven queue state machine (`useUpscaleQueue`), extract job IPC event listening into `useJobEvents`, and treat backend event `output_path` as authoritative.
 
----
+## Context
+- `docs/REFACTORING_PLAN.md` (Finding A2)
+- `.gsd/ROADMAP.md` (Phase 5)
+- `src/App.tsx`
 
-## 1. Invariant Model, Scale, and TTA Policy
+## Tasks
 
-### Plan
-- Keep model selection, scale factor, and TTA (`-x`) flag strictly invariant across job execution.
-- Update UI labels and tooltips in `src/components/SettingsPanel.tsx`:
-  - Clarify that `-x` is Real-ESRGAN NCNN Vulkan's Test-Time Augmentation (TTA) flag, performing 8x multi-pass augmentation for enhanced quality.
-  - Do not introduce lossy downscaling, silent model swaps, or color conversions.
+### Task 5.1: Extract Tauri job event listener hook
+- **Files**: `src/hooks/useJobEvents.ts` (new), `src/hooks/__tests__/useJobEvents.test.ts` (new), `src/App.tsx`
+- **Action**:
+  - Implement `useJobEvents` encapsulating Tauri `listen<JobProgress>('job-status-changed', ...)` subscription and cleanup.
+  - Test listener setup and teardown behavior with Vitest.
+- **Verification**: `npm.cmd run check:ts`, `npm.cmd run test`.
+- **Done Criteria**: `useJobEvents` is fully unit-tested and handles event subscription/unsubscription without memory leaks.
 
----
+### Task 5.2: Replace batch polling with reducer-driven queue state
+- **Files**: `src/hooks/useUpscaleQueue.ts` (new), `src/hooks/__tests__/useUpscaleQueue.test.ts` (new), `src/App.tsx`
+- **Action**:
+  - Implement `useUpscaleQueue` state reducer managing `batchItems` and batch upscaling execution.
+  - Remove `setInterval` 300ms polling from `handleStartBatchUpscale` in `App.tsx`.
+  - Use `output_path` from backend `'job-status-changed'` payload as authoritative destination path.
+  - Test queue state reducer transitions, terminal event handling, and batch item state updates.
+- **Verification**: `npm.cmd run check:ts`, `npm.cmd run test`, `npm.cmd run lint:ts`, `npm.cmd run build`.
+- **Done Criteria**: All unit tests pass, `npm run build` succeeds, and batch upscaling uses zero `setInterval` loops.
 
-## 2. Dynamic Workload Thread Profiling & Tile Clamping
-
-### Plan
-- Implement `compute_workload_threads` helper in `src-tauri/src/job_queue.rs`:
-  - Small images (`<= 4 MP`): `-j 4:4:4`
-  - High-res images (`>= 12 MP`) & video jobs (`is_video == true` or `>= 8 MP` frames): `-j 2:2:2`
-  - Standard/Intermediate workloads: default `-j 1:2:2`
-- Tile size configuration:
-  - Default to `-t 0` (auto-tiling).
-  - Clamp user-selected custom non-zero tile sizes to valid multiples of 32 between 32 and 1024 (`((val / 32) * 32).clamp(32, 1024)`).
-
----
-
-## 3. Batch Image Directory Ingestion & Collision Safety
-
-### Plan
-- Support optional batch directory intake in React frontend (`src/App.tsx`).
-- Ensure output files created in batch mode use `reserve_output_path` to avoid filename collision.
-
----
-
-## Acceptance Gate Checklist (Phase 5)
-- [ ] `compute_workload_threads` applies `4:4:4` for <=4MP, `2:2:2` for >=12MP / video, `1:2:2` for others.
-- [ ] Default tile size is `0` (auto); custom non-zero values clamped to 32-1024 multiples of 32.
-- [ ] TTA (`-x`) is accurately labeled as Test-Time Augmentation in UI docs.
-- [ ] `cargo test` and `npm.cmd run test` pass 100%.
-- [ ] `npm.cmd run benchmark` shows pixel-hash parity with baseline manifest.
+## Success Criteria
+- [ ] `useJobEvents` and `useUpscaleQueue` custom hooks implemented and unit tested.
+- [ ] Zero `setInterval` polling in `src/App.tsx`.
+- [ ] Backend event `output_path` treated as authoritative source of truth.
+- [ ] `npm run check:ts`, `npm run test`, `npm run build`, and `npm run format:check:all` pass 100% cleanly.

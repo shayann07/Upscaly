@@ -1,3 +1,8 @@
+export function joinPath(dir: string, filename: string): string {
+  const cleanDir = dir.replace(/[/\\]+$/, '');
+  return `${cleanDir}\\${filename}`;
+}
+
 export function buildDefaultOutputPath(
   inputPath: string,
   scale: number = 4,
