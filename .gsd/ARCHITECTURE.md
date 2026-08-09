@@ -4,7 +4,7 @@
 
 ## Overview
 
-Upscaly is a production-grade desktop application for AI image and video upscaling powered by **Tauri v2 (Rust)**, **React 19**, **TypeScript**, **TailwindCSS**, and **NCNN Vulkan GPU Sidecars**.
+Upscaly is a desktop AI image and video upscaling application powered by **Tauri v2 (Rust)**, **React 19**, **TypeScript**, **TailwindCSS v4**, and **NCNN Vulkan GPU Sidecars**.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -19,60 +19,78 @@ Upscaly is a production-grade desktop application for AI image and video upscali
                    │ Child Process Execution         │ Native FFmpeg Subprocess
 ┌──────────────────▼─────────────────┐   ┌───────────▼───────────────────┐
 │  realesrgan-ncnn-vulkan Sidecar    │   │ FFmpeg / FFprobe Video Engine │
-│  (NCNN Vulkan AI Model Inference)  │   │ (Frame extract / Audio multiplex)│
+│  (NCNN Vulkan AI Model Inference)  │   │ (Frame extract / Audio copy)  │
 └────────────────────────────────────┘   └───────────────────────────────┘
 ```
 
 ## Core Components
 
-### Frontend Components (`src/components/`)
-- **`App.tsx` (`src/App.tsx`)**: Central root controller managing navigation tabs, active job status, GPU device selection, model catalog, and toast notifications.
-- **`Titlebar.tsx`**: Custom desktop window titlebar with native window control integration (`close`, `minimize`, `maximize`).
-- **`DropZone.tsx`**: Drag-and-drop media file and directory ingestion component.
-- **`ComparisonSlider.tsx`**: Dual-canvas visual comparison view with interactive split slider, pan/zoom controls, and image/video renderer.
-- **`BatchQueueView.tsx`**: Multi-file batch queue listing component with progress indicators and item management.
-- **`ModelCatalogModal.tsx`**: Dynamic AI model manager rendering remote and local models with `INSTALLED`, `DOWNLOAD`, `UPDATE`, and `REPAIR` action buttons.
-- **`AdvancedSettings.tsx` & `SettingsPanel.tsx`**: Hardware tuner, tile size selector, VRAM workload calculator, and destination path picker.
-- **`ProgressOverlay.tsx`**: Real-time upscaling progress view with ETA calculation, FPS counter, and job cancellation button.
-- **`CompletionCard.tsx`**: Post-processing summary card with Windows Explorer integration and native file launch buttons.
+### Frontend Architecture (`src/`)
+- **`App.tsx` ([`App.tsx`](file:///d:/Work/Extras/image%20upscaler/src/App.tsx))**: Central application controller managing active navigation tabs, batch queues, active upscale job state, GPU device selection, model catalog, and toast notifications.
+- **`Titlebar.tsx`**: Native-feeling desktop titlebar with drag region, GPU status badge, update indicator, and window controls (`minimize`, `maximize`, `close`).
+- **`DropZone.tsx`**: Drag-and-drop media file and folder ingestion zone.
+- **`ComparisonSlider.tsx`**: Interactive dual-canvas split view with slider, pan/zoom controls, visual quality comparison, and video preview.
+- **`BatchQueueView.tsx`**: Multi-file batch queue renderer displaying file items, upscale status, scale factors, model choices, and item removal controls.
+- **`ModelCatalogModal.tsx`**: AI model manager providing catalog discovery, ETag updates, download progress, and status actions (`INSTALLED`, `DOWNLOAD`, `UPDATE`, `REPAIR`).
+- **`AdvancedSettings.tsx` & `SettingsPanel.tsx`**: GPU tuner, tile size selector, VRAM calculator, format selector, and output folder picker.
+- **`ProgressOverlay.tsx`**: Real-time upscale monitoring modal displaying progress percentage, ETA calculation, FPS counter, and job cancellation button.
+- **`CompletionCard.tsx`**: Post-processing summary card with Windows Explorer integration and native file launch actions.
+- **`CustomSelect.tsx`**: Custom styled dropdown selector for models and GPU devices.
+- **`FilePreview.tsx`**: Preview card for selected input image or video file.
+- **`RecentHistoryDrawer.tsx`**: Slide-out panel for viewing recent upscale job history.
+- **`ToastContainer.tsx`**: Floating notification system for app feedback.
+- **`AboutModal.tsx`**: Application version and credits modal.
+- **`UpdateBadge.tsx`**: Header badge showing model/app update notifications.
+- **`UpscaleButton.tsx`**: Primary call-to-action button for initiating upscale execution.
 
 ### Backend Engine Modules (`src-tauri/src/`)
-- **`engine::param_parser` ([`param_parser.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/engine/param_parser.rs))**: NCNN Directed Acyclic Graph (DAG) layer parser that computes mathematical upscale factors ($2\times$, $3\times$, $4\times$, $8\times$) directly from network operations (`Interp`, `Deconv`, `PixelShuffle`) and validates graph file integrity.
-- **`engine::registry_provider` ([`registry_provider.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/engine/registry_provider.rs))**: Rate-limit-free CDN feed provider using HTTP `If-None-Match` (ETag) headers.
-- **`engine::model_store` ([`model_store.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/engine/model_store.rs))**: Catalog resolver, atomic `.tmp` downloader, self-healing status validator (`Installed`, `NotInstalled`, `UpdateAvailable`, `Corrupt`), and event bus trigger.
-- **`job_queue` ([`job_queue.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/job_queue.rs))**: Asynchronous FIFO job queue manager with tile size calculation, VRAM workload budgeting, output path collision reservation, and active job cancellation.
-- **`video_pipeline` ([`video_pipeline.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/video_pipeline.rs))**: FFmpeg-powered frame extraction, NCNN frame sequence processing, audio stream copying/AAC transcoding fallback, and VFR-to-CFR validation.
-- **`sidecar_manager` ([`sidecar_manager.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/sidecar_manager.rs))**: Sidecar binary path resolver and Windows OS `JobObjects` wrapper guaranteeing 100% VRAM release on process termination.
-- **`model_manager` ([`model_manager.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/model_manager.rs))**: Model storage directory resolver, disk space validator, SHA-256 calculator, and Ed25519 cryptographic signature verifier.
+- **`lib.rs` ([`lib.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/lib.rs))**: Main Tauri application entry point and IPC command registry for all Tauri invocations.
+- **`engine::param_parser` ([`param_parser.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/engine/param_parser.rs))**: NCNN Directed Acyclic Graph (DAG) parser calculating upscale scale factors ($2\times$, $3\times$, $4\times$, $8\times$) from model parameters (`Interp`, `Deconv`, `PixelShuffle`).
+- **`engine::registry_provider` ([`registry_provider.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/engine/registry_provider.rs))**: CDN feed provider using HTTP `If-None-Match` (ETag) header caching for rate-limit-free manifest fetching.
+- **`engine::model_store` ([`model_store.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/engine/model_store.rs))**: Local catalog resolver, atomic `.tmp` downloader, self-healing status validator (`Installed`, `NotInstalled`, `UpdateAvailable`, `Corrupt`).
+- **`job_queue` ([`job_queue.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/job_queue.rs))**: Asynchronous FIFO job queue manager with tile size calculation, VRAM workload budgeting, output path collision reservation, and job cancellation.
+- **`video_pipeline` ([`video_pipeline.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/video_pipeline.rs))**: FFmpeg-powered frame extraction, NCNN sequence upscaling, audio stream copying/AAC transcoding, and VFR-to-CFR validation.
+- **`sidecar_manager` ([`sidecar_manager.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/sidecar_manager.rs))**: Binary path resolver and Windows OS `JobObjects` wrapper ensuring 100% VRAM release on process exit.
+- **`model_manager` ([`model_manager.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/model_manager.rs))**: Model folder path resolver, storage validator, SHA-256 calculator, and Ed25519 signature verifier.
+- **`process_runner` ([`process_runner.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/process_runner.rs))**: Low-level process execution wrapper with stdout/stderr line parsing.
+- **`settings` ([`settings.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/settings.rs))**: Persistent application settings storage and retrieval.
+- **`error` ([`error.rs`](file:///d:/Work/Extras/image%20upscaler/src-tauri/src/error.rs))**: Custom Rust error types for engine operations.
 
 ## Data Flow
 
-1. **Media Ingestion**: User drops files into `DropZone.tsx` $\rightarrow$ metadata & dimensions extracted $\rightarrow$ stored in `batchItems` state in `App.tsx`.
-2. **Upscale Request**: User clicks Upscale $\rightarrow$ `invoke("run_upscale", request)` called via Tauri IPC $\rightarrow$ `lib.rs` receives request $\rightarrow$ enqueued in `job_queue.rs`.
-3. **Execution**: Worker thread picks job $\rightarrow$ determines if image or video $\rightarrow$ executes `realesrgan-ncnn-vulkan` sidecar via `sidecar_manager.rs` or `video_pipeline.rs`.
-4. **Progress Feedback**: Process progress emitted as `job-status-changed` events $\rightarrow$ caught by React listener in `App.tsx` $\rightarrow$ updates `ProgressOverlay.tsx`.
-5. **Completion**: Process finishes $\rightarrow$ VRAM released via `JobObjects` $\rightarrow$ output saved to destination $\rightarrow$ `CompletionCard.tsx` presented.
+1. **Media Ingestion**: Dragged files into `DropZone.tsx` $\rightarrow$ metadata & dimensions extracted $\rightarrow$ saved to `batchItems` in `App.tsx`.
+2. **Upscale Invocations**: User clicks Upscale $\rightarrow$ IPC call `invoke("run_upscale", request)` $\rightarrow$ received in `lib.rs` $\rightarrow$ enqueued in `job_queue.rs`.
+3. **Upscale Execution**: Worker thread handles job $\rightarrow$ image or video route $\rightarrow$ launches `realesrgan-ncnn-vulkan` sidecar via `sidecar_manager.rs` or `video_pipeline.rs`.
+4. **Progress Feedback**: Step progress emitted as `job-status-changed` events $\rightarrow$ handled in `App.tsx` $\rightarrow$ rendered in `ProgressOverlay.tsx`.
+5. **Completion**: Process finishes $\rightarrow$ VRAM cleared via Windows `JobObjects` $\rightarrow$ destination file saved $\rightarrow$ `CompletionCard.tsx` displayed.
 
 ## Integration Points
 
-| Service / Tool | Type | Purpose |
-|----------------|------|---------|
-| `realesrgan-ncnn-vulkan.exe` | Native Executable | NCNN Vulkan AI model upscaling engine |
-| `ffmpeg.exe` / `ffprobe.exe` | Native Executable | Video frame extraction, audio multiplexing, and FPS probing |
-| GitHub Releases CDN API | REST API / CDN | Remote AI model manifest updates and binary distribution |
+| Service / Binary | Type | Purpose |
+|------------------|------|---------|
+| `realesrgan-ncnn-vulkan.exe` | Native Executable | NCNN Vulkan AI super-resolution sidecar engine |
+| `ffmpeg.exe` / `ffprobe.exe` | Native Executable | Video frame extraction, audio remuxing, and metadata probing |
+| GitHub Releases Manifest | REST API / CDN | Remote AI model manifest updates and binary distribution |
 
-## Technical Debt
+## Technical Debt & Quality Warnings
 
-- [ ] `src/App.tsx` (953 lines) is a monolithic component managing 30+ separate state hooks and 10+ uncoordinated `useEffect` hooks.
-- [ ] `src/components/Titlebar.tsx` (216 lines) exceeds the 150-line single-function limit (complexity: 51).
-- [ ] `src/components/BatchQueueView.tsx` (264 lines) exceeds the 150-line single-function limit (complexity: 42).
-- [ ] `src/components/ComparisonSlider.tsx` (294 lines) exceeds the 150-line single-function limit (complexity: 24).
-- [ ] `src/components/AdvancedSettings.tsx` (182 lines) exceeds the 150-line single-function limit (complexity: 21).
-- [ ] `src/components/SettingsPanel.tsx` (159 lines) exceeds the 150-line single-function limit (complexity: 41).
-- [ ] `src-tauri/src/lib.rs` registers 23 raw IPC commands in a single file rather than delegating to command handler modules (`commands/gpu.rs`, `commands/models.rs`, `commands/upscale.rs`).
+- [ ] **Frontend Component Complexity**:
+  - `src/App.tsx` (953 lines, complexity 37) exceeds ESLint max-lines (150) and complexity limits.
+  - `src/components/Titlebar.tsx` (216 lines, complexity 51) exceeds ESLint limits.
+  - `src/components/BatchQueueView.tsx` (264 lines, complexity 42) exceeds ESLint limits.
+  - `src/components/ComparisonSlider.tsx` (294 lines, complexity 24) exceeds ESLint limits.
+  - `src/components/AdvancedSettings.tsx` (182 lines, complexity 21) exceeds ESLint limits.
+  - `src/components/SettingsPanel.tsx` (159 lines, complexity 41) exceeds ESLint limits.
+- [ ] **Backend Clippy Warnings**:
+  - `src-tauri/src/lib.rs` registers 23 raw IPC functions with `clippy::too_many_arguments`, `clippy::needless_borrows_for_generic_args`, `clippy::uninlined_format_args`, and `clippy::map_unwrap_or` warnings under `-D warnings`.
+- [ ] **Outdated Dependencies**:
+  - `@vitejs/plugin-react` (4.7.0 vs 6.0.5)
+  - `framer-motion` (12.43.0 vs 13.0.0)
+  - `typescript` (5.8.3 vs 7.0.2)
+  - `vite` (7.3.6 vs 8.2.1)
 
 ## Conventions
 
 - **Naming**: PascalCase for React components (`ModelCatalogModal.tsx`), camelCase for TS variables (`installedModels`), snake_case for Rust files (`model_store.rs`) and functions (`resolve_catalog`).
-- **Structure**: React components in `src/components/`, utility functions in `src/lib/`, Rust engine modules in `src-tauri/src/engine/`.
-- **Testing**: `vitest` for frontend component testing (`src/components/__tests__/`), `cargo test` for backend Rust unit testing.
+- **Structure**: React components in `src/components/`, utility functions in `src/lib/`, Rust backend in `src-tauri/src/`.
+- **Testing**: `vitest` for frontend component unit tests (`src/components/__tests__/`), `cargo test` for Rust backend tests.

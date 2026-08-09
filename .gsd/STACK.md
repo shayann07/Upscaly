@@ -10,9 +10,8 @@
 | **Rust** | 1.80+ (2021 Edition) | Native backend runtime & OS systems integration |
 | **Tauri** | v2.2.0 | Desktop windowing framework & cross-process IPC |
 
-## Dependencies
+## Production Dependencies (`package.json`)
 
-### Production (`package.json`)
 | Package | Version | Purpose |
 |---------|---------|---------|
 | `react` | `^19.1.0` | UI component library |
@@ -20,38 +19,44 @@
 | `@tauri-apps/api` | `^2.0.0` | Tauri IPC interop client |
 | `@tauri-apps/plugin-dialog` | `^2.7.2` | Native OS file & directory picker dialogs |
 | `@tauri-apps/plugin-opener` | `^2.0.0` | Native OS file explorer & default app launcher |
-| `@phosphor-icons/react` | `^2.1.10` | Apple-grade UI iconography |
+| `@phosphor-icons/react` | `^2.1.10` | High-quality UI iconography |
 | `framer-motion` | `^12.43.0` | Smooth UI animations and micro-interactions |
 | `tailwindcss` | `^4.3.3` | Utility-first styling system |
 | `@tailwindcss/vite` | `^4.3.3` | Vite integration for TailwindCSS v4 |
 | `atropos` | `^2.0.2` | 3D parallax hover card effects |
 
-### Backend Dependencies (`Cargo.toml`)
+## Backend Dependencies (`Cargo.toml`)
+
 | Package | Version | Purpose |
 |---------|---------|---------|
 | `tauri` | `2.0` | Core desktop framework and IPC event bus |
-| `serde` / `serde_json` | `1.0` | High-performance JSON serialization |
-| `reqwest` | `0.12` | Async HTTP client for CDN Manifest fetching |
-| `tokio` | `1.0` | Async runtime for multi-threaded background workers |
+| `serde` / `serde_json` | `1.0` | JSON serialization & deserialization |
+| `reqwest` | `0.12` | Async HTTP client for CDN manifest downloads |
+| `tokio` | `1.0` | Async runtime for background processing |
 | `futures-util` | `0.3` | Stream utilities for atomic downloads |
-| `sha2` | `0.10` | File checksum validation |
-| `ed25519-dalek` | `2.0` | Cryptographic signature verification |
-| `thiserror` | `1.0` | Strongly typed Rust error management |
-| `windows-sys` | `0.52` | Windows OS Win32 JobObjects & Process handle API |
-| `image` | `0.25` | Image dimensions & buffer processing |
+| `sha2` | `0.10` | Checksum hashing & integrity validation |
+| `ed25519-dalek` | `2.0` | Ed25519 signature verification |
+| `thiserror` | `1.0` | Strongly typed Rust error handling |
+| `tracing` / `tracing-subscriber` | `0.1` / `0.3` | Structured log telemetry |
+| `windows-sys` | `0.52` | Win32 JobObjects & OS process handle management |
+| `image` | `0.25` | Image buffer processing & dimension calculation |
 
-### Development & Quality Gate (`package.json` & `Cargo.toml`)
+## Development & Quality Gate Dependencies (`package.json` & `Cargo.toml`)
+
 | Package | Version | Purpose |
 |---------|---------|---------|
 | `typescript` | `~5.8.3` | Static type checker |
 | `vite` | `^7.0.4` | Development server and bundle builder |
-| `vitest` | `^4.1.10` | React component unit test framework |
-| `eslint` | `^10.8.1` | Static code analysis & smell detector |
-| `@typescript-eslint/parser` | `^8.24.0` | AST parser for TypeScript |
-| `@typescript-eslint/eslint-plugin` | `^8.24.0` | Strict TypeScript linting rules |
-| `prettier` | `^3.5.0` | Code formatting engine |
-| `eslint-config-prettier` | `^10.0.1` | Conflict resolver between ESLint & Prettier |
-| `cargo clippy` | Rust Built-in | Rust static code analysis and linting engine |
+| `vitest` | `^4.1.10` | Frontend component unit test framework |
+| `@testing-library/react` | `^16.3.2` | React component DOM testing utilities |
+| `@testing-library/jest-dom` | `^7.0.0` | Custom DOM matchers for Vitest |
+| `jsdom` | `^30.0.1` | Headless browser DOM environment for tests |
+| `eslint` | `^10.8.1` | Static code analysis engine |
+| `@typescript-eslint/parser` | `^8.66.0` | AST parser for TypeScript |
+| `@typescript-eslint/eslint-plugin` | `^8.66.0` | Strict TypeScript linting rules |
+| `prettier` | `^3.9.6` | Code formatting engine |
+| `eslint-config-prettier` | `^10.1.8` | Conflict resolver between ESLint & Prettier |
+| `cargo clippy` | Rust Built-in | Static analysis and linting engine for Rust |
 | `cargo fmt` | Rust Built-in | Idiomatic Rust code formatter |
 
 ## Infrastructure & Binaries
@@ -59,8 +64,8 @@
 | Sidecar / Binary | Provider | Purpose |
 |------------------|----------|---------|
 | `realesrgan-ncnn-vulkan.exe` | xinntao/Real-ESRGAN | Vulkan GPU AI Super-Resolution Inference Engine |
-| `ffmpeg.exe` | FFmpeg Project | Video frame extraction and audio remuxing |
-| `ffprobe.exe` | FFmpeg Project | Video stream frame rate & VFR/CFR analysis |
+| `ffmpeg.exe` | FFmpeg Project | Video frame extraction, stream copying, and audio remuxing |
+| `ffprobe.exe` | FFmpeg Project | Video stream frame rate & VFR/CFR probing |
 
 ## Configuration Files
 
@@ -72,3 +77,12 @@
 | `eslint.config.js` | TypeScript Flat Config rules | Project Root |
 | `.prettierrc` | Formatting rules | Project Root |
 | `tauri.conf.json` | Tauri app window & bundle config | `src-tauri/tauri.conf.json` |
+
+## Outdated Packages
+
+| Package | Current | Latest | Risk Level |
+|---------|---------|--------|------------|
+| `@vitejs/plugin-react` | `4.7.0` | `6.0.5` | Low (Major version bump requires testing Vite compatibility) |
+| `framer-motion` | `12.43.0` | `13.0.0` | Low (Major animation library version bump) |
+| `typescript` | `5.8.3` | `7.0.2` | Medium (Major compiler version update) |
+| `vite` | `7.3.6` | `8.2.1` | Medium (Major bundler version update) |
