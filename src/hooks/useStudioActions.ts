@@ -83,13 +83,19 @@ export function useStudioActions({
       const targetCat = cat === 'photos' ? 'photo' : cat;
       const filtered = supportedModels.filter((m) => m.cat === targetCat);
       if (filtered.length > 0) {
+        const scaleMatched = filtered.find((m) => m.scale === scale);
         const installedFiltered = filtered.filter((m) => installedModels.includes(m.id));
-        const chosen = installedFiltered.length > 0 ? installedFiltered[0] : filtered[0];
+        const chosen =
+          (scaleMatched && (installedModels.length === 0 || installedModels.includes(scaleMatched.id))
+            ? scaleMatched
+            : null) ||
+          scaleMatched ||
+          (installedFiltered.length > 0 ? installedFiltered[0] : filtered[0]);
         setSelectedModel(chosen.id);
         if (chosen.scale) setScale(chosen.scale);
       }
     },
-    [supportedModels, installedModels, setCategory, setSelectedModel, setScale]
+    [supportedModels, installedModels, scale, setCategory, setSelectedModel, setScale]
   );
 
   const handleSelectModel = useCallback(
@@ -110,10 +116,22 @@ export function useStudioActions({
       setScale(newScale);
       const currentModelInfo = supportedModels.find((m) => m.id === selectedModel);
       if (currentModelInfo && currentModelInfo.scale !== newScale) {
+        const currentCat = currentModelInfo.cat;
         const matchingModel =
           supportedModels.find(
-            (m) => m.scale === newScale && (installedModels.length === 0 || installedModels.includes(m.id))
-          ) || supportedModels.find((m) => m.scale === newScale);
+            (m) =>
+              m.cat === currentCat &&
+              m.scale === newScale &&
+              (installedModels.length === 0 || installedModels.includes(m.id))
+          ) ||
+          supportedModels.find((m) => m.cat === currentCat && m.scale === newScale) ||
+          supportedModels.find(
+            (m) =>
+              m.scale === newScale &&
+              (installedModels.length === 0 || installedModels.includes(m.id))
+          ) ||
+          supportedModels.find((m) => m.scale === newScale);
+
         if (matchingModel) {
           setSelectedModel(matchingModel.id);
         }
