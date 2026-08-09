@@ -107,7 +107,7 @@
 ---
 
 ### Phase 5: Replace Batch Polling with Event-Driven Queue State
-**Status**: ⬜ Not Started  
+**Status**: ✅ Complete  
 **Objective**: Eliminate interval polling in batch upscaling in favor of a reducer-driven queue state machine, treating backend `output_path` events as authoritative.  
 
 #### Tasks
