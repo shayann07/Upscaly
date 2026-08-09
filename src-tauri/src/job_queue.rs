@@ -1,13 +1,15 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use tauri::{AppHandle, Emitter};
 
+use crate::job_state::JobState;
 use crate::model_manager::get_models_dir;
+use crate::output_paths::{release_output_path, reserve_output_path};
 use crate::process_runner::{ProcessHandle, ProcessRunner, StdProcessRunner};
 use crate::sidecar_manager::resolve_sidecar_path;
 use crate::video_pipeline::run_video_job;
@@ -41,325 +43,313 @@ pub struct JobControl {
     pub process_handle: Arc<Mutex<Option<Box<dyn ProcessHandle>>>>,
 }
 
-static JOB_QUEUE: OnceLock<Mutex<VecDeque<Job>>> = OnceLock::new();
-static ACTIVE_REGISTRY: OnceLock<Mutex<HashMap<String, JobControl>>> = OnceLock::new();
-static RESERVED_PATHS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-static IS_PROCESSING: OnceLock<Mutex<bool>> = OnceLock::new();
-
-fn get_queue() -> &'static Mutex<VecDeque<Job>> {
-    JOB_QUEUE.get_or_init(|| Mutex::new(VecDeque::new()))
+pub struct JobQueueService {
+    queue: Mutex<VecDeque<Job>>,
+    registry: Mutex<HashMap<String, JobControl>>,
+    is_processing: Mutex<bool>,
 }
 
-fn get_registry() -> &'static Mutex<HashMap<String, JobControl>> {
-    ACTIVE_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn get_reserved_paths() -> &'static Mutex<HashSet<String>> {
-    RESERVED_PATHS.get_or_init(|| Mutex::new(HashSet::new()))
-}
-
-fn get_is_processing() -> &'static Mutex<bool> {
-    IS_PROCESSING.get_or_init(|| Mutex::new(false))
-}
-
-/// Reserves a unique output path prior to job enqueueing, avoiding filename collisions.
-pub fn reserve_output_path(raw_path: &str, scale: u32) -> String {
-    let mut reserved = get_reserved_paths().lock().unwrap();
-    let original = PathBuf::from(raw_path);
-    let parent = original.parent().unwrap_or_else(|| Path::new("."));
-    let stem = original
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("output");
-    let ext = original
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("png");
-
-    let mut candidate = original.to_string_lossy().to_string();
-    let mut counter = 1;
-
-    let target_scale = if scale == 0 { 4 } else { scale };
-
-    while Path::new(&candidate).exists() || reserved.contains(&candidate) {
-        let new_name = format!("{}_{}x ({}).{}", stem, target_scale, counter, ext);
-        candidate = parent.join(new_name).to_string_lossy().to_string();
-        counter += 1;
+impl JobQueueService {
+    pub fn global() -> &'static Self {
+        static INSTANCE: OnceLock<JobQueueService> = OnceLock::new();
+        INSTANCE.get_or_init(|| JobQueueService {
+            queue: Mutex::new(VecDeque::new()),
+            registry: Mutex::new(HashMap::new()),
+            is_processing: Mutex::new(false),
+        })
     }
 
-    reserved.insert(candidate.clone());
-    candidate
-}
-
-pub fn release_output_path(path: &str) {
-    let mut reserved = get_reserved_paths().lock().unwrap();
-    reserved.remove(path);
-}
-
-pub fn add_job_to_queue(app: AppHandle, mut job: Job) {
-    // Reserve unique output path
-    job.output_path = reserve_output_path(&job.output_path, job.scale as u32);
-
-    {
-        let mut q = get_queue().lock().unwrap();
-        q.push_back(job.clone());
+    fn lock_queue(&self) -> std::sync::MutexGuard<'_, VecDeque<Job>> {
+        self.queue
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    let _ = app.emit(
-        "job-status-changed",
-        JobProgress {
-            job_id: job.id.clone(),
-            percentage: 0.0,
-            status: "queued".to_string(),
-            error: None,
-            phase: Some("Queued in GPU worker pool".to_string()),
-            eta_seconds: None,
-            fps: None,
-            output_path: Some(job.output_path.clone()),
-        },
-    );
-
-    process_next_job(app);
-}
-
-fn process_next_job(app: AppHandle) {
-    let mut processing_guard = get_is_processing().lock().unwrap();
-    if *processing_guard {
-        return;
+    fn lock_registry(&self) -> std::sync::MutexGuard<'_, HashMap<String, JobControl>> {
+        self.registry
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
-    *processing_guard = true;
-    drop(processing_guard);
 
-    thread::spawn(move || {
-        loop {
-            let next_job = {
-                let mut q = get_queue().lock().unwrap();
-                q.pop_front()
-            };
+    fn lock_processing(&self) -> std::sync::MutexGuard<'_, bool> {
+        self.is_processing
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
-            let job = match next_job {
-                Some(j) => j,
-                None => {
-                    let mut lock = get_is_processing().lock().unwrap();
-                    *lock = false;
-                    break;
-                }
-            };
+    pub fn enqueue(&self, app: AppHandle, mut job: Job) {
+        job.output_path = reserve_output_path(&job.output_path, job.scale as u32);
 
-            // Setup JobControl in registry immediately before processing
-            let cancel_requested = Arc::new(AtomicBool::new(false));
-            let process_handle = Arc::new(Mutex::new(None));
+        {
+            let mut q = self.lock_queue();
+            q.push_back(job.clone());
+        }
 
-            {
-                let mut reg = get_registry().lock().unwrap();
-                reg.insert(
-                    job.id.clone(),
-                    JobControl {
-                        cancel_requested: Arc::clone(&cancel_requested),
-                        process_handle: Arc::clone(&process_handle),
-                    },
-                );
+        self.emit_progress(
+            &app,
+            &job.id,
+            0.0,
+            JobState::Queued,
+            Some("Queued in GPU worker pool"),
+            None,
+            None,
+            Some(&job.output_path),
+        );
+        self.process_next(app);
+    }
+
+    pub fn cancel(&self, app: &AppHandle, job_id: &str) -> Result<(), String> {
+        let mut was_queued = false;
+        let mut output_path = String::new();
+        {
+            let mut q = self.lock_queue();
+            if let Some(pos) = q.iter().position(|j| j.id == job_id) {
+                output_path = q[pos].output_path.clone();
+                q.remove(pos);
+                was_queued = true;
             }
+        }
 
-            // Check if job was cancelled while queued
-            if cancel_requested.load(Ordering::SeqCst) {
-                cleanup_job(&job.id, &job.output_path);
-                let _ = app.emit(
-                    "job-status-changed",
-                    JobProgress {
-                        job_id: job.id.clone(),
-                        percentage: 0.0,
-                        status: "cancelled".to_string(),
-                        error: None,
-                        phase: Some("Cancelled while queued".to_string()),
-                        eta_seconds: None,
-                        fps: None,
-                        output_path: Some(job.output_path.clone()),
-                    },
-                );
-                continue;
-            }
-
-            let _ = app.emit(
-                "job-status-changed",
-                JobProgress {
-                    job_id: job.id.clone(),
-                    percentage: 0.0,
-                    status: "running".to_string(),
-                    error: None,
-                    phase: Some("Initializing GPU Pipeline...".to_string()),
-                    eta_seconds: None,
-                    fps: None,
-                    output_path: Some(job.output_path.clone()),
-                },
+        if was_queued {
+            release_output_path(&output_path);
+            self.emit_progress(
+                app,
+                job_id,
+                0.0,
+                JobState::Cancelled,
+                Some("Cancelled while queued"),
+                None,
+                None,
+                Some(&output_path),
             );
+            return Ok(());
+        }
 
-            let res = if job.is_video {
-                run_video_job(
-                    &app,
-                    &job,
-                    Arc::clone(&cancel_requested),
-                    Arc::clone(&process_handle),
-                )
-            } else {
-                run_single_image_job(
-                    &app,
-                    &job,
-                    Arc::clone(&cancel_requested),
-                    Arc::clone(&process_handle),
-                )
-            };
-
-            let is_cancelled = cancel_requested.load(Ordering::SeqCst)
-                || res.as_ref().err().map_or(false, |e| e == "cancelled");
-            cleanup_job(&job.id, &job.output_path);
-
-            if is_cancelled {
-                let out_path = Path::new(&job.output_path);
-                if out_path.exists() {
-                    let _ = fs::remove_file(out_path);
+        let reg = self.lock_registry();
+        if let Some(control) = reg.get(job_id) {
+            control.cancel_requested.store(true, Ordering::SeqCst);
+            if let Ok(mut handle_guard) = control.process_handle.lock() {
+                if let Some(ref mut handle) = *handle_guard {
+                    let _ = handle.kill();
                 }
-                let _ = app.emit(
-                    "job-status-changed",
-                    JobProgress {
-                        job_id: job.id.clone(),
-                        percentage: 0.0,
-                        status: "cancelled".to_string(),
-                        error: None,
-                        phase: Some("Cancelled by user".to_string()),
-                        eta_seconds: None,
-                        fps: None,
-                        output_path: Some(job.output_path.clone()),
-                    },
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn kill_all(&self) {
+        let mut reg = self.lock_registry();
+        for (_, control) in reg.drain() {
+            control.cancel_requested.store(true, Ordering::SeqCst);
+            if let Ok(mut handle_guard) = control.process_handle.lock() {
+                if let Some(ref mut handle) = *handle_guard {
+                    let _ = handle.kill();
+                }
+            }
+        }
+    }
+
+    fn cleanup_job(&self, job_id: &str, output_path: &str) {
+        let mut reg = self.lock_registry();
+        reg.remove(job_id);
+        release_output_path(output_path);
+    }
+
+    fn process_next(&self, app: AppHandle) {
+        let mut processing_guard = self.lock_processing();
+        if *processing_guard {
+            return;
+        }
+        *processing_guard = true;
+        drop(processing_guard);
+
+        thread::spawn(move || {
+            let service = JobQueueService::global();
+            loop {
+                let next_job = {
+                    let mut q = service.lock_queue();
+                    q.pop_front()
+                };
+
+                let job = match next_job {
+                    Some(j) => j,
+                    None => {
+                        let mut lock = service.lock_processing();
+                        *lock = false;
+                        break;
+                    }
+                };
+
+                let cancel_requested = Arc::new(AtomicBool::new(false));
+                let process_handle = Arc::new(Mutex::new(None));
+
+                {
+                    let mut reg = service.lock_registry();
+                    reg.insert(
+                        job.id.clone(),
+                        JobControl {
+                            cancel_requested: Arc::clone(&cancel_requested),
+                            process_handle: Arc::clone(&process_handle),
+                        },
+                    );
+                }
+
+                if cancel_requested.load(Ordering::SeqCst) {
+                    service.cleanup_job(&job.id, &job.output_path);
+                    service.emit_progress(
+                        &app,
+                        &job.id,
+                        0.0,
+                        JobState::Cancelled,
+                        Some("Cancelled while queued"),
+                        None,
+                        None,
+                        Some(&job.output_path),
+                    );
+                    continue;
+                }
+
+                service.emit_progress(
+                    &app,
+                    &job.id,
+                    0.0,
+                    JobState::Running,
+                    Some("Initializing GPU Pipeline..."),
+                    None,
+                    None,
+                    Some(&job.output_path),
                 );
-            } else {
-                match res {
-                    Ok(_) => {
-                        // Verify non-empty output file
-                        let out_path = Path::new(&job.output_path);
-                        if out_path.exists()
-                            && fs::metadata(out_path).map(|m| m.len() > 0).unwrap_or(false)
-                        {
-                            let _ = app.emit(
-                                "job-status-changed",
-                                JobProgress {
-                                    job_id: job.id.clone(),
-                                    percentage: 100.0,
-                                    status: "succeeded".to_string(),
-                                    error: None,
-                                    phase: Some("Complete".to_string()),
-                                    eta_seconds: Some(0),
-                                    fps: None,
-                                    output_path: Some(job.output_path.clone()),
-                                },
-                            );
-                        } else {
+
+                let res = if job.is_video {
+                    run_video_job(
+                        &app,
+                        &job,
+                        Arc::clone(&cancel_requested),
+                        Arc::clone(&process_handle),
+                    )
+                } else {
+                    run_single_image_job(
+                        &app,
+                        &job,
+                        Arc::clone(&cancel_requested),
+                        Arc::clone(&process_handle),
+                    )
+                };
+
+                let is_cancelled = cancel_requested.load(Ordering::SeqCst)
+                    || res.as_ref().err().map_or(false, |e| e == "cancelled");
+                service.cleanup_job(&job.id, &job.output_path);
+
+                if is_cancelled {
+                    let out_path = Path::new(&job.output_path);
+                    if out_path.exists() {
+                        let _ = fs::remove_file(out_path);
+                    }
+                    service.emit_progress(
+                        &app,
+                        &job.id,
+                        0.0,
+                        JobState::Cancelled,
+                        Some("Cancelled by user"),
+                        None,
+                        None,
+                        Some(&job.output_path),
+                    );
+                } else {
+                    match res {
+                        Ok(_) => {
+                            let out_path = Path::new(&job.output_path);
+                            if out_path.exists()
+                                && fs::metadata(out_path).map(|m| m.len() > 0).unwrap_or(false)
+                            {
+                                service.emit_progress(
+                                    &app,
+                                    &job.id,
+                                    100.0,
+                                    JobState::Succeeded,
+                                    Some("Complete"),
+                                    Some(0),
+                                    None,
+                                    Some(&job.output_path),
+                                );
+                            } else {
+                                if out_path.exists() {
+                                    let _ = fs::remove_file(out_path);
+                                }
+                                service.emit_progress(
+                                    &app,
+                                    &job.id,
+                                    0.0,
+                                    JobState::Failed(
+                                        "Output file missing or empty after upscale".to_string(),
+                                    ),
+                                    Some("Failed"),
+                                    None,
+                                    None,
+                                    Some(&job.output_path),
+                                );
+                            }
+                        }
+                        Err(err) => {
+                            let out_path = Path::new(&job.output_path);
                             if out_path.exists() {
                                 let _ = fs::remove_file(out_path);
                             }
-                            let _ = app.emit(
-                                "job-status-changed",
-                                JobProgress {
-                                    job_id: job.id.clone(),
-                                    percentage: 0.0,
-                                    status: "failed".to_string(),
-                                    error: Some(
-                                        "Output file missing or empty after upscale".to_string(),
-                                    ),
-                                    phase: Some("Failed".to_string()),
-                                    eta_seconds: None,
-                                    fps: None,
-                                    output_path: Some(job.output_path.clone()),
-                                },
+                            service.emit_progress(
+                                &app,
+                                &job.id,
+                                0.0,
+                                JobState::Failed(err),
+                                Some("Failed"),
+                                None,
+                                None,
+                                Some(&job.output_path),
                             );
                         }
                     }
-                    Err(err) => {
-                        let out_path = Path::new(&job.output_path);
-                        if out_path.exists() {
-                            let _ = fs::remove_file(out_path);
-                        }
-                        let _ = app.emit(
-                            "job-status-changed",
-                            JobProgress {
-                                job_id: job.id.clone(),
-                                percentage: 0.0,
-                                status: "failed".to_string(),
-                                error: Some(err),
-                                phase: Some("Failed".to_string()),
-                                eta_seconds: None,
-                                fps: None,
-                                output_path: Some(job.output_path.clone()),
-                            },
-                        );
-                    }
                 }
             }
-        }
-    });
-}
-
-fn cleanup_job(job_id: &str, output_path: &str) {
-    let mut reg = get_registry().lock().unwrap();
-    reg.remove(job_id);
-    release_output_path(output_path);
-}
-
-pub fn cancel_job(app: &AppHandle, job_id: &str) -> Result<(), String> {
-    // 1. Remove from queue if still queued and emit cancellation event
-    let mut was_queued = false;
-    let mut output_path = String::new();
-    {
-        let mut q = get_queue().lock().unwrap();
-        if let Some(pos) = q.iter().position(|j| j.id == job_id) {
-            output_path = q[pos].output_path.clone();
-            q.remove(pos);
-            was_queued = true;
-        }
+        });
     }
 
-    if was_queued {
-        release_output_path(&output_path);
+    fn emit_progress(
+        &self,
+        app: &AppHandle,
+        job_id: &str,
+        percentage: f64,
+        state: JobState,
+        phase: Option<&str>,
+        eta_seconds: Option<u64>,
+        fps: Option<f64>,
+        output_path: Option<&str>,
+    ) {
         let _ = app.emit(
             "job-status-changed",
             JobProgress {
                 job_id: job_id.to_string(),
-                percentage: 0.0,
-                status: "cancelled".to_string(),
-                error: None,
-                phase: Some("Cancelled while queued".to_string()),
-                eta_seconds: None,
-                fps: None,
-                output_path: Some(output_path),
+                percentage,
+                status: state.as_str().to_string(),
+                error: state.error_message(),
+                phase: phase.map(|s| s.to_string()),
+                eta_seconds,
+                fps,
+                output_path: output_path.map(|s| s.to_string()),
             },
         );
-        return Ok(());
     }
+}
 
-    // 2. Set cancellation flag and kill active process handle if running
-    let reg = get_registry().lock().unwrap();
-    if let Some(control) = reg.get(job_id) {
-        control.cancel_requested.store(true, Ordering::SeqCst);
-        if let Ok(mut handle_guard) = control.process_handle.lock() {
-            if let Some(ref mut handle) = *handle_guard {
-                let _ = handle.kill();
-            }
-        }
-    }
+pub fn add_job_to_queue(app: AppHandle, job: Job) {
+    JobQueueService::global().enqueue(app, job);
+}
 
-    Ok(())
+pub fn cancel_job(app: &AppHandle, job_id: &str) -> Result<(), String> {
+    JobQueueService::global().cancel(app, job_id)
 }
 
 pub fn kill_all_active_jobs() {
-    let mut reg = get_registry().lock().unwrap();
-    for (_, control) in reg.drain() {
-        control.cancel_requested.store(true, Ordering::SeqCst);
-        if let Ok(mut handle_guard) = control.process_handle.lock() {
-            if let Some(ref mut handle) = *handle_guard {
-                let _ = handle.kill();
-            }
-        }
-    }
+    JobQueueService::global().kill_all();
 }
 
 pub fn normalize_tile_size(user_tile: i32) -> i32 {
@@ -374,7 +364,6 @@ pub fn compute_workload_threads(_input_path: &str, _is_video: bool) -> &'static 
     "1:2:2"
 }
 
-/// Executes a single image upscale job using StdProcessRunner with concurrent stdout/stderr streaming.
 fn run_single_image_job(
     app: &AppHandle,
     job: &Job,
@@ -413,7 +402,7 @@ fn run_single_image_job(
         .map_err(|e| e.to_string())?;
 
     {
-        let mut handle_guard = process_handle.lock().unwrap();
+        let mut handle_guard = process_handle.lock().unwrap_or_else(|p| p.into_inner());
         *handle_guard = Some(handle);
     }
 
@@ -425,7 +414,7 @@ fn run_single_image_job(
         JobProgress {
             job_id: job.id.clone(),
             percentage: current_pct,
-            status: "running".to_string(),
+            status: JobState::Running.as_str().to_string(),
             error: None,
             phase: Some("GPU Accelerated Upscaling (0.0%)".to_string()),
             eta_seconds: None,
@@ -434,14 +423,13 @@ fn run_single_image_job(
         },
     );
 
-    // Poll until completion or cancellation
     loop {
         if cancel_requested.load(Ordering::SeqCst) {
             return Err("cancelled".to_string());
         }
 
         let latest_pct = {
-            let mut handle_guard = process_handle.lock().unwrap();
+            let mut handle_guard = process_handle.lock().unwrap_or_else(|p| p.into_inner());
             if let Some(ref mut child) = *handle_guard {
                 match child.try_wait() {
                     Ok(Some(0)) => break,
@@ -478,7 +466,7 @@ fn run_single_image_job(
             JobProgress {
                 job_id: job.id.clone(),
                 percentage: current_pct,
-                status: "running".to_string(),
+                status: JobState::Running.as_str().to_string(),
                 error: None,
                 phase: Some(format!("GPU Accelerated Upscaling ({:.1}%)", current_pct)),
                 eta_seconds: eta_secs,
@@ -498,18 +486,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_output_path_reservation_uniqueness() {
-        let path1 = reserve_output_path("test_image.png", 4);
-        let path2 = reserve_output_path("test_image.png", 4);
-
-        assert_ne!(path1, path2);
-        assert!(path2.contains("(1)"));
-
-        release_output_path(&path1);
-        release_output_path(&path2);
-    }
-
-    #[test]
     fn test_normalize_tile_size() {
         assert_eq!(normalize_tile_size(0), 0);
         assert_eq!(normalize_tile_size(-100), 0);
@@ -522,5 +498,20 @@ mod tests {
     fn test_compute_workload_threads() {
         assert_eq!(compute_workload_threads("dummy.mp4", true), "1:2:2");
         assert_eq!(compute_workload_threads("nonexistent.png", false), "1:2:2");
+    }
+
+    #[test]
+    fn test_job_state_as_str_and_terminal() {
+        assert_eq!(JobState::Queued.as_str(), "queued");
+        assert_eq!(JobState::Running.as_str(), "running");
+        assert_eq!(JobState::Succeeded.as_str(), "succeeded");
+        assert_eq!(JobState::Cancelled.as_str(), "cancelled");
+        assert_eq!(JobState::Failed("err".into()).as_str(), "failed");
+
+        assert!(!JobState::Queued.is_terminal());
+        assert!(!JobState::Running.is_terminal());
+        assert!(JobState::Succeeded.is_terminal());
+        assert!(JobState::Cancelled.is_terminal());
+        assert!(JobState::Failed("err".into()).is_terminal());
     }
 }

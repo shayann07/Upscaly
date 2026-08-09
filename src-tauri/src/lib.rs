@@ -1,8 +1,10 @@
 pub mod commands;
 pub mod engine;
 pub mod error;
-mod job_queue;
+pub mod job_queue;
+pub mod job_state;
 mod model_manager;
+pub mod output_paths;
 pub mod process_runner;
 mod settings;
 mod sidecar_manager;
