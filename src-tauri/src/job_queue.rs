@@ -352,9 +352,39 @@ pub fn kill_all_active_jobs() {
     JobQueueService::global().kill_all();
 }
 
+pub fn get_estimated_vram_mb() -> u64 {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(output) = std::process::Command::new("wmic")
+            .args(["path", "Win32_VideoController", "get", "AdapterRAM"])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if let Ok(bytes) = line.trim().parse::<u64>() {
+                    if bytes > 500_000_000 {
+                        return bytes / (1024 * 1024);
+                    }
+                }
+            }
+        }
+    }
+    6000 // Default fallback for mid-tier GPUs (6GB VRAM)
+}
+
 pub fn normalize_tile_size(user_tile: i32) -> i32 {
     if user_tile <= 0 {
-        0
+        // Dynamic AUTO mode: Calculate optimal tile size respecting host GPU VRAM
+        let vram_mb = get_estimated_vram_mb();
+        if vram_mb < 4000 {
+            192
+        } else if vram_mb < 8000 {
+            256
+        } else if vram_mb < 12000 {
+            400
+        } else {
+            512
+        }
     } else {
         ((user_tile / 32) * 32).clamp(32, 1024)
     }
@@ -537,8 +567,8 @@ mod tests {
 
     #[test]
     fn test_normalize_tile_size() {
-        assert_eq!(normalize_tile_size(0), 0);
-        assert_eq!(normalize_tile_size(-100), 0);
+        assert!(normalize_tile_size(0) >= 192);
+        assert!(normalize_tile_size(-100) >= 192);
         assert_eq!(normalize_tile_size(200), 192);
         assert_eq!(normalize_tile_size(2000), 1024);
         assert_eq!(normalize_tile_size(10), 32);
