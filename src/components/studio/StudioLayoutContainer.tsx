@@ -6,7 +6,19 @@ export function StudioLayoutContainer() {
   const setup = useStudioContainerSetup();
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[var(--bg-stripe)] text-[var(--text-primary)] font-['Archivo',sans-serif] text-[13px] leading-relaxed">
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'var(--bg-stripe)',
+        color: 'var(--text-primary)',
+        fontFamily: 'var(--font-ui)',
+        fontSize: '13px',
+        overflow: 'hidden',
+        userSelect: 'none',
+        WebkitFontSmoothing: 'antialiased',
+      }}
+    >
       <StudioCanvas
         filePath={setup.filePath}
         fileName={setup.fileName}

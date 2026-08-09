@@ -30,31 +30,60 @@ export function StudioPreviewSection({
   const inputMedia = filePath || (batchItems.length > 0 ? batchItems[0].filePath : undefined);
 
   return (
-    <div className="absolute inset-0 bg-[var(--bg-stripe)]">
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        background: 'var(--bg-stripe)',
+      }}
+    >
       <AnimatePresence mode="wait">
         {!filePath && batchItems.length === 0 ? (
           <motion.div
-            key="dropzone"
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            className="w-full h-full flex items-center justify-center"
+            key="empty-stage"
+            initial={{ opacity: 0, scale: 0.96, filter: 'blur(8px)' }}
+            animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, scale: 0.96, filter: 'blur(8px)' }}
+            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+            style={{
+              position: 'relative',
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
           >
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background:
+                  'radial-gradient(105% 75% at 50% 45%, rgba(11,10,9,.55), rgba(11,10,9,.88) 78%)',
+              }}
+            />
             <DropZone
               isDragOver={false}
               onAddFiles={handleOpenFile}
+              onAddBatch={handleOpenFile}
               onBrowseClick={handleOpenFile}
             />
           </motion.div>
         ) : (
           <motion.div
-            key="preview"
-            initial={{ opacity: 0, scale: 0.99 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.99 }}
-            transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-            className="w-full h-full relative overflow-hidden"
+            key={filePath || 'active-stage'}
+            initial={{ opacity: 0, scale: 0.97, filter: 'blur(10px) brightness(0.8)' }}
+            animate={{ opacity: 1, scale: 1, filter: 'blur(0px) brightness(1)' }}
+            exit={{ opacity: 0, scale: 1.02, filter: 'blur(14px) brightness(0.6)' }}
+            transition={{
+              duration: 0.6,
+              ease: [0.22, 1, 0.36, 1],
+            }}
+            style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}
           >
             <ComparisonSlider
               inputPath={inputMedia}
