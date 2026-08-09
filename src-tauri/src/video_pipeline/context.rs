@@ -47,9 +47,9 @@ impl<'a> VideoJobContext<'a> {
 
         let _ = fs::remove_dir_all(&job_temp_dir);
         fs::create_dir_all(&frames_in_dir)
-            .map_err(|e| format!("Failed to create input frames folder: {}", e))?;
+            .map_err(|e| format!("Failed to create input frames folder: {e}"))?;
         fs::create_dir_all(&frames_out_dir)
-            .map_err(|e| format!("Failed to create output frames folder: {}", e))?;
+            .map_err(|e| format!("Failed to create output frames folder: {e}"))?;
 
         let context = Self {
             app,

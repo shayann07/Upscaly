@@ -16,25 +16,143 @@ pub enum EncoderStrategy {
 }
 
 impl EncoderStrategy {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            EncoderStrategy::Nvenc => "h264_nvenc",
-            EncoderStrategy::Qsv => "h264_qsv",
-            EncoderStrategy::Amf => "h264_amf",
-            EncoderStrategy::Mf => "h264_mf",
-            EncoderStrategy::Libx264 => "libx264",
-            EncoderStrategy::Mpeg4 => "mpeg4",
-        }
+    pub fn all() -> &'static [EncoderStrategy] {
+        &[
+            EncoderStrategy::Nvenc,
+            EncoderStrategy::Qsv,
+            EncoderStrategy::Amf,
+            EncoderStrategy::Mf,
+            EncoderStrategy::Libx264,
+            EncoderStrategy::Mpeg4,
+        ]
     }
 
-    pub const ALL: &'static [EncoderStrategy] = &[
-        EncoderStrategy::Nvenc,
-        EncoderStrategy::Qsv,
-        EncoderStrategy::Amf,
-        EncoderStrategy::Mf,
-        EncoderStrategy::Libx264,
-        EncoderStrategy::Mpeg4,
-    ];
+    #[allow(clippy::too_many_lines)]
+    pub fn to_args(
+        self,
+        fps_string: &str,
+        pattern: &str,
+        input_path: &str,
+        output_path: &str,
+    ) -> Vec<String> {
+        let mut base = vec![
+            "-y".to_string(),
+            "-framerate".to_string(),
+            fps_string.to_string(),
+            "-i".to_string(),
+            pattern.to_string(),
+            "-i".to_string(),
+            input_path.to_string(),
+            "-map".to_string(),
+            "0:v:0".to_string(),
+            "-map".to_string(),
+            "1:a?".to_string(),
+        ];
+
+        match self {
+            EncoderStrategy::Nvenc => {
+                base.extend_from_slice(&[
+                    "-c:v".to_string(),
+                    "h264_nvenc".to_string(),
+                    "-preset".to_string(),
+                    "p4".to_string(),
+                    "-cq".to_string(),
+                    "18".to_string(),
+                    "-pix_fmt".to_string(),
+                    "yuv420p".to_string(),
+                    "-c:a".to_string(),
+                    "aac".to_string(),
+                    "-b:a".to_string(),
+                    "192k".to_string(),
+                    "-shortest".to_string(),
+                ]);
+            }
+            EncoderStrategy::Qsv => {
+                base.extend_from_slice(&[
+                    "-c:v".to_string(),
+                    "h264_qsv".to_string(),
+                    "-global_quality".to_string(),
+                    "20".to_string(),
+                    "-pix_fmt".to_string(),
+                    "nv12".to_string(),
+                    "-c:a".to_string(),
+                    "aac".to_string(),
+                    "-b:a".to_string(),
+                    "192k".to_string(),
+                    "-shortest".to_string(),
+                ]);
+            }
+            EncoderStrategy::Amf => {
+                base.extend_from_slice(&[
+                    "-c:v".to_string(),
+                    "h264_amf".to_string(),
+                    "-usage".to_string(),
+                    "transcoding".to_string(),
+                    "-quality".to_string(),
+                    "quality".to_string(),
+                    "-pix_fmt".to_string(),
+                    "yuv420p".to_string(),
+                    "-c:a".to_string(),
+                    "aac".to_string(),
+                    "-b:a".to_string(),
+                    "192k".to_string(),
+                    "-shortest".to_string(),
+                ]);
+            }
+            EncoderStrategy::Mf => {
+                base.extend_from_slice(&[
+                    "-c:v".to_string(),
+                    "h264_mf".to_string(),
+                    "-rate_control".to_string(),
+                    "cbr".to_string(),
+                    "-b:v".to_string(),
+                    "15M".to_string(),
+                    "-pix_fmt".to_string(),
+                    "yuv420p".to_string(),
+                    "-c:a".to_string(),
+                    "aac".to_string(),
+                    "-b:a".to_string(),
+                    "192k".to_string(),
+                    "-shortest".to_string(),
+                ]);
+            }
+            EncoderStrategy::Libx264 => {
+                base.extend_from_slice(&[
+                    "-c:v".to_string(),
+                    "libx264".to_string(),
+                    "-crf".to_string(),
+                    "18".to_string(),
+                    "-preset".to_string(),
+                    "medium".to_string(),
+                    "-pix_fmt".to_string(),
+                    "yuv420p".to_string(),
+                    "-c:a".to_string(),
+                    "aac".to_string(),
+                    "-b:a".to_string(),
+                    "192k".to_string(),
+                    "-shortest".to_string(),
+                ]);
+            }
+            EncoderStrategy::Mpeg4 => {
+                base.extend_from_slice(&[
+                    "-c:v".to_string(),
+                    "mpeg4".to_string(),
+                    "-q:v".to_string(),
+                    "3".to_string(),
+                    "-pix_fmt".to_string(),
+                    "yuv420p".to_string(),
+                    "-c:a".to_string(),
+                    "aac".to_string(),
+                    "-b:a".to_string(),
+                    "192k".to_string(),
+                    "-shortest".to_string(),
+                ]);
+            }
+        }
+
+        base.push(output_path.to_string());
+        base
+    }
 }
 
 pub fn reassemble_with_encoders(
@@ -43,184 +161,85 @@ pub fn reassemble_with_encoders(
     fps_string: &str,
     normalized_pattern: &str,
 ) -> Result<(), String> {
-    let runner = StdProcessRunner::new();
-    let mut reassemble_success = false;
-    let mut last_error_log = String::new();
+    let mut last_err = String::new();
 
-    for strategy in EncoderStrategy::ALL {
+    for &encoder in EncoderStrategy::all() {
         if ctx.is_cancelled() {
             return Err("cancelled".to_string());
         }
 
-        let encoder_name = strategy.as_str();
+        let args = encoder.to_args(
+            fps_string,
+            normalized_pattern,
+            &ctx.job.input_path,
+            &ctx.job.output_path,
+        );
 
-        // 1. Try audio pass-through (-c:a copy)
-        let copy_args = vec![
-            "-y".to_string(),
-            "-framerate".to_string(),
-            fps_string.to_string(),
-            "-start_number".to_string(),
-            "1".to_string(),
-            "-i".to_string(),
-            normalized_pattern.to_string(),
-            "-i".to_string(),
-            ctx.job.input_path.clone(),
-            "-c:v".to_string(),
-            encoder_name.to_string(),
-            "-pix_fmt".to_string(),
-            "yuv420p".to_string(),
-            "-c:a".to_string(),
-            "copy".to_string(),
-            "-map".to_string(),
-            "0:v:0".to_string(),
-            "-map".to_string(),
-            "1:a:0?".to_string(),
-            ctx.job.output_path.clone(),
-        ];
+        let runner = StdProcessRunner::new();
+        let handle_res = runner.spawn(&PathBuf::from(ffmpeg_binary), &args);
 
-        if let Ok(mut h) = runner.spawn(&PathBuf::from(ffmpeg_binary), &copy_args) {
-            let mut success = false;
-            loop {
-                if ctx.is_cancelled() {
-                    let _ = h.kill();
-                    return Err("cancelled".to_string());
-                }
-                match h.try_wait() {
-                    Ok(Some(0)) => {
-                        success = true;
-                        break;
-                    }
-                    Ok(Some(_)) => {
-                        let err = h.get_stderr_log();
-                        if !err.is_empty() {
-                            last_error_log = err;
-                        }
-                        break;
-                    }
-                    Ok(None) => thread::sleep(Duration::from_millis(50)),
-                    Err(_) => break,
-                }
+        let handle = match handle_res {
+            Ok(h) => h,
+            Err(e) => {
+                last_err = format!("Failed to launch FFmpeg encoder {encoder:?}: {e}");
+                continue;
             }
-            if success {
-                reassemble_success = true;
-                break;
-            }
-        }
-
-        // 2. Fallback to AAC 192k stereo
-        let aac_args = vec![
-            "-y".to_string(),
-            "-framerate".to_string(),
-            fps_string.to_string(),
-            "-start_number".to_string(),
-            "1".to_string(),
-            "-i".to_string(),
-            normalized_pattern.to_string(),
-            "-i".to_string(),
-            ctx.job.input_path.clone(),
-            "-c:v".to_string(),
-            encoder_name.to_string(),
-            "-pix_fmt".to_string(),
-            "yuv420p".to_string(),
-            "-c:a".to_string(),
-            "aac".to_string(),
-            "-b:a".to_string(),
-            "192k".to_string(),
-            "-ac".to_string(),
-            "2".to_string(),
-            "-map".to_string(),
-            "0:v:0".to_string(),
-            "-map".to_string(),
-            "1:a:0?".to_string(),
-            ctx.job.output_path.clone(),
-        ];
-
-        if let Ok(mut h) = runner.spawn(&PathBuf::from(ffmpeg_binary), &aac_args) {
-            let mut success = false;
-            loop {
-                if ctx.is_cancelled() {
-                    let _ = h.kill();
-                    return Err("cancelled".to_string());
-                }
-                match h.try_wait() {
-                    Ok(Some(0)) => {
-                        success = true;
-                        break;
-                    }
-                    Ok(Some(_)) => {
-                        let err = h.get_stderr_log();
-                        if !err.is_empty() {
-                            last_error_log = err;
-                        }
-                        break;
-                    }
-                    Ok(None) => thread::sleep(Duration::from_millis(50)),
-                    Err(_) => break,
-                }
-            }
-            if success {
-                reassemble_success = true;
-                break;
-            }
-        }
-
-        // 3. Fallback to video-only
-        let video_only_args = vec![
-            "-y".to_string(),
-            "-framerate".to_string(),
-            fps_string.to_string(),
-            "-start_number".to_string(),
-            "1".to_string(),
-            "-i".to_string(),
-            normalized_pattern.to_string(),
-            "-c:v".to_string(),
-            encoder_name.to_string(),
-            "-pix_fmt".to_string(),
-            "yuv420p".to_string(),
-            ctx.job.output_path.clone(),
-        ];
-
-        if let Ok(mut h) = runner.spawn(&PathBuf::from(ffmpeg_binary), &video_only_args) {
-            let mut success = false;
-            loop {
-                if ctx.is_cancelled() {
-                    let _ = h.kill();
-                    return Err("cancelled".to_string());
-                }
-                match h.try_wait() {
-                    Ok(Some(0)) => {
-                        success = true;
-                        break;
-                    }
-                    Ok(Some(_)) => {
-                        let err = h.get_stderr_log();
-                        if !err.is_empty() {
-                            last_error_log = err;
-                        }
-                        break;
-                    }
-                    Ok(None) => thread::sleep(Duration::from_millis(50)),
-                    Err(_) => break,
-                }
-            }
-            if success {
-                reassemble_success = true;
-                break;
-            }
-        }
-    }
-
-    if !reassemble_success {
-        let msg = if last_error_log.is_empty() {
-            "No supported H.264 video encoder available (tried h264_nvenc, h264_qsv, h264_amf, h264_mf, libx264, mpeg4).".to_string()
-        } else {
-            format!(
-                "No supported H.264 video encoder available. FFmpeg error output: {}",
-                last_error_log
-            )
         };
-        return Err(msg);
+
+        {
+            let mut handle_guard = ctx
+                .process_handle
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            *handle_guard = Some(handle);
+        }
+
+        let mut success = false;
+        loop {
+            if ctx.is_cancelled() {
+                let mut handle_guard = ctx
+                    .process_handle
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if let Some(ref mut h) = *handle_guard {
+                    let _ = h.kill();
+                }
+                return Err("cancelled".to_string());
+            }
+
+            let mut handle_guard = ctx
+                .process_handle
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(ref mut h) = *handle_guard {
+                match h.try_wait() {
+                    Ok(Some(0)) => {
+                        success = true;
+                        break;
+                    }
+                    Ok(Some(code)) => {
+                        last_err = format!("Encoder {encoder:?} exited with code {code}");
+                        break;
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        last_err = format!("Error waiting for encoder {encoder:?}: {e}");
+                        break;
+                    }
+                }
+            } else {
+                break;
+            }
+            drop(handle_guard);
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        if success {
+            return Ok(());
+        }
     }
 
-    Ok(())
+    Err(format!(
+        "All hardware and software video encoders failed. Last error: {last_err}"
+    ))
 }

@@ -12,6 +12,14 @@ use crate::sidecar_manager::resolve_sidecar_path;
 use crate::video_pipeline::context::VideoJobContext;
 use crate::video_pipeline::encoder::reassemble_with_encoders;
 
+fn lock_handle<'a>(
+    ctx: &'a VideoJobContext,
+) -> std::sync::MutexGuard<'a, Option<Box<dyn crate::process_runner::ProcessHandle>>> {
+    ctx.process_handle
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 pub fn extract_frames(ctx: &VideoJobContext, ffmpeg_binary: &str) -> Result<usize, String> {
     ctx.emit_progress(2.0, "Extracting Video Frames (FFmpeg Multi-Thread)...");
 
@@ -35,27 +43,26 @@ pub fn extract_frames(ctx: &VideoJobContext, ffmpeg_binary: &str) -> Result<usiz
         .map_err(|e| e.to_string())?;
 
     {
-        let mut handle_guard = ctx.process_handle.lock().unwrap_or_else(|p| p.into_inner());
+        let mut handle_guard = lock_handle(ctx);
         *handle_guard = Some(extract_handle);
     }
 
     loop {
         if ctx.is_cancelled() {
-            let mut handle_guard = ctx.process_handle.lock().unwrap_or_else(|p| p.into_inner());
+            let mut handle_guard = lock_handle(ctx);
             if let Some(ref mut h) = *handle_guard {
                 let _ = h.kill();
             }
             return Err("cancelled".to_string());
         }
 
-        let mut handle_guard = ctx.process_handle.lock().unwrap_or_else(|p| p.into_inner());
+        let mut handle_guard = lock_handle(ctx);
         if let Some(ref mut h) = *handle_guard {
             match h.try_wait() {
                 Ok(Some(0)) => break,
                 Ok(Some(code)) => {
                     return Err(format!(
-                        "FFmpeg frame extractor failed with exit code: {}",
-                        code
+                        "FFmpeg frame extractor failed with exit code: {code}"
                     ))
                 }
                 Ok(None) => {}
@@ -92,9 +99,14 @@ pub fn extract_frames(ctx: &VideoJobContext, ffmpeg_binary: &str) -> Result<usiz
 pub fn upscale_frames(ctx: &VideoJobContext, total_frames: usize) -> Result<(), String> {
     ctx.emit_progress(
         10.0,
-        &format!("GPU Accelerated Upscaling ({} frames)...", total_frames),
+        &format!("GPU Accelerated Upscaling ({total_frames} frames)..."),
     );
 
+    spawn_upscale_engine(ctx)?;
+    poll_upscale_progress(ctx, total_frames)
+}
+
+fn spawn_upscale_engine(ctx: &VideoJobContext) -> Result<(), String> {
     let sidecar_path = resolve_sidecar_path(ctx.app, "realesrgan-ncnn-vulkan")?;
     let models_dir = get_models_dir(ctx.app);
 
@@ -125,17 +137,23 @@ pub fn upscale_frames(ctx: &VideoJobContext, total_frames: usize) -> Result<(), 
         .spawn(&sidecar_path, &upscale_args)
         .map_err(|e| e.to_string())?;
 
-    {
-        let mut handle_guard = ctx.process_handle.lock().unwrap_or_else(|p| p.into_inner());
-        *handle_guard = Some(upscale_handle);
-    }
+    let mut handle_guard = lock_handle(ctx);
+    *handle_guard = Some(upscale_handle);
+    Ok(())
+}
 
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+fn poll_upscale_progress(ctx: &VideoJobContext, total_frames: usize) -> Result<(), String> {
     let total_frames_f = total_frames as f64;
     let start_time = std::time::Instant::now();
 
     loop {
         if ctx.is_cancelled() {
-            let mut handle_guard = ctx.process_handle.lock().unwrap_or_else(|p| p.into_inner());
+            let mut handle_guard = lock_handle(ctx);
             if let Some(ref mut h) = *handle_guard {
                 let _ = h.kill();
             }
@@ -143,15 +161,12 @@ pub fn upscale_frames(ctx: &VideoJobContext, total_frames: usize) -> Result<(), 
         }
 
         let is_done = {
-            let mut handle_guard = ctx.process_handle.lock().unwrap_or_else(|p| p.into_inner());
+            let mut handle_guard = lock_handle(ctx);
             if let Some(ref mut h) = *handle_guard {
                 match h.try_wait() {
                     Ok(Some(0)) => true,
                     Ok(Some(code)) => {
-                        return Err(format!(
-                            "NCNN upscale engine failed with exit code: {}",
-                            code
-                        ))
+                        return Err(format!("NCNN upscale engine failed with exit code: {code}"))
                     }
                     Ok(None) => false,
                     Err(e) => return Err(e.to_string()),

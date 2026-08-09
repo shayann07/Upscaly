@@ -1,3 +1,5 @@
+#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+
 pub mod commands;
 pub mod engine;
 pub mod error;

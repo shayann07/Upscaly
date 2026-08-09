@@ -101,7 +101,7 @@ pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBu
 
     // Additional plain binary fallback without target triple
     let plain_name = if cfg!(target_os = "windows") {
-        format!("{}.exe", binary_name)
+        format!("{binary_name}.exe")
     } else {
         binary_name.to_string()
     };
@@ -118,7 +118,7 @@ pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBu
         return Ok(plain_local2);
     }
 
-    Err(format!("Could not find sidecar binary '{}'", filename))
+    Err(format!("Could not find sidecar binary '{filename}'"))
 }
 
 #[cfg(target_os = "windows")]
@@ -136,7 +136,14 @@ use windows_sys::Win32::System::JobObjects::{
 static GLOBAL_JOB_OBJECT: OnceLock<usize> = OnceLock::new();
 
 #[cfg(target_os = "windows")]
-#[allow(unsafe_code)]
+#[allow(
+    unsafe_code,
+    clippy::ptr_as_ptr,
+    clippy::borrow_as_ptr,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap
+)]
 fn get_or_create_job_object() -> usize {
     *GLOBAL_JOB_OBJECT.get_or_init(|| unsafe {
         let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
@@ -228,7 +235,7 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     let models_dir = crate::model_manager::get_models_dir(app);
 
     let mut child = Command::new(sidecar_path)
-        .args(&[
+        .args([
             "-i",
             "non-existent-image-path.jpg",
             "-o",
@@ -240,7 +247,7 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to spawn GPU probe process: {}", e))?;
+        .map_err(|e| format!("Failed to spawn GPU probe process: {e}"))?;
 
     attach_to_job_object(&child);
 

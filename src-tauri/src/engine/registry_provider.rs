@@ -111,6 +111,7 @@ impl GitHubReleaseProvider {
         Ok(Self::default_registry())
     }
 
+    #[allow(clippy::unreadable_literal)]
     pub fn default_registry() -> RegistryManifest {
         RegistryManifest {
             schema_version: 1,
