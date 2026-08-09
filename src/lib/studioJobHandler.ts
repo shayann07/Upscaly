@@ -106,9 +106,9 @@ export function handleStudioJobStatus(progress: JobProgress, state: StudioJobSta
 
   if (eta_seconds !== undefined && eta_seconds > 0) {
     state.setEtaSeconds(eta_seconds);
-  } else if (state.jobStartTimeRef?.current && percentage > 0) {
+  } else if (state.jobStartTimeRef?.current && percentage > 0 && (!state.isVideo || percentage >= 10)) {
     const elapsedSec = (Date.now() - state.jobStartTimeRef.current) / 1000;
-    if (elapsedSec > 0.2) {
+    if (elapsedSec > 0.5) {
       const pctPerSec = percentage / elapsedSec;
       const remPct = Math.max(0, 100 - percentage);
       const calcEta = Math.max(1, Math.ceil(remPct / Math.max(0.1, pctPerSec)));

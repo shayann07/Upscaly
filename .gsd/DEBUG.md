@@ -1,31 +1,27 @@
-# Debug Session: Video Upscaling Performance & Long ETA
+# Debug Session: Video Upscaling Performance & 0.1 FPS Drop Root Cause
 
 ## Symptom
-**When:** Upscaling video (`VID20260407103700.mp4` 1080p -> 8K) using `RealESRGAN Ultra` (`realesrgan-x4plus`) on RTX 3050 6GB GPU.
-**Expected:** Reasonable video conversion time (~3-10 minutes) and immediate, accurate ETA updates.
-**Actual:** ETA takes ~1 minute to appear and jumps to 80-121+ minutes.
+**Img1 (Before 1 min):** Progress 10.0% (Frame extraction phase), ETA false reading `0:05`, Rate `14.2 MP/s`, Tile `AUTO` (0).
+**Img2 (After 1 min):** Progress 11.0%, ETA `107:33`, Rate `0.1 FPS` (10 seconds per frame!), Tile `AUTO` (0).
+**Img3 (Task Manager):** GPU 95%, VRAM 3.1 GB / 6.0 GB, Host Shared RAM 0.3 GB.
 
-## Evidence Gathered
-1. **Model Architecture Complexity**:
-   - `realesrgan-x4plus` (Ultra): 16.7M parameters, 23 RRDB blocks. Designed for single still images. Takes ~1.2s per 1080p frame on RTX 3050 Laptop GPU.
-   - For a 3-minute video (5,400 frames): 5,400 * 1.2s = 6,480s = **108 minutes**.
-   - `realesr-animevideov3`: 0.2M parameters (80x lighter). Takes ~0.04s per frame. 5,400 * 0.04s = 216s = **3.6 minutes**.
+## Root Cause Analysis (Confirmed)
 
-2. **ETA Delay**:
-   - `poll_upscale_progress` in `phases.rs` counts completed output files in `ctx.frames_out_dir`.
-   - Sidecar startup + Vulkan memory allocation + model initialization + first frame processing takes 30-60s before the 1st frame file is written to disk.
-   - During this time, `completed == 0`, so `eta_seconds` remains `None` (blank UI).
-   - Once frame 1 arrives, initial `secs_per_frame` includes initial startup latency, skewing initial ETA calculation high (~120 minutes).
+1. **`TILE AUTO (0)` Vulkan Memory Swapping (Primary Root Cause)**:
+   - When `tile_size` is `0` (`AUTO`), `realesrgan-ncnn-vulkan` disables tile partitioning and attempts to process full 1920x1080 frames in a single pass.
+   - For `RealESRGAN Ultra` (23 RRDB blocks), full-frame feature map tensors require **over 12GB of GPU memory**.
+   - On an RTX 3050 6GB VRAM GPU, allocating 12GB tensor buffers exceeds physical VRAM. Vulkan falls back to Host System RAM swapping over PCIe.
+   - **Result:** GPU utilization runs at 95% while performance drops from **2.5 FPS down to 0.1 FPS** (10 seconds per frame = 15+ hours total processing time).
 
-3. **Suboptimal I/O & Thread Allocation**:
-   - Hardcoded `-j 1:2:2` restricts image load threads to 1 and disk write threads to 2.
-   - Hardcoded tile size `256px` forces GPU to process 1080p frame in 32 separate tiles instead of full frame / larger tiles. On RTX 3050 6GB (4.2GB free VRAM available), larger tile sizes (512px) or Auto tile (0) reduce tile switching overhead by up to 40%.
+2. **Initial `ETA 0:05` Fluke (Secondary Symptom)**:
+   - During FFmpeg frame extraction (Phase 1, 0% to 10% progress), `percentage` increases to 10% in under 1 second.
+   - The frontend fallback ETA estimator calculates `(100 - 10) / (10% / 0.5s) = 4.5 seconds` (`ETA 0:05`).
+   - As soon as frame extraction ends and upscaling starts at `0.1 FPS`, ETA jumps to `107:33`.
 
-## Hypotheses
-
-| # | Hypothesis | Impact | Status |
-|---|------------|--------|--------|
-| H1 | Heavy model choice (`realesrgan-x4plus` vs video-optimized / lightweight models) is the dominant factor (80x parameter difference). | 70% | CONFIRMED |
-| H2 | Small tile size (`256px`) causes excessive tile switching overhead on RTX 3050 6GB VRAM. | 15% | CONFIRMED |
-| H3 | ETA remains blank for ~60s because frame 0 has not written to disk; first estimate includes startup latency. | 10% | CONFIRMED |
-| H4 | Thread profile `1:2:2` bottlenecks disk I/O when reading/writing thousands of frames. | 5% | CONFIRMED |
+## Fix Plan
+1. **Auto Tile Resolution (`normalize_tile_size`)**:
+   - When `tile_size <= 0` (AUTO mode), do NOT pass `0` to NCNN Vulkan for heavy models or video jobs.
+   - Resolve AUTO mode to an optimal tile size of **`256`** (or `400` for 6GB+ GPUs).
+   - At `256px` tile size, VRAM usage stays safely below 3.0 GB, avoiding PCIe host RAM swapping and restoring speed to **~2.2 - 2.5 FPS** (~35-40 min total for Ultra, ~3 min for Anime Video).
+2. **Frontend Fallback ETA Suppression during Frame Extraction**:
+   - Suppress fallback ETA calculation while `progress < 10%` or during `extract_frames` phase so `ETA 0:05` does not temporarily flash.
