@@ -1,0 +1,118 @@
+import { useSettings } from './useSettings';
+import { useModelCatalog } from './useModelCatalog';
+import { useMediaSelection } from './useMediaSelection';
+import { useStudioActions } from './useStudioActions';
+import { useTelemetry } from './useTelemetry';
+import { useStudioState } from './useStudioState';
+import { useStudioEvents } from './useStudioEvents';
+import { useBatchSetup } from './useBatchSetup';
+import { useStudioJobStateSetup } from './useStudioJobStateSetup';
+
+export function useStudioContainerSetup() {
+  const state = useStudioState();
+  const settings = useSettings(state.handleGpuReady);
+  const catalog = useModelCatalog(state.handleNotify);
+
+  const media = useMediaSelection(
+    settings.isMuted,
+    catalog.selectedModel,
+    (cat) => state.setCategory(cat),
+    state.handleNotify,
+    state.handleResetJob
+  );
+
+  const actions = useStudioActions({
+    filePath: media.filePath,
+    fileName: media.fileName,
+    isVideo: media.isVideo,
+    scale: settings.scale,
+    selectedModel: catalog.selectedModel,
+    selectedGpu: settings.selectedGpu,
+    tileSize: settings.tileSize,
+    customOutputPath: settings.customOutputPath,
+    isMuted: settings.isMuted,
+    batchItems: [],
+    supportedModels: catalog.supportedModels,
+    installedModels: catalog.installedModels,
+    activeJobId: state.activeJobId,
+    setActiveJobId: state.setActiveJobId,
+    setJobStatus: state.setJobStatus,
+    setCategory: state.setCategory,
+    setSelectedModel: catalog.setSelectedModel,
+    setScale: settings.setScale,
+    setCustomOutputPath: settings.setCustomOutputPath,
+    setFilePath: media.setFilePath,
+    setFileName: media.setFileName,
+    setUpscaledPath: media.setUpscaledPath,
+    setIsVideo: media.setIsVideo,
+    setActiveNavTab: state.setActiveNavTab,
+    onNotify: state.handleNotify,
+  });
+
+  const batch = useBatchSetup({
+    selectedGpu: settings.selectedGpu,
+    selectedModel: catalog.selectedModel,
+    scale: settings.scale,
+    tileSize: settings.tileSize,
+    customOutputPath: settings.customOutputPath,
+    isMuted: settings.isMuted,
+    fileName: media.fileName,
+    filePath: media.filePath,
+    isVideo: media.isVideo,
+    activeJobId: state.activeJobId,
+    setHistoryItems: state.setHistoryItems,
+    handleOpenFile: media.handleOpenFile,
+    handleCancelUpscale: actions.handleCancelUpscale,
+    handleToggleNavTab: state.handleToggleNavTab,
+    setActiveNavTab: state.setActiveNavTab,
+    onNotify: state.handleNotify,
+  });
+
+  const studioJobState = useStudioJobStateSetup({
+    activeJobId: state.activeJobId,
+    activeJobIdRef: actions.activeJobIdRef,
+    pendingOutputPath: actions.pendingOutputPath,
+    upscaledPath: media.upscaledPath,
+    selectedModel: catalog.selectedModel,
+    fileName: media.fileName,
+    filePath: media.filePath,
+    scale: settings.scale,
+    isVideo: media.isVideo,
+    isMuted: settings.isMuted,
+    setActiveJobId: state.setActiveJobId,
+    setProgressVal: state.setProgressVal,
+    setJobStatus: state.setJobStatus,
+    setJobPhase: state.setJobPhase,
+    setEtaSeconds: state.setEtaSeconds,
+    setFps: state.setFps,
+    setStatusMessage: state.setStatusMessage,
+    setUpscaledPath: media.setUpscaledPath,
+    setHistoryItems: state.setHistoryItems,
+    refreshInstalledModels: catalog.refreshInstalledModels,
+    onNotify: state.handleNotify,
+  });
+
+  useStudioEvents({
+    handleQueueJobProgress: batch.handleQueueJobProgress,
+    studioJobState,
+    refreshInstalledModels: catalog.refreshInstalledModels,
+    onNotify: state.handleNotify,
+  });
+
+  const telemetry = useTelemetry({
+    gpus: settings.gpus,
+    selectedGpu: settings.selectedGpu,
+    jobStatus: state.jobStatus,
+    tileSize: settings.tileSize,
+  });
+
+  return {
+    ...state,
+    ...settings,
+    ...catalog,
+    ...media,
+    ...actions,
+    ...batch,
+    ...telemetry,
+  };
+}

@@ -47,10 +47,7 @@ export function useComparisonDrag({
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     const delta = e.deltaY < 0 ? 1.25 : 0.8;
-    const newZoom = Math.max(
-      1,
-      Math.min(10, Math.round(zoom * delta * 10) / 10)
-    );
+    const newZoom = Math.max(1, Math.min(10, Math.round(zoom * delta * 10) / 10));
     if (onZoomChange) {
       onZoomChange(newZoom);
     }
@@ -60,10 +57,7 @@ export function useComparisonDrag({
     const container = containerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
-    const pct = Math.max(
-      1,
-      Math.min(99, ((clientX - rect.left) / rect.width) * 100)
-    );
+    const pct = Math.max(1, Math.min(99, ((clientX - rect.left) / rect.width) * 100));
     setSliderPct(pct);
   }, []);
 

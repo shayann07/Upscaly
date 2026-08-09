@@ -1,6 +1,7 @@
-import { useRef, useState, useEffect, useMemo } from 'react';
-import { getMediaSrc } from '../lib/media';
 import { useComparisonDrag } from '../hooks/useComparisonDrag';
+import { useComparisonMedia } from '../hooks/useComparisonMedia';
+import { ComparisonMediaOverlay } from './comparison/ComparisonMediaOverlay';
+import { ComparisonSideView } from './comparison/ComparisonSideView';
 
 interface ComparisonSliderProps {
   inputPath?: string;
@@ -12,49 +13,39 @@ interface ComparisonSliderProps {
   zoom?: number;
   onZoomChange?: (newZoom: number) => void;
   accentColor?: string;
-  onToggleViewMode?: () => void;
-  isHoldingOriginal?: boolean;
 }
 
-export function ComparisonSlider({
-  inputPath,
-  outputPath,
-  originalPath,
-  upscaledPath,
-  mode = 'split',
-  viewMode,
-  zoom = 1,
-  onZoomChange,
-  accentColor = 'var(--accent)',
-}: ComparisonSliderProps) {
-  const videoInputRef = useRef<HTMLVideoElement>(null);
-  const videoOutputRef = useRef<HTMLVideoElement>(null);
+export function ComparisonSlider(props: ComparisonSliderProps) {
+  const {
+    inputPath,
+    outputPath,
+    originalPath,
+    upscaledPath,
+    mode = 'split',
+    viewMode,
+    zoom = 1,
+    onZoomChange,
+    accentColor = 'var(--accent)',
+  } = props;
 
-  const [inputDims, setInputDims] = useState<{ w: number; h: number } | null>(
-    null
-  );
-  const [outputDims, setOutputDims] = useState<{ w: number; h: number } | null>(
-    null
-  );
-
-  const realInputPath = inputPath || originalPath || '';
-  const realOutputPath = outputPath || upscaledPath || '';
-  const activeMode = viewMode === 'side-by-side' ? 'side' : mode;
-
-  const isVideoInput = useMemo(
-    () => /\.(mp4|mkv|mov|avi|webm)$/i.test(realInputPath),
-    [realInputPath]
-  );
-  const isVideoOutput = useMemo(
-    () => /\.(mp4|mkv|mov|avi|webm)$/i.test(realOutputPath),
-    [realOutputPath]
-  );
-
-  const inputSrc = useMemo(() => getMediaSrc(realInputPath), [realInputPath]);
-  const outputSrc = useMemo(
-    () => getMediaSrc(realOutputPath),
-    [realOutputPath]
-  );
+  const {
+    videoInputRef,
+    videoOutputRef,
+    inputDims,
+    outputDims,
+    activeMode,
+    isVideoInput,
+    isVideoOutput,
+    inputSrc,
+    outputSrc,
+  } = useComparisonMedia({
+    inputPath,
+    outputPath,
+    originalPath,
+    upscaledPath,
+    mode,
+    viewMode,
+  });
 
   const {
     containerRef,
@@ -68,157 +59,24 @@ export function ComparisonSlider({
     handleHandleMouseDown,
   } = useComparisonDrag({ zoom, onZoomChange, activeMode });
 
-  useEffect(() => {
-    setInputDims(null);
-    setOutputDims(null);
-  }, [inputSrc, outputSrc]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    if (inputSrc) {
-      if (isVideoInput) {
-        const vid1 = document.createElement('video');
-        vid1.onloadedmetadata = () => {
-          if (isMounted)
-            setInputDims({ w: vid1.videoWidth, h: vid1.videoHeight });
-        };
-        vid1.src = inputSrc;
-      } else {
-        const img1 = new Image();
-        img1.onload = () => {
-          if (isMounted)
-            setInputDims({ w: img1.naturalWidth, h: img1.naturalHeight });
-        };
-        img1.src = inputSrc;
-      }
-    }
-
-    if (outputSrc) {
-      if (isVideoOutput) {
-        const vid2 = document.createElement('video');
-        vid2.onloadedmetadata = () => {
-          if (isMounted)
-            setOutputDims({ w: vid2.videoWidth, h: vid2.videoHeight });
-        };
-        vid2.src = outputSrc;
-      } else {
-        const img2 = new Image();
-        img2.onload = () => {
-          if (isMounted)
-            setOutputDims({ w: img2.naturalWidth, h: img2.naturalHeight });
-        };
-        img2.src = outputSrc;
-      }
-    }
-
-    return () => {
-      isMounted = false;
-    };
-  }, [inputSrc, outputSrc, isVideoInput, isVideoOutput]);
-
-  useEffect(() => {
-    const v1 = videoInputRef.current;
-    const v2 = videoOutputRef.current;
-    if (!v1 || !v2) return;
-
-    v1.play().catch(() => {});
-    v2.play().catch(() => {});
-
-    const syncTime = () => {
-      if (Math.abs(v1.currentTime - v2.currentTime) > 0.08) {
-        v2.currentTime = v1.currentTime;
-      }
-    };
-
-    v1.addEventListener('timeupdate', syncTime);
-    return () => v1.removeEventListener('timeupdate', syncTime);
-  }, [inputSrc, outputSrc, activeMode]);
-
-  const mediaContainerStyle: React.CSSProperties = {
-    position: 'absolute',
-    inset: 0,
-    transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0px) scale3d(${zoom}, ${zoom}, 1)`,
-    transformOrigin: 'center center',
-    transition: isPanning
-      ? 'none'
-      : 'transform 0.12s cubic-bezier(0.16, 1, 0.3, 1)',
-    willChange: 'transform',
-    backfaceVisibility: 'hidden',
-    WebkitBackfaceVisibility: 'hidden',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
-
-  const renderMedia = (
-    src: string,
-    isVideo: boolean,
-    ref?: React.RefObject<HTMLVideoElement | null>
-  ) => {
-    if (!src) return null;
-
-    if (isVideo) {
-      return (
-        <div style={mediaContainerStyle}>
-          <video
-            ref={ref}
-            src={src}
-            autoPlay
-            loop
-            muted
-            playsInline
-            onPlay={() => {
-              if (ref === videoInputRef && videoOutputRef.current) {
-                videoOutputRef.current.play().catch(() => {});
-              }
-            }}
-            className="w-full h-full object-contain pointer-events-none"
-            style={{ backfaceVisibility: 'hidden' }}
-          />
-        </div>
-      );
-    }
-
-    return (
-      <div style={mediaContainerStyle}>
-        <img
-          src={src}
-          alt=""
-          className="w-full h-full object-contain pointer-events-none select-none"
-          draggable={false}
-          style={{ backfaceVisibility: 'hidden' }}
-        />
-      </div>
-    );
-  };
-
   if (activeMode === 'side') {
     return (
-      <div
-        onWheel={handleWheel}
-        onMouseDown={handleCanvasMouseDown}
-        className="absolute inset-0 grid grid-cols-2 gap-0.5 bg-[var(--bg-base)] select-none"
-        style={{
-          cursor: zoom > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default',
-        }}
-      >
-        <div className="relative overflow-hidden">
-          {renderMedia(inputSrc, isVideoInput, videoInputRef)}
-          <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] text-[var(--text-tertiary)] tracking-[0.06em]">
-            ORIGINAL{inputDims ? ` · ${inputDims.w}×${inputDims.h}` : ''}
-          </div>
-        </div>
-        <div className="relative overflow-hidden">
-          {renderMedia(outputSrc, isVideoOutput, videoOutputRef)}
-          <div
-            className="absolute bottom-3 right-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em]"
-            style={{ color: accentColor }}
-          >
-            UPSCALED{outputDims ? ` · ${outputDims.w}×${outputDims.h}` : ''}
-          </div>
-        </div>
-      </div>
+      <ComparisonSideView
+        handleWheel={handleWheel}
+        handleCanvasMouseDown={handleCanvasMouseDown}
+        zoom={zoom}
+        isPanning={isPanning}
+        inputSrc={inputSrc}
+        outputSrc={outputSrc}
+        isVideoInput={isVideoInput}
+        isVideoOutput={isVideoOutput}
+        videoInputRef={videoInputRef}
+        videoOutputRef={videoOutputRef}
+        panOffset={panOffset}
+        inputDims={inputDims}
+        outputDims={outputDims}
+        accentColor={accentColor}
+      />
     );
   }
 
@@ -233,9 +91,15 @@ export function ComparisonSlider({
       }}
     >
       <div className="absolute inset-0">
-        {renderMedia(outputSrc, isVideoOutput, videoOutputRef)}
+        <ComparisonMediaOverlay
+          src={outputSrc}
+          isVideo={isVideoOutput}
+          videoRef={videoOutputRef}
+          panOffset={panOffset}
+          zoom={zoom}
+          isPanning={isPanning}
+        />
       </div>
-
       <div
         className="absolute inset-0"
         style={{
@@ -244,9 +108,15 @@ export function ComparisonSlider({
           willChange: 'clip-path',
         }}
       >
-        {renderMedia(inputSrc, isVideoInput, videoInputRef)}
+        <ComparisonMediaOverlay
+          src={inputSrc}
+          isVideo={isVideoInput}
+          videoRef={videoInputRef}
+          panOffset={panOffset}
+          zoom={zoom}
+          isPanning={isPanning}
+        />
       </div>
-
       <div
         onMouseDown={handleHandleMouseDown}
         className="absolute top-0 bottom-0 w-3 -ml-[6px] z-[20] cursor-ew-resize flex justify-center items-center pointer-events-auto"
@@ -267,7 +137,6 @@ export function ComparisonSlider({
           </span>
         </div>
       </div>
-
       <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] text-[var(--text-tertiary)] tracking-[0.06em] z-10 pointer-events-none">
         ORIGINAL{inputDims ? ` · ${inputDims.w}×${inputDims.h}` : ''}
       </div>
