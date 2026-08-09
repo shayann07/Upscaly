@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { BatchItem } from '../lib/types';
-import { getMediaSrc } from '../lib/media';
+import { BatchQueueHeader } from './batch/BatchQueueHeader';
+import { BatchQueueRow } from './batch/BatchQueueRow';
 
 export type { BatchItem };
 
@@ -15,7 +16,6 @@ interface BatchQueueViewProps {
   onClear?: () => void;
   selectedScale?: number;
   currentFileDims?: { w: number; h: number } | null;
-  // Alternate prop names support
   onRemoveItem?: (id: string) => void;
   onClearCompleted?: () => void;
   onAddMoreFiles?: () => void;
@@ -49,7 +49,8 @@ export function BatchQueueView({
   const open = isHovered;
   const EASE = 'var(--ease-spring)';
 
-  const currentItem = items.find((i) => i.id === selectedId) || items[currentIndex] || items[0];
+  const currentItem =
+    items.find((i) => i.id === selectedId) || items[currentIndex] || items[0];
   const curW = currentItem ? currentItem.w || 0 : currentFileDims?.w || 0;
   const curH = currentItem ? currentItem.h || 0 : currentFileDims?.h || 0;
   const outW = curW * selectedScale;
@@ -63,7 +64,10 @@ export function BatchQueueView({
     ? Math.round(
         items.reduce(
           (a, f) =>
-            a + (f.status === 'done' || (f.status as string) === 'completed' ? 100 : f.progress),
+            a +
+            (f.status === 'done' || (f.status as string) === 'completed'
+              ? 100
+              : f.progress),
           0
         ) / items.length
       )
@@ -102,57 +106,15 @@ export function BatchQueueView({
         transition: `width .28s ${EASE}, background .28s ease, border-color .28s ease, box-shadow .28s ease`,
       }}
     >
-      {/* Header */}
-      <div
-        className="flex-none flex items-center"
-        style={{
-          height: open ? 30 : 18,
-          justifyContent: open ? 'flex-start' : 'center',
-          gap: 7,
-          padding: `0 ${open ? 12 : 0}px`,
-          borderBottom: `1px solid ${open ? 'var(--border-default)' : 'transparent'}`,
-          transition: `all .28s ${EASE}`,
-        }}
-      >
-        <span
-          className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.1em] text-[var(--text-dim)]"
-          style={{ display: open ? 'inline' : 'none' }}
-        >
-          QUEUE
-        </span>
-        <span
-          className="font-['Martian_Mono',monospace] tracking-[0.08em]"
-          style={{
-            fontSize: open ? 10 : 9,
-            color: open ? 'var(--text-secondary)' : 'var(--text-muted)',
-            transition: `all .28s ease`,
-          }}
-        >
-          {String(items.length).padStart(2, '0')}
-        </span>
-      </div>
+      <BatchQueueHeader
+        open={open}
+        itemCount={items.length}
+        doneCount={doneCount}
+        batchPct={batchPct}
+        accentColor={accentColor}
+        EASE={EASE}
+      />
 
-      {/* Batch progress bar */}
-      {open && items.length > 0 && (
-        <div className="flex-none px-2 pb-2">
-          <div className="h-[3px] rounded-sm bg-[#1B1917] overflow-hidden">
-            <div
-              className="h-full transition-all duration-300"
-              style={{
-                width: `${batchPct}%`,
-                background: accentColor,
-                transition: `width .3s ${EASE}`,
-              }}
-            />
-          </div>
-          <div className="flex justify-between mt-[7px] font-['Martian_Mono',monospace] text-[9px] text-[var(--text-muted)] tracking-[0.04em]">
-            <span>{String(doneCount).padStart(2, '0')} DONE</span>
-            <span>{batchPct}%</span>
-          </div>
-        </div>
-      )}
-
-      {/* File list */}
       <div
         style={{
           flex: '0 1 auto',
@@ -161,138 +123,25 @@ export function BatchQueueView({
           padding: open ? '0 8px 8px' : '4px 0 18px',
         }}
       >
-        {items.map((f, idx) => {
-          const active = f.id === selectedId;
-          const st = f.status;
-          const col =
-            st === 'done' || (st as string) === 'completed'
-              ? 'var(--success)'
-              : st === 'processing'
-                ? accentColor
-                : st === 'queued'
-                  ? 'var(--text-secondary)'
-                  : 'var(--text-dim)';
-          const itemPath = f.filePath || f.path || '';
-          const itemSrc = itemPath ? getMediaSrc(itemPath) : '';
-
-          return (
-            <div
-              key={f.id}
-              onClick={() => onSelect(f.id)}
-              draggable
-              onDragStart={(e) => handleDragStart(idx, e)}
-              onDragEnter={() => handleDragEnter(idx)}
-              onDragOver={(e) => e.preventDefault()}
-              onDragEnd={() => setDragFrom(null)}
-              className="relative flex items-center cursor-pointer group transition-all duration-200 hover:scale-[1.02] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
-              style={{
-                gap: open ? 11 : 0,
-                justifyContent: open ? 'flex-start' : 'center',
-                padding: open ? '6px' : '0',
-                marginBottom: open ? 3 : -13,
-                borderRadius: open ? 10 : 12,
-                border: `1px solid ${open && active ? 'var(--border-subtle)' : 'transparent'}`,
-                background: open && active ? 'var(--bg-active)' : 'transparent',
-                overflow: open ? 'hidden' : 'visible',
-                zIndex: active ? 40 : 20 - idx,
-                opacity: open || active ? 1 : 0.66,
-                transform: open
-                  ? 'none'
-                  : `translateX(${active ? 5 : 0}px) scale(${active ? 1 : 0.9})`,
-                transformOrigin: 'center left',
-              }}
-            >
-              {/* Real Thumbnail */}
-              <div
-                className="flex-none relative overflow-hidden bg-[#1B1917]"
-                style={{
-                  width: open ? (active ? 44 : 40) : 46,
-                  height: open ? (active ? 44 : 40) : 46,
-                  border: `1px solid ${active ? accentColor : open ? 'var(--border-default)' : '#3E3933'}`,
-                  borderRadius: open ? 9 : 11,
-                  boxShadow: open
-                    ? 'none'
-                    : active
-                      ? '0 12px 30px rgba(0,0,0,.7)'
-                      : '0 6px 18px rgba(0,0,0,.5)',
-                  transition: `all .24s ${EASE}`,
-                }}
-              >
-                {itemSrc && !f.isVideo ? (
-                  <img src={itemSrc} alt="" className="w-full h-full object-cover" />
-                ) : null}
-                <span
-                  className="absolute bottom-0 left-0 right-0 py-[1px] text-center bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[7px] tracking-[0.06em]"
-                  style={{ color: col }}
-                >
-                  {f.isVideo ? 'VID' : 'IMG'}
-                </span>
-              </div>
-
-              {/* Text info */}
-              <div className="flex-1 min-w-0" style={{ display: open ? 'block' : 'none' }}>
-                <div className="text-[11.5px] font-medium text-[#EDEAE6] whitespace-nowrap overflow-hidden text-ellipsis mb-0.5">
-                  {f.name}
-                </div>
-                {f.w && f.h ? (
-                  <div className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-muted)] tracking-[0.03em] whitespace-nowrap overflow-hidden text-ellipsis">
-                    {f.w}×{f.h}
-                  </div>
-                ) : null}
-              </div>
-
-              {/* Remove button if onRemoveItem present */}
-              {onRemoveItem && open && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemoveItem(f.id);
-                  }}
-                  className="w-4 h-4 hidden group-hover:flex items-center justify-center rounded text-[var(--danger-text)] text-xs transition-all duration-150 hover:scale-110"
-                >
-                  ×
-                </button>
-              )}
-
-              {/* Status */}
-              <div
-                className="flex-none font-['Martian_Mono',monospace] text-[9px]"
-                style={{ display: open ? 'block' : 'none', color: col }}
-              >
-                {st === 'done' || (st as string) === 'completed'
-                  ? '✓'
-                  : st === 'processing'
-                    ? `${Math.round(f.progress)}%`
-                    : st === 'queued'
-                      ? '···'
-                      : ''}
-              </div>
-
-              {/* Cancel item button if processing */}
-              {onCancelItem && st === 'processing' && (
-                <button
-                  onClick={() => onCancelItem(f.id)}
-                  className="text-[9px] text-[var(--danger-text)] ml-1 transition-all duration-150 hover:scale-110"
-                >
-                  ✕
-                </button>
-              )}
-
-              {/* Progress bar */}
-              <div
-                className="absolute left-0 bottom-0 h-0.5"
-                style={{
-                  width: `${st === 'processing' ? f.progress : 0}%`,
-                  background: accentColor,
-                  transition: 'width .2s linear',
-                }}
-              />
-            </div>
-          );
-        })}
+        {items.map((f, idx) => (
+          <BatchQueueRow
+            key={f.id}
+            file={f}
+            index={idx}
+            open={open}
+            active={f.id === selectedId}
+            accentColor={accentColor}
+            EASE={EASE}
+            onSelect={onSelect}
+            onDragStart={handleDragStart}
+            onDragEnter={handleDragEnter}
+            onDragEnd={() => setDragFrom(null)}
+            onRemoveItem={onRemoveItem}
+            onCancelItem={onCancelItem}
+          />
+        ))}
       </div>
 
-      {/* Footer actions */}
       <div
         className="flex-none gap-[5px] p-2 border-t border-[var(--border-default)]"
         style={{
@@ -315,7 +164,6 @@ export function BatchQueueView({
         </button>
       </div>
 
-      {/* ESTIMATE section matching handoff */}
       {open && items.length > 0 && curW > 0 && (
         <div className="flex-none p-2.5 border-t border-[var(--border-default)] flex flex-col gap-1">
           <div className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.1em] text-[var(--text-dim)]">
@@ -330,7 +178,6 @@ export function BatchQueueView({
         </div>
       )}
 
-      {/* Add button when collapsed */}
       {!open && (
         <div className="flex-none" style={{ padding: '4px 0 0' }}>
           <button
