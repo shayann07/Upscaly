@@ -134,7 +134,7 @@ fn spawn_upscale_engine(ctx: &VideoJobContext) -> Result<(), String> {
         "-f".to_string(),
         "png".to_string(),
         "-j".to_string(),
-        "1:2:2".to_string(),
+        "2:2:2".to_string(),
         "-v".to_string(),
     ];
 
@@ -156,6 +156,7 @@ fn spawn_upscale_engine(ctx: &VideoJobContext) -> Result<(), String> {
 fn poll_upscale_progress(ctx: &VideoJobContext, total_frames: usize) -> Result<(), String> {
     let total_frames_f = total_frames as f64;
     let start_time = std::time::Instant::now();
+    let mut first_frame_time: Option<std::time::Instant> = None;
 
     loop {
         if ctx.is_cancelled() {
@@ -210,15 +211,23 @@ fn poll_upscale_progress(ctx: &VideoJobContext, total_frames: usize) -> Result<(
                 })
                 .count();
 
+            if completed > 0 && first_frame_time.is_none() {
+                first_frame_time = Some(std::time::Instant::now());
+            }
+
             let upscale_ratio = completed as f64 / total_frames_f;
             let current_progress = 10.0 + (upscale_ratio * 80.0);
 
-            let elapsed = start_time.elapsed().as_secs_f64();
-            let (eta_sec, current_fps) = if completed > 0 && elapsed > 0.5 {
-                let secs_per_frame = elapsed / completed as f64;
+            let (eta_sec, current_fps) = if completed >= 2 && first_frame_time.is_some() {
+                let active_elapsed = first_frame_time.unwrap().elapsed().as_secs_f64();
+                let secs_per_frame = if completed > 1 && active_elapsed > 0.1 {
+                    active_elapsed / (completed - 1) as f64
+                } else {
+                    start_time.elapsed().as_secs_f64() / completed as f64
+                };
                 let remaining_frames = total_frames.saturating_sub(completed);
                 let eta = (remaining_frames as f64 * secs_per_frame) as u64;
-                let fps_val = 1.0 / secs_per_frame;
+                let fps_val = if secs_per_frame > 0.0 { 1.0 / secs_per_frame } else { 0.0 };
                 (Some(eta), Some((fps_val * 10.0).round() / 10.0))
             } else {
                 (None, None)

@@ -118,9 +118,10 @@ export function handleStudioJobStatus(progress: JobProgress, state: StudioJobSta
 
   if (jobFps !== undefined && jobFps > 0) {
     state.setFps(jobFps);
-  }
-
-  if (state.jobStartTimeRef?.current && percentage > 0 && state.setRateStr) {
+    if (state.setRateStr) {
+      state.setRateStr(`${jobFps.toFixed(1)} FPS`);
+    }
+  } else if (state.jobStartTimeRef?.current && percentage > 0 && state.setRateStr) {
     const elapsedSec = Math.max(0.1, (Date.now() - state.jobStartTimeRef.current) / 1000);
     let totalMp = 12.0;
     if (state.currentFileDims && state.currentFileDims.w && state.currentFileDims.h) {
