@@ -16,6 +16,7 @@ interface StudioCanvasProps {
   zoomLevel: number;
   setZoomLevel: React.Dispatch<React.SetStateAction<number>>;
   handleOpenFile: () => void;
+  handleOpenFolder?: () => void;
   handleShowInExplorerNative: (path: string) => void;
   handleClearFile: () => void;
   jobStatus: string;
@@ -66,6 +67,7 @@ export function StudioCanvas(props: StudioCanvasProps) {
     zoomLevel,
     setZoomLevel,
     handleOpenFile,
+    handleOpenFolder,
     handleShowInExplorerNative,
     handleClearFile,
     jobStatus,
@@ -117,6 +119,7 @@ export function StudioCanvas(props: StudioCanvasProps) {
         zoomLevel={zoomLevel}
         setZoomLevel={setZoomLevel}
         handleOpenFile={handleOpenFile}
+        handleOpenFolder={handleOpenFolder}
         isProc={isProc}
         progressVal={progressVal}
       />

@@ -16,6 +16,7 @@ interface StudioActionsOptions {
   customOutputPath: string;
   isMuted: boolean;
   batchItems: BatchItem[];
+  handleStartBatchUpscale?: () => void;
   supportedModels: ModelInfo[];
   installedModels: string[];
   activeJobId: string | null;
@@ -47,6 +48,8 @@ export function useStudioActions({
   tileSize,
   customOutputPath,
   isMuted,
+  batchItems,
+  handleStartBatchUpscale,
   supportedModels,
   installedModels,
   activeJobId,
@@ -80,6 +83,10 @@ export function useStudioActions({
   );
 
   const handleStartUpscale = async () => {
+    if (batchItems && batchItems.length > 1 && handleStartBatchUpscale) {
+      handleStartBatchUpscale();
+      return;
+    }
     if (!filePath || !fileName) return;
     try {
       const clientJobId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;

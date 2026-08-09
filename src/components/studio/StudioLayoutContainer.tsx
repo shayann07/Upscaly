@@ -30,6 +30,7 @@ export function StudioLayoutContainer() {
         zoomLevel={setup.zoomLevel}
         setZoomLevel={setup.setZoomLevel}
         handleOpenFile={setup.handleOpenFile}
+        handleOpenFolder={setup.handleOpenFolder}
         handleShowInExplorerNative={setup.handleShowInExplorerNative}
         handleClearFile={setup.handleClearFile}
         jobStatus={setup.jobStatus}
