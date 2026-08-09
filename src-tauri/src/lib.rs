@@ -14,10 +14,7 @@ use settings::{load_settings, save_settings, AppSettings};
 use tauri::Manager;
 
 use job_queue::{add_job_to_queue, cancel_job, Job};
-use model_manager::{
-    get_models_dir, verify_signature, ManifestData, ModelItem,
-    SignedManifest,
-};
+use model_manager::{get_models_dir, verify_signature, ManifestData, ModelItem, SignedManifest};
 use sidecar_manager::{get_gpu_list, kill_all_processes, GpuDevice};
 
 // Baked-in public key for verifying signed model manifests.

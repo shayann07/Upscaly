@@ -28,9 +28,7 @@ export const UpscaleButton: React.FC<UpscaleButtonProps> = ({
       ) : (
         <Play size={15} weight="fill" className={disabled ? 'text-zinc-600' : 'text-white'} />
       )}
-      <span>
-        {isProcessing ? 'Processing...' : 'Upscale Media'}
-      </span>
+      <span>{isProcessing ? 'Processing...' : 'Upscale Media'}</span>
     </button>
   );
 };

@@ -58,7 +58,11 @@ export function getModelMetadata(modelId: string): ModelMetadata {
   return {
     id: modelId,
     name: modelId.replace(/[-_]/g, ' '),
-    description: isVideo ? 'Optimized for Video Frame Sequences' : isAnime ? 'Optimized for 2D Art & Anime' : 'Photorealistic AI Upscaler',
+    description: isVideo
+      ? 'Optimized for Video Frame Sequences'
+      : isAnime
+        ? 'Optimized for 2D Art & Anime'
+        : 'Photorealistic AI Upscaler',
     category: isVideo ? 'video' : isAnime ? 'anime' : 'photos',
     scale,
   };
@@ -69,15 +73,15 @@ export function filterModelsByCategory(
   category: 'photos' | 'anime' | 'video'
 ): string[] {
   // If installedModels is empty, fall back to all known models in MODEL_REGISTRY
-  const list = installedModels && installedModels.length > 0
-    ? installedModels
-    : Object.keys(MODEL_REGISTRY);
+  const list =
+    installedModels && installedModels.length > 0 ? installedModels : Object.keys(MODEL_REGISTRY);
 
   const matched = list.filter((id) => {
     const meta = getModelMetadata(id);
     if (category === 'photos') return meta.category === 'photos';
     if (category === 'anime') return meta.category === 'anime';
-    if (category === 'video') return meta.category === 'video' || id.includes('animevideov3') || id.includes('video');
+    if (category === 'video')
+      return meta.category === 'video' || id.includes('animevideov3') || id.includes('video');
     return true;
   });
 

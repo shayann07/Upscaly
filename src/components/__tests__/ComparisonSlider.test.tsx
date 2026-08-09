@@ -9,4 +9,3 @@ describe('ComparisonSlider Component', () => {
     expect(screen.getByText(/UPSCALED/i)).toBeInTheDocument();
   });
 });
-

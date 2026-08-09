@@ -1,5 +1,11 @@
 import React from 'react';
-import { X, Image as ImageIcon, Video as VideoIcon, ArrowRight, Sparkle } from '@phosphor-icons/react';
+import {
+  X,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  ArrowRight,
+  Sparkle,
+} from '@phosphor-icons/react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
 interface FilePreviewProps {
@@ -21,9 +27,9 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
   onRemove,
   isProcessing = false,
 }) => {
-  const name = fileName || filePath.split(/[\\/]/).pop() || "";
-  const ext = filePath.split(".").pop()?.toLowerCase() || "";
-  const checkIsVideo = isVideo || ["mp4", "mkv", "mov", "avi", "webm"].includes(ext);
+  const name = fileName || filePath.split(/[\\/]/).pop() || '';
+  const ext = filePath.split('.').pop()?.toLowerCase() || '';
+  const checkIsVideo = isVideo || ['mp4', 'mkv', 'mov', 'avi', 'webm'].includes(ext);
 
   const formatSize = (bytes: number) => {
     if (bytes === 0) return 'Local File';
@@ -31,7 +37,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
     return `${mb.toFixed(2)} MB`;
   };
 
-  const src = filePath ? convertFileSrc(filePath) : "";
+  const src = filePath ? convertFileSrc(filePath) : '';
 
   // If used inside unified stage with filename/scale info:
   if (fileName || onRemove) {
@@ -83,8 +89,8 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
           src={src}
           className="absolute inset-0 w-full h-full object-contain"
           style={{
-            filter: isProcessing ? "saturate(.7) brightness(.86)" : "none",
-            transition: "filter .3s ease",
+            filter: isProcessing ? 'saturate(.7) brightness(.86)' : 'none',
+            transition: 'filter .3s ease',
           }}
           autoPlay
           loop
@@ -96,11 +102,11 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
           className="absolute inset-0"
           style={{
             backgroundImage: `url(${src})`,
-            backgroundSize: "contain",
-            backgroundPosition: "center",
-            backgroundRepeat: "no-repeat",
-            filter: isProcessing ? "saturate(.7) brightness(.86)" : "none",
-            transition: "filter .3s ease",
+            backgroundSize: 'contain',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            filter: isProcessing ? 'saturate(.7) brightness(.86)' : 'none',
+            transition: 'filter .3s ease',
           }}
         />
       )}

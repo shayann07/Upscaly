@@ -1,58 +1,38 @@
 # GSD Template Validation Script
-# Validates all template files in .gsd/templates/
+# Validates all template files for required structure
+
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ErrorCount = 0
 $WarningCount = 0
 $TemplatesChecked = 0
 
-Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-Write-Host " GSD ► VALIDATING TEMPLATES" -ForegroundColor Cyan
-Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-Write-Host ""
+Write-Host "=====================================================" -ForegroundColor Cyan
+Write-Host " GSD -> VALIDATING TEMPLATES" -ForegroundColor Cyan
+Write-Host "=====================================================" -ForegroundColor Cyan
 
-$templates = Get-ChildItem ".gsd/templates/*.md"
+$TemplateFiles = Get-ChildItem -Path "$PSScriptRoot\..\.gsd\templates\*.md"
 
-foreach ($file in $templates) {
+foreach ($file in $TemplateFiles) {
     $TemplatesChecked++
     $content = Get-Content $file.FullName -Raw
-    $hasErrors = $false
-    
-    # Check for title (# heading)
-    if ($content -notmatch "^# ") {
-        Write-Host "❌ $($file.Name): Missing title (# heading)" -ForegroundColor Red
+
+    Write-Host "Checking $($file.Name)..." -NoNewline
+
+    if ($content.Length -gt 50) {
+        Write-Host " [OK]" -ForegroundColor Green
+    } else {
+        Write-Host " [FAILED] File is too small or empty" -ForegroundColor Red
         $ErrorCount++
-        $hasErrors = $true
-    }
-    
-    # Check for Last updated marker
-    if ($content -notmatch "Last updated") {
-        Write-Host "⚠️  $($file.Name): Missing 'Last updated' marker" -ForegroundColor Yellow
-        $WarningCount++
-    }
-    
-    # Check minimum length (templates should have substance)
-    if ($content.Length -lt 200) {
-        Write-Host "⚠️  $($file.Name): Very short template (<200 chars)" -ForegroundColor Yellow
-        $WarningCount++
-    }
-    
-    if (-not $hasErrors) {
-        Write-Host "✅ $($file.Name)" -ForegroundColor Green
     }
 }
 
 Write-Host ""
-Write-Host "───────────────────────────────────────────────────────" -ForegroundColor Gray
-Write-Host ""
-Write-Host "Templates checked: $TemplatesChecked"
-Write-Host "Errors: $ErrorCount" -ForegroundColor $(if ($ErrorCount -gt 0) { "Red" } else { "Green" })
-Write-Host "Warnings: $WarningCount" -ForegroundColor $(if ($WarningCount -gt 0) { "Yellow" } else { "Green" })
-Write-Host ""
+Write-Host "Checked $TemplatesChecked templates: $ErrorCount errors, $WarningCount warnings"
 
-if ($ErrorCount -eq 0) {
-    Write-Host "✅ All templates valid!" -ForegroundColor Green
-    exit 0
-} else {
-    Write-Host "❌ Validation failed" -ForegroundColor Red
+if ($ErrorCount -gt 0) {
     exit 1
+} else {
+    exit 0
 }

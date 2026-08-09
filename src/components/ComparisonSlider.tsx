@@ -1,13 +1,13 @@
-import { useRef, useState, useEffect, useCallback, useMemo } from "react";
-import { getMediaSrc } from "../lib/media";
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import { getMediaSrc } from '../lib/media';
 
 interface ComparisonSliderProps {
   inputPath?: string;
   outputPath?: string;
   originalPath?: string;
   upscaledPath?: string;
-  mode?: "split" | "side";
-  viewMode?: "split" | "side-by-side";
+  mode?: 'split' | 'side';
+  viewMode?: 'split' | 'side-by-side';
   zoom?: number;
   onZoomChange?: (newZoom: number) => void;
   accentColor?: string;
@@ -20,11 +20,11 @@ export function ComparisonSlider({
   outputPath,
   originalPath,
   upscaledPath,
-  mode = "split",
+  mode = 'split',
   viewMode,
   zoom = 1,
   onZoomChange,
-  accentColor = "var(--accent)",
+  accentColor = 'var(--accent)',
 }: ComparisonSliderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoInputRef = useRef<HTMLVideoElement>(null);
@@ -40,12 +40,18 @@ export function ComparisonSlider({
   const [inputDims, setInputDims] = useState<{ w: number; h: number } | null>(null);
   const [outputDims, setOutputDims] = useState<{ w: number; h: number } | null>(null);
 
-  const realInputPath = inputPath || originalPath || "";
-  const realOutputPath = outputPath || upscaledPath || "";
-  const activeMode = viewMode === "side-by-side" ? "side" : mode;
+  const realInputPath = inputPath || originalPath || '';
+  const realOutputPath = outputPath || upscaledPath || '';
+  const activeMode = viewMode === 'side-by-side' ? 'side' : mode;
 
-  const isVideoInput = useMemo(() => /\.(mp4|mkv|mov|avi|webm)$/i.test(realInputPath), [realInputPath]);
-  const isVideoOutput = useMemo(() => /\.(mp4|mkv|mov|avi|webm)$/i.test(realOutputPath), [realOutputPath]);
+  const isVideoInput = useMemo(
+    () => /\.(mp4|mkv|mov|avi|webm)$/i.test(realInputPath),
+    [realInputPath]
+  );
+  const isVideoOutput = useMemo(
+    () => /\.(mp4|mkv|mov|avi|webm)$/i.test(realOutputPath),
+    [realOutputPath]
+  );
 
   const inputSrc = useMemo(() => getMediaSrc(realInputPath), [realInputPath]);
   const outputSrc = useMemo(() => getMediaSrc(realOutputPath), [realOutputPath]);
@@ -69,7 +75,7 @@ export function ComparisonSlider({
 
     if (inputSrc) {
       if (isVideoInput) {
-        const vid1 = document.createElement("video");
+        const vid1 = document.createElement('video');
         vid1.onloadedmetadata = () => {
           if (isMounted) setInputDims({ w: vid1.videoWidth, h: vid1.videoHeight });
         };
@@ -85,7 +91,7 @@ export function ComparisonSlider({
 
     if (outputSrc) {
       if (isVideoOutput) {
-        const vid2 = document.createElement("video");
+        const vid2 = document.createElement('video');
         vid2.onloadedmetadata = () => {
           if (isMounted) setOutputDims({ w: vid2.videoWidth, h: vid2.videoHeight });
         };
@@ -119,27 +125,27 @@ export function ComparisonSlider({
       }
     };
 
-    v1.addEventListener("timeupdate", syncTime);
-    return () => v1.removeEventListener("timeupdate", syncTime);
+    v1.addEventListener('timeupdate', syncTime);
+    return () => v1.removeEventListener('timeupdate', syncTime);
   }, [inputSrc, outputSrc, activeMode]);
 
   // Space hold for reveal
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === "Space" && e.target === document.body) {
+      if (e.code === 'Space' && e.target === document.body) {
         e.preventDefault();
         setIsHolding(true);
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "Space") setIsHolding(false);
+      if (e.code === 'Space') setIsHolding(false);
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
     };
   }, []);
 
@@ -153,16 +159,13 @@ export function ComparisonSlider({
     }
   };
 
-  const updateSlider = useCallback(
-    (clientX: number) => {
-      const container = containerRef.current;
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
-      const pct = Math.max(1, Math.min(99, ((clientX - rect.left) / rect.width) * 100));
-      setSliderPct(pct);
-    },
-    []
-  );
+  const updateSlider = useCallback((clientX: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const pct = Math.max(1, Math.min(99, ((clientX - rect.left) / rect.width) * 100));
+    setSliderPct(pct);
+  }, []);
 
   // Background canvas mouse down
   const handleCanvasMouseDown = useCallback(
@@ -171,7 +174,7 @@ export function ComparisonSlider({
       if (zoom > 1) {
         setIsPanning(true);
         setStartPan({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
-      } else if (activeMode === "split") {
+      } else if (activeMode === 'split') {
         setIsDragging(true);
         updateSlider(e.clientX);
       }
@@ -207,29 +210,33 @@ export function ComparisonSlider({
       setIsPanning(false);
     };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
     return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isDragging, isPanning, startPan, updateSlider]);
 
   const mediaContainerStyle: React.CSSProperties = {
-    position: "absolute",
+    position: 'absolute',
     inset: 0,
     transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0px) scale3d(${zoom}, ${zoom}, 1)`,
-    transformOrigin: "center center",
-    transition: isPanning ? "none" : "transform 0.12s cubic-bezier(0.16, 1, 0.3, 1)",
-    willChange: "transform",
-    backfaceVisibility: "hidden",
-    WebkitBackfaceVisibility: "hidden",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    transformOrigin: 'center center',
+    transition: isPanning ? 'none' : 'transform 0.12s cubic-bezier(0.16, 1, 0.3, 1)',
+    willChange: 'transform',
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   };
 
-  const renderMedia = (src: string, isVideo: boolean, ref?: React.RefObject<HTMLVideoElement | null>) => {
+  const renderMedia = (
+    src: string,
+    isVideo: boolean,
+    ref?: React.RefObject<HTMLVideoElement | null>
+  ) => {
     if (!src) return null;
 
     if (isVideo) {
@@ -248,7 +255,7 @@ export function ComparisonSlider({
               }
             }}
             className="w-full h-full object-contain pointer-events-none"
-            style={{ backfaceVisibility: "hidden" }}
+            style={{ backfaceVisibility: 'hidden' }}
           />
         </div>
       );
@@ -261,30 +268,33 @@ export function ComparisonSlider({
           alt=""
           className="w-full h-full object-contain pointer-events-none select-none"
           draggable={false}
-          style={{ backfaceVisibility: "hidden" }}
+          style={{ backfaceVisibility: 'hidden' }}
         />
       </div>
     );
   };
 
-  if (activeMode === "side") {
+  if (activeMode === 'side') {
     return (
       <div
         onWheel={handleWheel}
         onMouseDown={handleCanvasMouseDown}
         className="absolute inset-0 grid grid-cols-2 gap-0.5 bg-[var(--bg-base)] select-none"
-        style={{ cursor: zoom > 1 ? (isPanning ? "grabbing" : "grab") : "default" }}
+        style={{ cursor: zoom > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default' }}
       >
         <div className="relative overflow-hidden">
           {renderMedia(inputSrc, isVideoInput, videoInputRef)}
           <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] text-[var(--text-tertiary)] tracking-[0.06em]">
-            ORIGINAL{inputDims ? ` · ${inputDims.w}×${inputDims.h}` : ""}
+            ORIGINAL{inputDims ? ` · ${inputDims.w}×${inputDims.h}` : ''}
           </div>
         </div>
         <div className="relative overflow-hidden">
           {renderMedia(outputSrc, isVideoOutput, videoOutputRef)}
-          <div className="absolute bottom-3 right-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em]" style={{ color: accentColor }}>
-            UPSCALED{outputDims ? ` · ${outputDims.w}×${outputDims.h}` : ""}
+          <div
+            className="absolute bottom-3 right-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em]"
+            style={{ color: accentColor }}
+          >
+            UPSCALED{outputDims ? ` · ${outputDims.w}×${outputDims.h}` : ''}
           </div>
         </div>
       </div>
@@ -298,7 +308,7 @@ export function ComparisonSlider({
       onWheel={handleWheel}
       onMouseDown={handleCanvasMouseDown}
       className="absolute inset-0 overflow-hidden select-none"
-      style={{ cursor: zoom > 1 ? (isPanning ? "grabbing" : "grab") : "ew-resize" }}
+      style={{ cursor: zoom > 1 ? (isPanning ? 'grabbing' : 'grab') : 'ew-resize' }}
     >
       {/* Output (upscaled) layer — full frame */}
       <div className="absolute inset-0">
@@ -310,8 +320,8 @@ export function ComparisonSlider({
         className="absolute inset-0"
         style={{
           clipPath: `inset(0 ${isHolding ? 0 : 100 - sliderPct}% 0 0)`,
-          transition: isDragging ? "none" : "clip-path .08s linear",
-          willChange: "clip-path",
+          transition: isDragging ? 'none' : 'clip-path .08s linear',
+          willChange: 'clip-path',
         }}
       >
         {renderMedia(inputSrc, isVideoInput, videoInputRef)}
@@ -324,8 +334,8 @@ export function ComparisonSlider({
         style={{
           left: `${isHolding ? 100 : sliderPct}%`,
           opacity: isHolding ? 0 : 1,
-          transition: isDragging ? "none" : "left .08s linear",
-          willChange: "left",
+          transition: isDragging ? 'none' : 'left .08s linear',
+          willChange: 'left',
         }}
       >
         <div className="w-px h-full bg-[var(--text-primary)] shadow-[0_0_8px_rgba(0,0,0,.8)]" />
@@ -333,21 +343,23 @@ export function ComparisonSlider({
         {/* Handle */}
         <div
           className="absolute top-1/2 w-7 h-7 rounded-full bg-[var(--text-primary)] flex items-center justify-center cursor-ew-resize shadow-[0_4px_14px_rgba(0,0,0,.6)] transition-transform duration-150 hover:scale-110 active:scale-95 pointer-events-auto"
-          style={{ transform: "translateY(-50%)" }}
+          style={{ transform: 'translateY(-50%)' }}
         >
-          <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--bg-base)] tracking-[0.04em]">◀▶</span>
+          <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--bg-base)] tracking-[0.04em]">
+            ◀▶
+          </span>
         </div>
       </div>
 
       {/* Labels */}
       <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] text-[var(--text-tertiary)] tracking-[0.06em] z-10 pointer-events-none">
-        ORIGINAL{inputDims ? ` · ${inputDims.w}×${inputDims.h}` : ""}
+        ORIGINAL{inputDims ? ` · ${inputDims.w}×${inputDims.h}` : ''}
       </div>
       <div
         className="absolute bottom-3 right-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] z-10 pointer-events-none"
         style={{ color: accentColor }}
       >
-        UPSCALED{outputDims ? ` · ${outputDims.w}×${outputDims.h}` : ""}
+        UPSCALED{outputDims ? ` · ${outputDims.w}×${outputDims.h}` : ''}
       </div>
     </div>
   );

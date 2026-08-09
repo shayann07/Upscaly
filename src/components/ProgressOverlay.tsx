@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { motion } from 'framer-motion';
 
 interface ProgressOverlayProps {
   phase?: string;
@@ -15,11 +15,11 @@ interface ProgressOverlayProps {
 }
 
 export function ProgressOverlay({
-  phase = "PREPARING",
-  eta = "--:--",
-  rate = "-- MP/s",
-  vram = "-- GB",
-  tileCount = "AUTO",
+  phase = 'PREPARING',
+  eta = '--:--',
+  rate = '-- MP/s',
+  vram = '-- GB',
+  tileCount = 'AUTO',
   onCancel = () => {},
   percentage,
   statusText,
@@ -28,36 +28,36 @@ export function ProgressOverlay({
 }: ProgressOverlayProps) {
   const displayEta =
     etaSeconds !== undefined && etaSeconds > 0
-      ? `${Math.floor(etaSeconds / 60)}:${(etaSeconds % 60).toString().padStart(2, "0")}`
-      : eta !== "--:--"
-      ? eta
-      : "0:05";
+      ? `${Math.floor(etaSeconds / 60)}:${(etaSeconds % 60).toString().padStart(2, '0')}`
+      : eta !== '--:--'
+        ? eta
+        : '0:05';
 
   const rawPhase = statusText || phase;
-  
+
   // Format percentage cleanly without duplicate numbers
-  const hasPercentage = rawPhase.includes("%");
+  const hasPercentage = rawPhase.includes('%');
   const displayPhase = hasPercentage
     ? rawPhase
     : percentage !== undefined
-    ? `${rawPhase} · ${percentage.toFixed(1)}%`
-    : rawPhase;
+      ? `${rawPhase} · ${percentage.toFixed(1)}%`
+      : rawPhase;
 
   const displayRate = fps !== undefined && fps > 0 ? `${fps.toFixed(1)} FPS` : rate;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 14, x: "-50%" }}
-      animate={{ opacity: 1, y: 0, x: "-50%" }}
-      exit={{ opacity: 0, y: 14, x: "-50%" }}
+      initial={{ opacity: 0, y: 14, x: '-50%' }}
+      animate={{ opacity: 1, y: 0, x: '-50%' }}
+      exit={{ opacity: 0, y: 14, x: '-50%' }}
       transition={{ duration: 0.3, ease: [0.22, 1.3, 0.36, 1] }}
       className="absolute bottom-[78px] left-1/2 flex items-center gap-4 z-[35] select-none transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
       style={{
-        padding: "11px 14px",
-        border: "1px solid var(--border-subtle)",
+        padding: '11px 14px',
+        border: '1px solid var(--border-subtle)',
         borderRadius: 12,
-        background: "rgba(11,10,9,.95)",
-        boxShadow: "0 18px 44px rgba(0,0,0,.65)",
+        background: 'rgba(11,10,9,.95)',
+        boxShadow: '0 18px 44px rgba(0,0,0,.65)',
       }}
     >
       {/* Phase label */}

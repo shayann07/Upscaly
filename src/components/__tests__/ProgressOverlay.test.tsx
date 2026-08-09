@@ -34,4 +34,3 @@ describe('ProgressOverlay Component', () => {
     expect(handleCancel).toHaveBeenCalledTimes(1);
   });
 });
-
