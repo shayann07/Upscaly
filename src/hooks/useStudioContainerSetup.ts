@@ -130,7 +130,8 @@ export function useStudioContainerSetup() {
     ...batch,
     ...telemetry,
     handleStartUpscale,
-    handleSelectModel: catalog.setSelectedModel,
+    handleSelectModel: actions.handleSelectModel,
+    setScale: actions.handleSelectScale,
     handleSelectDestinationFolder: settings.handleSelectDestinationFolder,
     handleLoadHistoryItem: actions.handleSelectHistoryItem,
   };

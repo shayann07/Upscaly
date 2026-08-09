@@ -376,6 +376,16 @@ fn run_single_image_job(
     let thread_profile = compute_workload_threads(&job.input_path, job.is_video);
     let tile_size = normalize_tile_size(job.tile_size);
 
+    let effective_scale = if job.model_name.contains("x4") || job.model_name.contains("ultra") {
+        4
+    } else if job.model_name.contains("x3") {
+        3
+    } else if job.model_name.contains("x2") {
+        2
+    } else {
+        job.scale
+    };
+
     let args = vec![
         "-i".to_string(),
         job.input_path.clone(),
@@ -388,7 +398,7 @@ fn run_single_image_job(
         "-g".to_string(),
         job.gpu_id.to_string(),
         "-s".to_string(),
-        job.scale.to_string(),
+        effective_scale.to_string(),
         "-t".to_string(),
         tile_size.to_string(),
         "-j".to_string(),
