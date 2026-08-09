@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { DeviceSelectorSection } from './settings/DeviceSelectorSection';
 
 export interface GpuInfo {
   id: number;
@@ -45,15 +46,21 @@ export function AdvancedSettings({
 
   const devices: GpuInfo[] =
     availableGpus ||
-    (gpus ? gpus.map((g) => ({ id: g.id, name: g.name, detail: g.detail || 'VULKAN' })) : []);
+    (gpus
+      ? gpus.map((g) => ({
+          id: g.id,
+          name: g.name,
+          detail: g.detail || 'VULKAN',
+        }))
+      : []);
   const handleTileSize = onSetTileSize || onSelectTileSize || (() => {});
-  const displayOutputDir = customOutputPath !== undefined ? customOutputPath : outputDir;
+  const displayOutputDir =
+    customOutputPath !== undefined ? customOutputPath : outputDir;
 
   const currentGpu = useMemo(() => {
     return devices.find((g) => g.id === selectedGpu) || devices[0];
   }, [devices, selectedGpu]);
 
-  // Extract total VRAM from GPU name/detail string (e.g. "RTX 3050 6GB" -> 6)
   const totalVramGb = useMemo(() => {
     if (!currentGpu) return 8;
     const match =
@@ -71,12 +78,16 @@ export function AdvancedSettings({
     return 8;
   }, [currentGpu]);
 
-  // Dynamic VRAM calculations based on job status & selected tile size
   const usedVramGb = useMemo(() => {
     const baseIdle = Math.round(totalVramGb * 0.12 * 10) / 10;
-    // Tile size memory footprint estimation
     const tileFootprint =
-      tileSize === 512 ? 3.0 : tileSize === 256 ? 1.5 : tileSize === 128 ? 0.7 : 1.2;
+      tileSize === 512
+        ? 3.0
+        : tileSize === 256
+          ? 1.5
+          : tileSize === 128
+            ? 0.7
+            : 1.2;
     if (isProcessing) {
       return Math.round((baseIdle + tileFootprint * 1.1) * 10) / 10;
     }
@@ -93,7 +104,7 @@ export function AdvancedSettings({
       (currentGpu.name.toLowerCase().includes('intel') ||
         currentGpu.name.toLowerCase().includes('uhd'));
     if (isIntel) {
-      recTile = 256; // 256px tile size reduces tile overhead by 75% on Intel iGPUs
+      recTile = 256;
     } else if (totalVramGb <= 4) {
       recTile = 256;
     } else if (totalVramGb <= 8) {
@@ -114,7 +125,6 @@ export function AdvancedSettings({
 
   return (
     <div className="h-full flex flex-col border border-[var(--border-subtle)] rounded-[14px] bg-[rgba(13,12,11,.97)] shadow-[var(--shadow-panel)] overflow-hidden select-none">
-      {/* Header */}
       <div className="h-[38px] flex-none flex items-center justify-between px-3 border-b border-[var(--border-default)]">
         <span className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.1em] text-[var(--text-muted)]">
           SETTINGS
@@ -128,64 +138,18 @@ export function AdvancedSettings({
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0">
-        {/* GPU Selection */}
-        <div className="p-3.5 border-b border-[var(--border-default)]">
-          <div className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.1em] text-[var(--text-dim)] mb-2.5">
-            DEVICE
-          </div>
-          {devices.map((gpu) => (
-            <div
-              key={gpu.id}
-              onClick={() => onSelectGpu(gpu.id)}
-              className="flex items-center gap-2.5 p-2.5 mb-1.5 cursor-pointer rounded-[10px] transition-all duration-200 hover:scale-[1.02] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
-              style={{
-                border: `1px solid ${selectedGpu === gpu.id ? 'var(--border-subtle)' : 'var(--border-default)'}`,
-                background: selectedGpu === gpu.id ? 'var(--bg-active)' : 'transparent',
-              }}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="text-[11.5px] font-semibold text-[#EDEAE6] whitespace-nowrap overflow-hidden text-ellipsis">
-                  {gpu.name}
-                </div>
-                <div className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.04em] mt-0.5">
-                  {gpu.detail}
-                </div>
-              </div>
-              {selectedGpu === gpu.id && (
-                <span className="flex-none w-3 text-[11px]" style={{ color: accentColor }}>
-                  ✓
-                </span>
-              )}
-            </div>
-          ))}
+        <DeviceSelectorSection
+          devices={devices}
+          selectedGpu={selectedGpu}
+          onSelectGpu={onSelectGpu}
+          accentColor={accentColor}
+          isOverflowing={isOverflowing}
+          usedVramGb={usedVramGb}
+          totalVramGb={totalVramGb}
+          vramPct={vramPct}
+          EASE={EASE}
+        />
 
-          {/* Dynamic VRAM Meter */}
-          <div className="mt-3">
-            <div className="flex justify-between items-baseline font-['Martian_Mono',monospace] text-[9px] tracking-[0.05em] mb-1.5">
-              <span style={{ color: isOverflowing ? '#E88A80' : 'var(--text-dim)' }}>
-                VRAM {isOverflowing ? '· OVERFLOW' : ''}
-              </span>
-              <span>
-                <span style={{ color: isOverflowing ? '#E88A80' : '#DDD8D2' }}>
-                  {usedVramGb.toFixed(1)} GB
-                </span>
-                <span className="text-[var(--text-dim)]"> / {totalVramGb.toFixed(1)} GB</span>
-              </span>
-            </div>
-            <div className="h-1 rounded-sm bg-[#1B1917] overflow-hidden shadow-[inset_0_0_0_1px_var(--border-default)]">
-              <div
-                className="h-full transition-all duration-300"
-                style={{
-                  width: `${vramPct}%`,
-                  background: isOverflowing ? '#E88A80' : accentColor,
-                  transition: `width .3s ${EASE}, background .3s ${EASE}`,
-                }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Tile Size */}
         <div className="p-3.5 border-b border-[var(--border-default)]">
           <div className="flex items-baseline justify-between mb-2.5">
             <span className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.1em] text-[var(--text-dim)]">
@@ -242,7 +206,6 @@ export function AdvancedSettings({
           </div>
         </div>
 
-        {/* Output Directory */}
         <div className="p-3.5">
           <div className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.1em] text-[var(--text-dim)] mb-2.5">
             OUTPUT DIRECTORY
@@ -251,7 +214,9 @@ export function AdvancedSettings({
             <input
               type="text"
               value={displayOutputDir}
-              onChange={(e) => onSetOutputDir && onSetOutputDir(e.target.value)}
+              onChange={(e) =>
+                onSetOutputDir && onSetOutputDir(e.target.value)
+              }
               placeholder="System Default"
               className="flex-1 min-w-0 px-2.5 py-2 border border-[var(--border-default)] rounded-lg bg-[var(--bg-elevated)] font-['Martian_Mono',monospace] text-[10px] text-[var(--text-secondary)] outline-none transition-all duration-200 focus:border-[var(--border-hover)] focus:text-[var(--text-primary)]"
             />
