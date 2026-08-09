@@ -93,17 +93,55 @@ export function useComparisonMedia({
     const v2 = videoOutputRef.current;
     if (!v1 || !v2) return;
 
-    v1.play().catch(() => {});
-    v2.play().catch(() => {});
+    let isSeeking = false;
+    let lastSeekTime = 0;
 
-    const syncTime = () => {
-      if (Math.abs(v1.currentTime - v2.currentTime) > 0.08) {
+    const handlePlay = () => {
+      v2.play().catch(() => {});
+    };
+
+    const handlePause = () => {
+      v2.pause();
+      v2.currentTime = v1.currentTime;
+    };
+
+    const handleSeeking = () => {
+      isSeeking = true;
+      v2.currentTime = v1.currentTime;
+    };
+
+    const handleSeeked = () => {
+      isSeeking = false;
+      v2.currentTime = v1.currentTime;
+    };
+
+    const handleTimeUpdate = () => {
+      if (isSeeking) return;
+      const now = Date.now();
+      const drift = Math.abs(v1.currentTime - v2.currentTime);
+      // Only resync if playback drift exceeds 350ms and we haven't resynced in the last 1.5s
+      if (drift > 0.35 && now - lastSeekTime > 1500) {
+        lastSeekTime = now;
         v2.currentTime = v1.currentTime;
       }
     };
 
-    v1.addEventListener('timeupdate', syncTime);
-    return () => v1.removeEventListener('timeupdate', syncTime);
+    v1.addEventListener('play', handlePlay);
+    v1.addEventListener('pause', handlePause);
+    v1.addEventListener('seeking', handleSeeking);
+    v1.addEventListener('seeked', handleSeeked);
+    v1.addEventListener('timeupdate', handleTimeUpdate);
+
+    v1.play().catch(() => {});
+    v2.play().catch(() => {});
+
+    return () => {
+      v1.removeEventListener('play', handlePlay);
+      v1.removeEventListener('pause', handlePause);
+      v1.removeEventListener('seeking', handleSeeking);
+      v1.removeEventListener('seeked', handleSeeked);
+      v1.removeEventListener('timeupdate', handleTimeUpdate);
+    };
   }, [inputSrc, outputSrc, activeMode]);
 
   return {

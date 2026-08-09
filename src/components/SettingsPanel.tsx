@@ -62,7 +62,10 @@ function getModelListData(
     modelsList.find((m: ModelInfo) => m.id === selectedModel) ||
     modelsList[0] ||
     SUPPORTED_MODELS[0];
-  const filteredModels = modelsList.filter((m: ModelInfo) => m.cat === activeCategory);
+  const filteredModels =
+    activeCategory === 'video'
+      ? modelsList
+      : modelsList.filter((m: ModelInfo) => m.cat === activeCategory);
   return { modelsList, model, filteredModels };
 }
 
