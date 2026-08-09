@@ -37,4 +37,21 @@ windows-sys = { version = "0.52", features = ["Win32_System_JobObjects", "Win32_
 image = "0.25"
 
 
+[lints.rust]
+unsafe_code = "allow"
+dead_code = "allow"
+unused_variables = "allow"
 
+[lints.clippy]
+pedantic = { level = "allow", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+correctness = { level = "deny", priority = -1 }
+cognitive_complexity = "allow"
+too_many_arguments = "allow"
+unwrap_used = "allow"
+manual_range_contains = "allow"
+unnecessary_map_or = "allow"
+suspicious_open_options = "allow"
+new_without_default = "allow"
+needless_borrows_for_generic_args = "allow"

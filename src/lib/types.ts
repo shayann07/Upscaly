@@ -16,7 +16,11 @@ export interface ModelInfo {
   scale: number;
   size: string;
   speed: number;
-  installed: boolean;
+  version?: string;
+  installed?: boolean;
+  hasUpdate?: boolean;
+  isCorrupt?: boolean;
+  isCustom?: boolean;
 }
 
 export interface HistoryEntry {
@@ -75,7 +79,6 @@ export const SUPPORTED_MODELS: ModelInfo[] = [
     scale: 4,
     size: "67.0 MB",
     speed: 1.0,
-    installed: true,
   },
   {
     id: "realesrgan-x4plus-anime",
@@ -85,7 +88,6 @@ export const SUPPORTED_MODELS: ModelInfo[] = [
     scale: 4,
     size: "17.9 MB",
     speed: 1.5,
-    installed: true,
   },
   {
     id: "realesr-animevideov3-x2",
@@ -95,7 +97,6 @@ export const SUPPORTED_MODELS: ModelInfo[] = [
     scale: 2,
     size: "2.4 MB",
     speed: 3.3,
-    installed: true,
   },
   {
     id: "realesr-animevideov3-x3",
@@ -105,7 +106,6 @@ export const SUPPORTED_MODELS: ModelInfo[] = [
     scale: 3,
     size: "2.4 MB",
     speed: 2.4,
-    installed: false,
   },
   {
     id: "realesr-animevideov3-x4",
@@ -115,7 +115,6 @@ export const SUPPORTED_MODELS: ModelInfo[] = [
     scale: 4,
     size: "2.4 MB",
     speed: 1.8,
-    installed: false,
   },
 ];
 

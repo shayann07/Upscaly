@@ -20,10 +20,10 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost blob: data:; media-src 'self' asset: https://asset.localhost blob: data:; script-src 'self'; style-src 'self' 'unsafe-inline';",
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": ["$PICTURE/**", "$VIDEO/**", "$DOCUMENT/**", "$DOWNLOAD/**", "$DESKTOP/**", "$APPDATA/**", "$APPCONFIG/**", "$TEMP/**"]
       }
     }
   },

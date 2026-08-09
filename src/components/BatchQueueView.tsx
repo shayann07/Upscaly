@@ -206,7 +206,7 @@ export function BatchQueueView({
 
               {/* Text info */}
               <div className="flex-1 min-w-0" style={{ display: open ? "block" : "none" }}>
-                <div className="text-[11.5px] font-medium text-[#EDEAE6] whitespace-nowrap overflow-hidden text-ellipsis mb-0.5">{f.name || (f as any).fileName}</div>
+                <div className="text-[11.5px] font-medium text-[#EDEAE6] whitespace-nowrap overflow-hidden text-ellipsis mb-0.5">{f.name}</div>
                 {f.w && f.h ? (
                   <div className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-muted)] tracking-[0.03em] whitespace-nowrap overflow-hidden text-ellipsis">
                     {f.w}×{f.h}

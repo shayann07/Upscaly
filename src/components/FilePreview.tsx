@@ -31,7 +31,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
     return `${mb.toFixed(2)} MB`;
   };
 
-  const src = convertFileSrc(filePath);
+  const src = filePath ? convertFileSrc(filePath) : "";
 
   // If used inside unified stage with filename/scale info:
   if (fileName || onRemove) {

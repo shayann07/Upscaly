@@ -1,9 +1,9 @@
-use tauri::{AppHandle, Manager, path::BaseDirectory};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::process::{Command, Stdio, Child};
+use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Serialize, Deserialize};
+use tauri::{path::BaseDirectory, AppHandle, Manager};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GpuDevice {
@@ -49,7 +49,10 @@ pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBu
     };
 
     // 1. Try resolving via tauri Resource directory
-    if let Ok(path) = app.path().resolve(format!("binaries/{}", filename), BaseDirectory::Resource) {
+    if let Ok(path) = app
+        .path()
+        .resolve(format!("binaries/{}", filename), BaseDirectory::Resource)
+    {
         if path.exists() {
             return Ok(path);
         }
@@ -64,7 +67,7 @@ pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBu
     // 2. Try exe path relative
     if let Ok(mut exe_path) = std::env::current_exe() {
         exe_path.pop(); // remove executable name
-        
+
         let path = exe_path.join("binaries").join(&filename);
         if path.exists() {
             return Ok(path);
@@ -96,19 +99,38 @@ pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBu
         return Ok(local_path2);
     }
 
+    // Additional plain binary fallback without target triple
+    let plain_name = if cfg!(target_os = "windows") {
+        format!("{}.exe", binary_name)
+    } else {
+        binary_name.to_string()
+    };
+
+    let plain_local = PathBuf::from("src-tauri")
+        .join("binaries")
+        .join(&plain_name);
+    if plain_local.exists() {
+        return Ok(plain_local);
+    }
+
+    let plain_local2 = PathBuf::from("binaries").join(&plain_name);
+    if plain_local2.exists() {
+        return Ok(plain_local2);
+    }
+
     Err(format!("Could not find sidecar binary '{}'", filename))
 }
 
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::System::JobObjects::{
-    CreateJobObjectW, SetInformationJobObject, AssignProcessToJobObject,
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-    JobObjectExtendedLimitInformation,
-};
+use std::os::windows::io::AsRawHandle;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Foundation::HANDLE;
 #[cfg(target_os = "windows")]
-use std::os::windows::io::AsRawHandle;
+use windows_sys::Win32::System::JobObjects::{
+    AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+    SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+};
 
 #[cfg(target_os = "windows")]
 static GLOBAL_JOB_OBJECT: OnceLock<usize> = OnceLock::new();
@@ -147,7 +169,10 @@ pub fn attach_to_job_object(_child: &Child) {}
 
 /// Discovers Vulkan GPU devices with 24-hour cache lifecycle.
 pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
-    let app_dir = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let app_dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
     let cache_path = app_dir.join("gpu_cache.json");
 
     let now_secs = SystemTime::now()
@@ -161,14 +186,15 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
         .and_then(|p| crate::model_manager::calculate_sha256(p).ok())
         .unwrap_or_default();
 
-    // 1. Try reading disk cache if under 24 hours old (86,400s)
+    // 1. Try reading disk cache if under 24 hours old (86,400s) and non-empty
     if cache_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&cache_path) {
             if let Ok(cache) = serde_json::from_str::<GpuCacheEnvelope>(&content) {
                 let age = now_secs.saturating_sub(cache.timestamp);
-                let hash_matches = cache.sidecar_hash.is_empty() || cache.sidecar_hash == current_hash;
+                let hash_matches =
+                    cache.sidecar_hash.is_empty() || cache.sidecar_hash == current_hash;
 
-                if age < 86400 && hash_matches {
+                if age < 86400 && hash_matches && !cache.devices.is_empty() {
                     return Ok(cache.devices);
                 }
             }
@@ -178,16 +204,18 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     // 2. Perform raw discovery
     let gpus = probe_gpus_raw(app)?;
 
-    // 3. Write cache envelope to disk
-    let _ = std::fs::create_dir_all(&app_dir);
-    let envelope = GpuCacheEnvelope {
-        timestamp: now_secs,
-        sidecar_hash: current_hash,
-        devices: gpus.clone(),
-    };
+    // 3. Write cache envelope to disk if GPUs were successfully discovered
+    if !gpus.is_empty() {
+        let _ = std::fs::create_dir_all(&app_dir);
+        let envelope = GpuCacheEnvelope {
+            timestamp: now_secs,
+            sidecar_hash: current_hash,
+            devices: gpus.clone(),
+        };
 
-    if let Ok(json) = serde_json::to_string_pretty(&envelope) {
-        let _ = std::fs::write(&cache_path, json);
+        if let Ok(json) = serde_json::to_string_pretty(&envelope) {
+            let _ = std::fs::write(&cache_path, json);
+        }
     }
 
     Ok(gpus)
@@ -197,21 +225,48 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan")?;
     let models_dir = crate::model_manager::get_models_dir(app);
 
-    let output = Command::new(sidecar_path)
+    let mut child = Command::new(sidecar_path)
         .args(&[
-            "-i", "non-existent-image-path.jpg",
-            "-o", "dummy.png",
-            "-m", models_dir.to_str().unwrap_or("models"),
-            "-v"
+            "-i",
+            "non-existent-image-path.jpg",
+            "-o",
+            "dummy.png",
+            "-m",
+            models_dir.to_str().unwrap_or("models"),
+            "-v",
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output();
+        .spawn()
+        .map_err(|e| format!("Failed to spawn GPU probe process: {}", e))?;
+
+    attach_to_job_object(&child);
+
+    // Timeout mechanism (5 seconds max for GPU discovery)
+    let start_time = std::time::Instant::now();
+    let output_data = loop {
+        match child.try_wait() {
+            Ok(Some(_status)) => {
+                break child.wait_with_output().ok();
+            }
+            Ok(None) => {
+                if start_time.elapsed() > std::time::Duration::from_secs(5) {
+                    let _ = child.kill();
+                    break None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(_) => {
+                let _ = child.kill();
+                break None;
+            }
+        }
+    };
 
     let mut gpus = Vec::new();
     let mut seen_ids = std::collections::HashSet::new();
 
-    if let Ok(output_data) = output {
+    if let Some(output_data) = output_data {
         let stderr_str = String::from_utf8_lossy(&output_data.stderr);
         let stdout_str = String::from_utf8_lossy(&output_data.stdout);
 
@@ -229,7 +284,11 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
                                 gpus.push(GpuDevice {
                                     id,
                                     name: name.clone(),
-                                    detail: if has_fp16 { "Vulkan 1.2 · FP16 Storage/Arith Supported".to_string() } else { "Vulkan Compute Device".to_string() },
+                                    detail: if has_fp16 {
+                                        "Vulkan 1.2 · FP16 Storage/Arith Supported".to_string()
+                                    } else {
+                                        "Vulkan Compute Device".to_string()
+                                    },
                                     fp16_storage_supported: has_fp16,
                                     fp16_arithmetic_supported: has_fp16,
                                     compute_queue_count: 8,

@@ -1,7 +1,7 @@
-use tauri::{AppHandle, Manager};
-use serde::{Serialize, Deserialize};
-use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::PathBuf;
+use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppSettings {
@@ -27,7 +27,10 @@ impl Default for AppSettings {
 }
 
 pub fn get_settings_path(app: &AppHandle) -> PathBuf {
-    let app_dir = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let app_dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
     if !app_dir.exists() {
         let _ = fs::create_dir_all(&app_dir);
     }

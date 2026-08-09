@@ -7,9 +7,15 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "test": "vitest run",
+    "check:ts": "tsc --noEmit",
+    "lint:ts": "eslint src --max-warnings 0",
+    "check:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings",
+    "format:ts": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "format:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml",
+    "format:all": "npm run format:ts && npm run format:rust",
+    "check:all": "npm run check:ts && npm run lint:ts && npm run test && npm run check:rust",
     "benchmark": "npx tsx scripts/benchmark.ts",
     "preview": "vite preview",
-
     "tauri": "tauri"
   },
   "dependencies": {
@@ -25,13 +31,20 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
+    "@typescript-eslint/eslint-plugin": "^8.66.0",
+    "@typescript-eslint/parser": "^8.66.0",
     "@vitejs/plugin-react": "^4.6.0",
+    "eslint": "^10.8.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.9.0",
     "jsdom": "^30.0.1",
+    "prettier": "^3.9.6",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
     "vitest": "^4.1.10"

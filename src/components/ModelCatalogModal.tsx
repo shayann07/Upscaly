@@ -17,6 +17,7 @@ interface ModelCatalogModalProps {
   accentColor?: string;
   isOpen?: boolean;
   cloudModels?: ModelItem[];
+  supportedModels?: ModelInfo[];
   installedModelIds?: string[];
   onDownloadModel?: (modelId: string) => void;
   downloadingModelId?: string | null;
@@ -27,6 +28,7 @@ export function ModelCatalogModal({
   onClose,
   accentColor = "var(--accent)",
   isOpen = true,
+  supportedModels,
   installedModelIds = [],
   onDownloadModel = () => {},
   downloadingModelId = null,
@@ -34,6 +36,7 @@ export function ModelCatalogModal({
 }: ModelCatalogModalProps) {
   if (isOpen === false) return null;
 
+  const modelsList = supportedModels && supportedModels.length > 0 ? supportedModels : SUPPORTED_MODELS;
   const activeInstalled = installedModelIds;
   const activeDownloading = downloadingModelId;
   const activeDlPct = downloadProgress;
@@ -45,7 +48,7 @@ export function ModelCatalogModal({
         <div className="flex items-baseline gap-2">
           <span className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.1em] text-[#6B655E]">MODEL CATALOG</span>
           <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.06em]">
-            ({activeInstalled.length}/{SUPPORTED_MODELS.length})
+            ({activeInstalled.length}/{modelsList.length})
           </span>
         </div>
         <button
@@ -58,7 +61,7 @@ export function ModelCatalogModal({
 
       {/* Model list */}
       <div className="flex-1 overflow-y-auto min-h-0 p-2 space-y-1.5">
-        {SUPPORTED_MODELS.map((m: ModelInfo) => {
+        {modelsList.map((m: ModelInfo) => {
           const isInstalled = activeInstalled.includes(m.id);
           const isDl = activeDownloading === m.id;
           return (
@@ -79,10 +82,26 @@ export function ModelCatalogModal({
                 </div>
 
                 <div>
-                  {isInstalled && !isDl && (
+                  {m.isCorrupt && !isDl && (
+                    <button
+                      onClick={() => onDownloadModel(m.id)}
+                      className="h-6 px-2.5 border border-[#EF4444] rounded-md bg-[rgba(239,68,68,0.15)] text-[#FCA5A5] font-['Archivo',sans-serif] text-[10.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[rgba(239,68,68,0.25)]"
+                    >
+                      REPAIR
+                    </button>
+                  )}
+                  {isInstalled && !m.isCorrupt && !m.hasUpdate && !isDl && (
                     <span className="font-['Martian_Mono',monospace] text-[8.5px] tracking-[0.06em] text-[var(--success)] px-2 py-0.5 border border-[var(--success-border)] rounded bg-[var(--success-bg)]">
                       INSTALLED
                     </span>
+                  )}
+                  {isInstalled && !m.isCorrupt && m.hasUpdate && !isDl && (
+                    <button
+                      onClick={() => onDownloadModel(m.id)}
+                      className="h-6 px-2.5 border border-[#F59E0B] rounded-md bg-[rgba(245,158,11,0.15)] text-[#FBBF24] font-['Archivo',sans-serif] text-[10.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[rgba(245,158,11,0.25)]"
+                    >
+                      UPDATE
+                    </button>
                   )}
                   {isDl && (
                     <div className="w-[80px]">
@@ -94,7 +113,7 @@ export function ModelCatalogModal({
                       </div>
                     </div>
                   )}
-                  {!isInstalled && !isDl && (
+                  {!isInstalled && !m.isCorrupt && !isDl && (
                     <button
                       onClick={() => onDownloadModel(m.id)}
                       className="h-6 px-2.5 border border-[var(--border-subtle)] rounded-md bg-[var(--bg-base)] text-[#EDEAE6] font-['Archivo',sans-serif] text-[10.5px] font-semibold cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)]"

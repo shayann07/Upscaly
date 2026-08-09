@@ -2,6 +2,7 @@ import { useState } from "react";
 import { SUPPORTED_MODELS, ModelInfo } from "../lib/types";
 
 interface SettingsPanelProps {
+  supportedModels?: ModelInfo[];
   modelCategory?: "photo" | "anime" | "video";
   onSetCategory?: (cat: "photo" | "anime" | "video") => void;
   category?: "photos" | "anime" | "video";
@@ -19,9 +20,12 @@ interface SettingsPanelProps {
   onOpenCatalog?: () => void;
   accentColor?: string;
   installedModels?: string[];
+  isMuted?: boolean;
+  onToggleMute?: () => void;
 }
 
 export function SettingsPanel({
+  supportedModels,
   modelCategory = "photo",
   onSetCategory,
   category = "photos",
@@ -45,19 +49,25 @@ export function SettingsPanel({
   const activeCategory = category === "photos" ? "photo" : category === "anime" ? "anime" : category === "video" ? "video" : modelCategory;
   const activeScale = selectedScale !== undefined ? selectedScale : scale;
 
+  const modelsList = supportedModels && supportedModels.length > 0 ? supportedModels : SUPPORTED_MODELS;
+
   const handleCategory = (cat: "photo" | "anime" | "video") => {
     if (onSetCategory) onSetCategory(cat);
     if (onSelectCategory) {
       const altCat = cat === "photo" ? "photos" : cat;
       onSelectCategory(altCat);
     }
+    const catModels = modelsList.filter((m: ModelInfo) => m.cat === cat);
+    if (catModels.length > 0 && !catModels.some((m) => m.id === selectedModel)) {
+      onSelectModel(catModels[0].id);
+    }
   };
 
   const big = isHovered;
   const EASE = "var(--ease-spring)";
 
-  const model = SUPPORTED_MODELS.find((m: ModelInfo) => m.id === selectedModel) || SUPPORTED_MODELS[0];
-  const filteredModels = SUPPORTED_MODELS.filter((m: ModelInfo) => m.cat === activeCategory);
+  const model = modelsList.find((m: ModelInfo) => m.id === selectedModel) || modelsList[0] || SUPPORTED_MODELS[0];
+  const filteredModels = modelsList.filter((m: ModelInfo) => m.cat === activeCategory);
 
   const pill = (active: boolean, isBig: boolean) => ({
     height: isBig ? 32 : 26,

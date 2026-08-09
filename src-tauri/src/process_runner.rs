@@ -1,7 +1,7 @@
+use crate::error::AppError;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
-use crate::error::AppError;
 
 pub trait ProcessHandle: Send + Sync {
     fn try_wait(&mut self) -> Result<Option<i32>, AppError>;
@@ -10,14 +10,13 @@ pub trait ProcessHandle: Send + Sync {
     fn latest_progress(&self) -> Option<f64> {
         None
     }
+    fn get_stderr_log(&self) -> String {
+        String::new()
+    }
 }
 
 pub trait ProcessRunner: Send + Sync {
-    fn spawn(
-        &self,
-        program: &Path,
-        args: &[String],
-    ) -> Result<Box<dyn ProcessHandle>, AppError>;
+    fn spawn(&self, program: &Path, args: &[String]) -> Result<Box<dyn ProcessHandle>, AppError>;
 }
 
 /// Standard OS process runner wrapping std::process::Command and Child
@@ -32,6 +31,7 @@ impl StdProcessRunner {
 pub struct StdProcessHandle {
     child: Child,
     progress: Arc<Mutex<Option<f64>>>,
+    stderr_log: Arc<Mutex<Vec<String>>>,
 }
 
 impl ProcessHandle for StdProcessHandle {
@@ -39,12 +39,16 @@ impl ProcessHandle for StdProcessHandle {
         match self.child.try_wait() {
             Ok(Some(status)) => Ok(status.code()),
             Ok(None) => Ok(None),
-            Err(e) => Err(AppError::ExecutionError { message: format!("Failed to poll process status: {}", e) }),
+            Err(e) => Err(AppError::ExecutionError {
+                message: format!("Failed to poll process status: {}", e),
+            }),
         }
     }
 
     fn kill(&mut self) -> Result<(), AppError> {
-        self.child.kill().map_err(|e| AppError::ExecutionError { message: format!("Failed to kill process: {}", e) })
+        self.child.kill().map_err(|e| AppError::ExecutionError {
+            message: format!("Failed to kill process: {}", e),
+        })
     }
 
     fn id(&self) -> u32 {
@@ -54,23 +58,31 @@ impl ProcessHandle for StdProcessHandle {
     fn latest_progress(&self) -> Option<f64> {
         *self.progress.lock().unwrap()
     }
+
+    fn get_stderr_log(&self) -> String {
+        if let Ok(log) = self.stderr_log.lock() {
+            log.join("\n")
+        } else {
+            String::new()
+        }
+    }
 }
 
 impl ProcessRunner for StdProcessRunner {
-    fn spawn(
-        &self,
-        program: &Path,
-        args: &[String],
-    ) -> Result<Box<dyn ProcessHandle>, AppError> {
+    fn spawn(&self, program: &Path, args: &[String]) -> Result<Box<dyn ProcessHandle>, AppError> {
         let mut child = Command::new(program)
             .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| AppError::ExecutionError { message: format!("Failed to spawn process '{}': {}", program.display(), e) })?;
+            .map_err(|e| AppError::ExecutionError {
+                message: format!("Failed to spawn process '{}': {}", program.display(), e),
+            })?;
 
         let progress = Arc::new(Mutex::new(None));
         let progress_clone = Arc::clone(&progress);
+        let stderr_log = Arc::new(Mutex::new(Vec::<String>::new()));
+        let stderr_log_clone = Arc::clone(&stderr_log);
 
         // Drain stdout and stderr in background threads so OS pipe buffers never fill up and deadlock child processes
         if let Some(stdout) = child.stdout.take() {
@@ -79,7 +91,9 @@ impl ProcessRunner for StdProcessRunner {
                 let mut reader = std::io::BufReader::new(stdout);
                 let mut line = String::new();
                 while let Ok(bytes) = reader.read_line(&mut line) {
-                    if bytes == 0 { break; }
+                    if bytes == 0 {
+                        break;
+                    }
                     line.clear();
                 }
             });
@@ -90,8 +104,16 @@ impl ProcessRunner for StdProcessRunner {
                 let mut reader = std::io::BufReader::new(stderr);
                 let mut line = String::new();
                 while let Ok(bytes) = reader.read_line(&mut line) {
-                    if bytes == 0 { break; }
+                    if bytes == 0 {
+                        break;
+                    }
                     let trimmed = line.trim();
+                    if let Ok(mut log) = stderr_log_clone.lock() {
+                        if log.len() >= 20 {
+                            log.remove(0);
+                        }
+                        log.push(trimmed.to_string());
+                    }
                     if let Some(pct_str) = trimmed.strip_suffix('%') {
                         if let Ok(pct) = pct_str.trim().parse::<f64>() {
                             if let Ok(mut p) = progress_clone.lock() {
@@ -104,7 +126,11 @@ impl ProcessRunner for StdProcessRunner {
             });
         }
 
-        Ok(Box::new(StdProcessHandle { child, progress }))
+        Ok(Box::new(StdProcessHandle {
+            child,
+            progress,
+            stderr_log,
+        }))
     }
 }
 
@@ -151,15 +177,12 @@ impl MockProcessRunner {
 }
 
 impl ProcessRunner for MockProcessRunner {
-    fn spawn(
-        &self,
-        _program: &Path,
-        _args: &[String],
-    ) -> Result<Box<dyn ProcessHandle>, AppError> {
+    fn spawn(&self, _program: &Path, _args: &[String]) -> Result<Box<dyn ProcessHandle>, AppError> {
         if self.fail_on_spawn {
-            return Err(AppError::ExecutionError { message: "Mock spawn failure simulated".into() });
+            return Err(AppError::ExecutionError {
+                message: "Mock spawn failure simulated".into(),
+            });
         }
-
 
         Ok(Box::new(MockProcessHandle {
             exit_code: Arc::clone(&self.exit_code),
