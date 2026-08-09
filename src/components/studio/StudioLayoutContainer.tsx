@@ -6,7 +6,7 @@ export function StudioLayoutContainer() {
   const setup = useStudioContainerSetup();
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[var(--bg-base)] text-[var(--text-primary)] font-['Archivo',sans-serif] text-[13px] leading-relaxed">
+    <div className="relative w-screen h-screen overflow-hidden bg-[var(--bg-stripe)] text-[var(--text-primary)] font-['Archivo',sans-serif] text-[13px] leading-relaxed">
       <StudioCanvas
         filePath={setup.filePath}
         fileName={setup.fileName}
