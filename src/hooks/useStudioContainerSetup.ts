@@ -21,6 +21,37 @@ export function useStudioContainerSetup() {
     state.handleResetJob
   );
 
+  const actions = useStudioActions({
+    filePath: media.filePath,
+    fileName: media.fileName,
+    isVideo: media.isVideo,
+    scale: settings.scale,
+    selectedModel: catalog.selectedModel,
+    selectedGpu: settings.selectedGpu,
+    tileSize: settings.tileSize,
+    customOutputPath: settings.customOutputPath,
+    isMuted: settings.isMuted,
+    batchItems: [],
+    handleStartBatchUpscale: undefined,
+    supportedModels: catalog.supportedModels,
+    installedModels: catalog.installedModels,
+    activeJobId: state.activeJobId,
+    setActiveJobId: state.setActiveJobId,
+    setJobStatus: state.setJobStatus,
+    setProgressVal: state.setProgressVal,
+    setStatusMessage: state.setStatusMessage,
+    setJobPhase: state.setJobPhase,
+    setCategory: state.setCategory,
+    setSelectedModel: catalog.setSelectedModel,
+    setScale: settings.setScale,
+    setFilePath: media.setFilePath,
+    setFileName: media.setFileName,
+    setUpscaledPath: media.setUpscaledPath,
+    setIsVideo: media.setIsVideo,
+    setActiveNavTab: state.setActiveNavTab,
+    onNotify: state.handleNotify,
+  });
+
   const batch = useBatchSetup({
     selectedGpu: settings.selectedGpu,
     selectedModel: catalog.selectedModel,
@@ -34,37 +65,8 @@ export function useStudioContainerSetup() {
     activeJobId: state.activeJobId,
     setHistoryItems: state.setHistoryItems,
     handleOpenFile: media.handleOpenFile,
-    handleCancelUpscale: () => {},
+    handleCancelUpscale: actions.handleCancelUpscale,
     handleToggleNavTab: state.handleToggleNavTab,
-    setActiveNavTab: state.setActiveNavTab,
-    onNotify: state.handleNotify,
-  });
-
-  const actions = useStudioActions({
-    filePath: media.filePath,
-    fileName: media.fileName,
-    isVideo: media.isVideo,
-    scale: settings.scale,
-    selectedModel: catalog.selectedModel,
-    selectedGpu: settings.selectedGpu,
-    tileSize: settings.tileSize,
-    customOutputPath: settings.customOutputPath,
-    isMuted: settings.isMuted,
-    batchItems: batch.batchItems,
-    handleStartBatchUpscale: batch.handleStartBatchUpscale,
-    supportedModels: catalog.supportedModels,
-    installedModels: catalog.installedModels,
-    activeJobId: state.activeJobId,
-    setActiveJobId: state.setActiveJobId,
-    setJobStatus: state.setJobStatus,
-    setCategory: state.setCategory,
-    setSelectedModel: catalog.setSelectedModel,
-    setScale: settings.setScale,
-    setCustomOutputPath: settings.setCustomOutputPath,
-    setFilePath: media.setFilePath,
-    setFileName: media.setFileName,
-    setUpscaledPath: media.setUpscaledPath,
-    setIsVideo: media.setIsVideo,
     setActiveNavTab: state.setActiveNavTab,
     onNotify: state.handleNotify,
   });
@@ -107,6 +109,14 @@ export function useStudioContainerSetup() {
     tileSize: settings.tileSize,
   });
 
+  const handleStartUpscale = () => {
+    if (batch.batchItems.length > 1) {
+      batch.handleStartBatchUpscale();
+    } else {
+      actions.handleStartUpscale();
+    }
+  };
+
   return {
     ...state,
     ...settings,
@@ -115,5 +125,9 @@ export function useStudioContainerSetup() {
     ...actions,
     ...batch,
     ...telemetry,
+    handleStartUpscale,
+    handleSelectModel: catalog.setSelectedModel,
+    handleSelectDestinationFolder: settings.handleSelectDestinationFolder,
+    handleLoadHistoryItem: actions.handleSelectHistoryItem,
   };
 }
