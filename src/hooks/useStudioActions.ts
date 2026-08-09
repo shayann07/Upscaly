@@ -83,6 +83,7 @@ export function useStudioActions({
   );
 
   const handleStartUpscale = async () => {
+    setUpscaledPath('');
     if (batchItems && batchItems.length > 1 && handleStartBatchUpscale) {
       handleStartBatchUpscale();
       return;
