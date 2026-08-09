@@ -75,6 +75,10 @@ export function BatchQueueView(props: BatchQueueViewProps) {
     onCancelItem,
   } = props;
 
+  if (!items || items.length === 0) {
+    return null;
+  }
+
   const [isHovered, setIsHovered] = useState(false);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
 
