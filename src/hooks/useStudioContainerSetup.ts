@@ -14,8 +14,8 @@ export function useStudioContainerSetup() {
   const settings = useSettings(state.handleGpuReady);
   const catalog = useModelCatalog(state.handleNotify);
 
-  const onCategorySelectRef = useRef<(cat: 'photos' | 'anime' | 'video') => void>(
-    (cat) => state.setCategory(cat)
+  const onCategorySelectRef = useRef<(cat: 'photos' | 'anime' | 'video') => void>((cat) =>
+    state.setCategory(cat)
   );
 
   const media = useMediaSelection(
@@ -63,11 +63,15 @@ export function useStudioContainerSetup() {
     supportedModels: catalog.supportedModels,
     installedModels: catalog.installedModels,
     activeJobId: state.activeJobId,
+    jobStatus: state.jobStatus,
     setActiveJobId: state.setActiveJobId,
     setJobStatus: state.setJobStatus,
     setProgressVal: state.setProgressVal,
     setStatusMessage: state.setStatusMessage,
     setJobPhase: state.setJobPhase,
+    setEtaSeconds: state.setEtaSeconds,
+    setFps: state.setFps,
+    setRateStr: state.setRateStr,
     setCategory: state.setCategory,
     setSelectedModel: catalog.setSelectedModel,
     setScale: settings.setScale,

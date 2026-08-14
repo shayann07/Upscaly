@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { ProgressOverlay } from '../ProgressOverlay';
 
 describe('ProgressOverlay Component', () => {
-  it('renders percentage and status text', () => {
+  it('renders percentage and status text with real telemetry', () => {
     render(
       <ProgressOverlay
         percentage={68.4}
@@ -17,6 +17,21 @@ describe('ProgressOverlay Component', () => {
     expect(screen.getByText(/68\.4%/)).toBeInTheDocument();
     expect(screen.getByText(/0:14/)).toBeInTheDocument();
     expect(screen.getByText(/24\.0 FPS/)).toBeInTheDocument();
+  });
+
+  it('renders Calculating indicator when ETA and rate are not yet available', () => {
+    render(
+      <ProgressOverlay
+        percentage={2.0}
+        statusText="Extracting Video Frames (24 / 1800)"
+        phase="Extracting Video Frames"
+        onCancel={vi.fn()}
+      />
+    );
+    expect(screen.getByText(/Extracting Video Frames \(24 \/ 1800\)/)).toBeInTheDocument();
+    const calculatingLabels = screen.getAllByText(/Calculating…/);
+    expect(calculatingLabels.length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('0:05')).not.toBeInTheDocument();
   });
 
   it('triggers cancel callback when Cancel is clicked', () => {
