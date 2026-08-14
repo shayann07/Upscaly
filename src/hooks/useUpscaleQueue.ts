@@ -1,7 +1,9 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { BatchItem, JobProgress } from '../lib/types';
 import { joinPath } from '../lib/outputPaths';
+
+const TERMINAL_STATUSES = new Set(['done', 'error', 'cancelled']);
 
 export interface UseUpscaleQueueOptions {
   selectedGpu: number;
@@ -49,11 +51,28 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
   const [isBatchRunning, setIsBatchRunning] = useState<boolean>(false);
 
   const activeJobIdRef = useRef<string | null>(null);
-  const isBatchRunningRef = useRef<boolean>(false);
-  const pendingQueueRef = useRef<BatchItem[]>([]);
+  const batchItemsRef = useRef<BatchItem[]>([]);
 
   activeJobIdRef.current = activeJobId;
-  isBatchRunningRef.current = isBatchRunning;
+
+  useEffect(() => {
+    batchItemsRef.current = batchItems;
+  }, [batchItems]);
+
+  // Once a batch is running, watch for every item reaching a terminal state
+  // and flip isBatchRunning back off. This is the sole source of "batch
+  // complete" truth -- there is no separate pending-queue driver, since the
+  // backend's job queue already serializes execution on its own.
+  useEffect(() => {
+    if (!isBatchRunning || batchItems.length === 0) return;
+    const allTerminal = batchItems.every((item) => TERMINAL_STATUSES.has(item.status));
+    if (allTerminal) {
+      setIsBatchRunning(false);
+      if (onNotify) {
+        onNotify('success', 'Batch Complete', 'All items in queue have been processed.');
+      }
+    }
+  }, [batchItems, isBatchRunning, onNotify]);
 
   const removeItem = useCallback((id: string) => {
     setBatchItems((prev) => prev.filter((item) => item.id !== id));
@@ -63,57 +82,25 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
     setBatchItems([]);
     setActiveJobId(null);
     setIsBatchRunning(false);
-    pendingQueueRef.current = [];
   }, []);
 
-  const runNextInQueue = useCallback(async () => {
-    if (!isBatchRunningRef.current) return;
-    if (pendingQueueRef.current.length === 0) {
-      setIsBatchRunning(false);
-      if (onNotify) {
-        onNotify('success', 'Batch Complete', 'All items in queue have been processed.');
-      }
-      return;
+  const cancelBatch = useCallback(async () => {
+    const targets = batchItemsRef.current.filter(
+      (item) => item.status === 'processing' || item.status === 'queued'
+    );
+    await Promise.all(
+      targets.map((item) =>
+        invoke('cancel_upscale', { jobId: item.id }).catch((err) => {
+          console.error('Failed to cancel batch item:', item.id, err);
+        })
+      )
+    );
+    setIsBatchRunning(false);
+    setActiveJobId(null);
+    if (onNotify) {
+      onNotify('info', 'Batch Cancelled', 'Remaining queued items were stopped.');
     }
-
-    const nextItem = pendingQueueRef.current.shift();
-    if (!nextItem || !nextItem.filePath || !nextItem.fileName) {
-      runNextInQueue();
-      return;
-    }
-
-    const outPath = resolveOutputPath(nextItem, scale, customOutputPath);
-
-    try {
-      setBatchItems((prev) =>
-        prev.map((b) => (b.id === nextItem.id ? { ...b, status: 'queued', progress: 0 } : b))
-      );
-
-      const jobId = await invoke<string>('run_upscale', {
-        request: {
-          job_id: nextItem.id,
-          input_path: nextItem.filePath,
-          output_path: outPath,
-          model_id: selectedModel,
-          gpu_id: selectedGpu,
-          scale,
-          tile_size: tileSize,
-          is_video: Boolean(nextItem.isVideo),
-        },
-      });
-
-      setActiveJobId(jobId);
-      setBatchItems((prev) =>
-        prev.map((b) => (b.id === nextItem.id ? { ...b, id: jobId, status: 'processing' } : b))
-      );
-    } catch (err) {
-      console.error('Failed to start batch item:', err);
-      setBatchItems((prev) =>
-        prev.map((b) => (b.id === nextItem.id ? { ...b, status: 'error' } : b))
-      );
-      runNextInQueue();
-    }
-  }, [scale, tileSize, selectedGpu, selectedModel, customOutputPath, onNotify]);
+  }, [onNotify]);
 
   const startBatch = useCallback(async () => {
     const readyItems = batchItems.filter(
@@ -128,7 +115,6 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
     }
 
     setIsBatchRunning(true);
-    isBatchRunningRef.current = true;
     if (onNotify) {
       onNotify('info', 'Batch Started', `Processing ${readyItems.length} queued items...`);
     }
@@ -181,31 +167,39 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
         setActiveJobId((prev) => (prev === job_id ? null : prev));
       }
 
+      // Side effects (history writes) must not live inside the setState
+      // updater below -- React (StrictMode in particular) can invoke that
+      // updater more than once per commit, which would double-write history.
+      const existing = batchItemsRef.current.find((item) => item.id === job_id);
+      if (existing && isDone && onItemCompleted) {
+        const finalOut = output_path || existing.outputPath;
+        if (finalOut) {
+          onItemCompleted(
+            { ...existing, progress: percentage, status: 'done', outputPath: finalOut },
+            finalOut
+          );
+        }
+      }
+
       setBatchItems((prev) =>
         prev.map((item) => {
-          if (item.id === job_id) {
-            const finalOut = output_path || item.outputPath;
-            const updated: BatchItem = {
-              ...item,
-              progress: percentage,
-              status: isDone
-                ? 'done'
-                : isErr
-                  ? 'error'
-                  : isCanc
-                    ? 'cancelled'
-                    : isProc
-                      ? 'processing'
-                      : 'queued',
-              outputPath: finalOut,
-              error: isErr ? error : item.error,
-            };
-            if (isDone && onItemCompleted && finalOut) {
-              onItemCompleted(updated, finalOut);
-            }
-            return updated;
-          }
-          return item;
+          if (item.id !== job_id) return item;
+          const finalOut = output_path || item.outputPath;
+          return {
+            ...item,
+            progress: percentage,
+            status: isDone
+              ? 'done'
+              : isErr
+                ? 'error'
+                : isCanc
+                  ? 'cancelled'
+                  : isProc
+                    ? 'processing'
+                    : 'queued',
+            outputPath: finalOut,
+            error: isErr ? error : item.error,
+          };
         })
       );
     },
@@ -219,6 +213,7 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
     setActiveJobId,
     isBatchRunning,
     startBatch,
+    cancelBatch,
     handleJobProgress,
     removeItem,
     clearQueue,

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, Dispatch, SetStateAction } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { BatchItem } from '../lib/types';
 import { playDropSound } from '../lib/sound';
@@ -22,17 +22,27 @@ async function buildBatchItem(path: string, model: string): Promise<BatchItem> {
   };
 }
 
-export function useMediaSelection(
-  isMuted: boolean,
-  selectedModel: string,
-  onCategorySelect?: (cat: 'photos' | 'anime' | 'video') => void,
+export interface UseMediaSelectionOptions {
+  isMuted: boolean;
+  selectedModel: string;
+  setBatchItems: Dispatch<SetStateAction<BatchItem[]>>;
+  onCategorySelect?: (cat: 'photos' | 'anime' | 'video') => void;
   onNotify?: (
     type: 'success' | 'error' | 'info' | 'warning',
     title: string,
     message: string
-  ) => void,
-  onResetJob?: () => void
-) {
+  ) => void;
+  onResetJob?: () => void;
+}
+
+export function useMediaSelection({
+  isMuted,
+  selectedModel,
+  setBatchItems,
+  onCategorySelect,
+  onNotify,
+  onResetJob,
+}: UseMediaSelectionOptions) {
   const [filePath, setFilePath] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
   const [isVideo, setIsVideo] = useState<boolean>(false);
@@ -41,7 +51,6 @@ export function useMediaSelection(
     h: number;
   } | null>(null);
   const [upscaledPath, setUpscaledPath] = useState<string>('');
-  const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
 
   const handleClearFile = useCallback(() => {
     setFilePath('');
@@ -52,27 +61,7 @@ export function useMediaSelection(
     setBatchItems([]);
     if (onResetJob) onResetJob();
     if (onNotify) onNotify('info', 'Queue Cleared', 'Ready for next input.');
-  }, [onResetJob, onNotify]);
-
-  const handleRemoveBatchItem = useCallback(
-    (id: string) => {
-      setBatchItems((prev) => {
-        const next = prev.filter((item) => item.id !== id);
-        if (next.length === 0) {
-          handleClearFile();
-        } else if (filePath && !next.some((item) => item.filePath === filePath)) {
-          setFilePath(next[0].filePath || '');
-          setFileName(next[0].fileName || '');
-          setIsVideo(next[0].isVideo || false);
-          if (next[0].w && next[0].h) {
-            setCurrentFileDims({ w: next[0].w, h: next[0].h });
-          }
-        }
-        return next;
-      });
-    },
-    [filePath, handleClearFile]
-  );
+  }, [onResetJob, onNotify, setBatchItems]);
 
   const handleOpenFolder = useCallback(async () => {
     try {
@@ -95,7 +84,7 @@ export function useMediaSelection(
     } catch (err) {
       console.error('Failed to select folder:', err);
     }
-  }, [isMuted, onResetJob]);
+  }, [isMuted, onResetJob, setBatchItems]);
 
   const handleOpenFile = useCallback(async () => {
     try {
@@ -148,7 +137,7 @@ export function useMediaSelection(
     } catch (err) {
       console.error('Failed to select file:', err);
     }
-  }, [isMuted, selectedModel, onCategorySelect, onNotify, onResetJob]);
+  }, [isMuted, selectedModel, onCategorySelect, onNotify, onResetJob, setBatchItems]);
 
   return {
     filePath,
@@ -161,11 +150,8 @@ export function useMediaSelection(
     setCurrentFileDims,
     upscaledPath,
     setUpscaledPath,
-    batchItems,
-    setBatchItems,
     handleClearFile,
     handleOpenFile,
     handleOpenFolder,
-    handleRemoveBatchItem,
   };
 }

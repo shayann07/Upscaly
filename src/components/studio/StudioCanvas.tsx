@@ -33,6 +33,7 @@ interface StudioCanvasProps {
   activeVramGb: string;
   tileSize: number;
   handleCancelUpscale: () => void;
+  handleCancelItem?: (id?: string) => void;
   handleCycleZoom: () => void;
   batchItems: BatchItem[];
   selectedGpu: number;
@@ -87,6 +88,7 @@ export function StudioCanvas(props: StudioCanvasProps) {
     activeVramGb,
     tileSize,
     handleCancelUpscale,
+    handleCancelItem,
     handleCycleZoom,
     batchItems,
     selectedGpu,
@@ -176,6 +178,7 @@ export function StudioCanvas(props: StudioCanvasProps) {
           )
         }
         onRemoveItem={handleRemoveBatchItem}
+        onCancelItem={handleCancelItem}
       />
 
       <StudioControlsSection

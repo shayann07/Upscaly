@@ -75,24 +75,8 @@ export function BatchQueueView(props: BatchQueueViewProps) {
     onCancelItem,
   } = props;
 
-  if (!items || items.length === 0) {
-    return null;
-  }
-
   const [isHovered, setIsHovered] = useState(false);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
-
-  const open = isHovered;
-  const EASE = 'var(--ease-spring)';
-
-  const { doneCount, batchPct } = computeBatchStats(items);
-  const { curW, curH, outW, outH, estMb } = computeEstimateData(
-    items,
-    selectedId,
-    currentIndex,
-    currentFileDims,
-    selectedScale
-  );
 
   const handleDragStart = useCallback((idx: number, e: React.DragEvent) => {
     setDragFrom(idx);
@@ -109,6 +93,22 @@ export function BatchQueueView(props: BatchQueueViewProps) {
       onReorder(newItems);
     },
     [dragFrom, items, onReorder]
+  );
+
+  if (!items || items.length === 0) {
+    return null;
+  }
+
+  const open = isHovered;
+  const EASE = 'var(--ease-spring)';
+
+  const { doneCount, batchPct } = computeBatchStats(items);
+  const { curW, curH, outW, outH, estMb } = computeEstimateData(
+    items,
+    selectedId,
+    currentIndex,
+    currentFileDims,
+    selectedScale
   );
 
   return (

@@ -64,7 +64,6 @@ extern "system" {
 }
 
 /// Queries free disk space available in bytes.
-#[allow(dead_code)]
 pub fn get_available_disk_space(dir: &Path) -> Result<u64, String> {
     #[cfg(windows)]
     #[allow(unsafe_code)]

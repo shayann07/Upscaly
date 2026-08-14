@@ -1,4 +1,4 @@
-use crate::job_queue::{Job, JobProgress};
+use crate::job_queue::{sanitize_job_id, Job, JobProgress};
 use crate::process_runner::{MultiProcessHandle, ProcessHandle};
 use std::fs;
 use std::path::PathBuf;
@@ -41,7 +41,19 @@ impl<'a> VideoJobContext<'a> {
             .path()
             .app_cache_dir()
             .unwrap_or_else(|_| PathBuf::from("."));
-        let job_temp_dir = cache_dir.join(format!("upscaler_job_{}", job.id));
+        // Defense in depth: re-sanitize here too, at the point where the
+        // resulting path is recursively deleted, regardless of whether the
+        // caller already validated `job.id`.
+        let safe_job_id = sanitize_job_id(&job.id);
+        let job_temp_dir = cache_dir.join(format!("upscaler_job_{safe_job_id}"));
+
+        // Belt-and-suspenders: the sanitized id can only ever produce a
+        // direct child of cache_dir, but verify that invariant explicitly
+        // before anything gets deleted.
+        if job_temp_dir.parent() != Some(cache_dir.as_path()) {
+            return Err("Invalid job id: refusing to build an unsafe temp path".to_string());
+        }
+
         let guard = TempFolderGuard(job_temp_dir.clone());
 
         let staging_dir = job_temp_dir.join("staging");

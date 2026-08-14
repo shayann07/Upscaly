@@ -1,4 +1,4 @@
-use crate::job_queue::{add_job_to_queue, cancel_job, Job};
+use crate::job_queue::{add_job_to_queue, cancel_job, generate_job_id, sanitize_job_id, Job};
 use crate::UpscaleRequest;
 
 #[tauri::command]
@@ -6,14 +6,10 @@ pub fn upscale_image(
     app_handle: tauri::AppHandle,
     request: UpscaleRequest,
 ) -> Result<String, String> {
-    let job_id = request.job_id.unwrap_or_else(|| {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        format!("job_{:x}", nanos)
-    });
+    let job_id = request
+        .job_id
+        .map(|id| sanitize_job_id(&id))
+        .unwrap_or_else(generate_job_id);
 
     let job = Job {
         id: job_id.clone(),
@@ -44,7 +40,8 @@ pub async fn cancel_upscale(app_handle: tauri::AppHandle, job_id: String) -> Res
 }
 
 #[tauri::command]
-pub async fn enqueue_job(app_handle: tauri::AppHandle, job: Job) -> Result<(), String> {
+pub async fn enqueue_job(app_handle: tauri::AppHandle, mut job: Job) -> Result<(), String> {
+    job.id = sanitize_job_id(&job.id);
     add_job_to_queue(app_handle, job);
     Ok(())
 }

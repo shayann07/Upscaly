@@ -134,14 +134,17 @@ pub fn run_overlapping_upscale_pipeline(
 ) -> Result<usize, String> {
     ctx.emit_progress(1.0, "Initializing Hardware-Accelerated Video Pipeline...");
 
-    let extraction = spawn_background_extraction(ctx, ffmpeg_binary)?;
-    let sidecar_path = resolve_sidecar_path(ctx.app, "realesrgan-ncnn-vulkan")?;
     let models_dir = get_models_dir(ctx.app);
     let effective_scale = crate::job_queue::resolve_effective_scale(
         &ctx.job.model_name,
         ctx.job.scale,
         Some(&models_dir),
     );
+
+    check_available_disk_space(ctx, meta, effective_scale)?;
+
+    let extraction = spawn_background_extraction(ctx, ffmpeg_binary)?;
+    let sidecar_path = resolve_sidecar_path(ctx.app, "realesrgan-ncnn-vulkan")?;
     let gpu_vram_mb = crate::job_queue::get_gpu_vram_mb_for_id(ctx.app, ctx.job.gpu_id);
     let mut exec_profile = crate::engine::vram_governor::calculate_safe_execution_profile(
         gpu_vram_mb,
@@ -152,6 +155,7 @@ pub fn run_overlapping_upscale_pipeline(
     let mut total_discovered_frames = 0usize;
     let mut batch_index = 0usize;
     let mut history_window: VecDeque<(Instant, usize)> = VecDeque::with_capacity(32);
+    #[allow(unused_assignments)]
     let mut total_completed = 0usize;
     let warmup_frames_required = 5;
     let batch_target_size = 40usize;
@@ -161,14 +165,15 @@ pub fn run_overlapping_upscale_pipeline(
             return Err("cancelled".to_string());
         }
 
-        // Check if extraction failed with no frames
+        // If the extractor died partway through (disk full, corrupt stream,
+        // decoder crash), the video is truncated. Fail the whole job
+        // immediately instead of quietly reassembling whatever frames made
+        // it out and reporting "Succeeded" -- a truncated video with no
+        // error is worse than an explicit failure.
         if extraction.is_finished.load(Ordering::SeqCst) {
             if let Ok(err_lock) = extraction.error_msg.lock() {
                 if let Some(ref err) = *err_lock {
-                    let staging_count = count_image_files(&ctx.staging_dir);
-                    if staging_count == 0 && total_completed == 0 {
-                        return Err(err.clone());
-                    }
+                    return Err(format!("Video frame extraction failed partway through: {err}"));
                 }
             }
         }
@@ -407,6 +412,50 @@ pub fn run_overlapping_upscale_pipeline(
     }
 
     Ok(final_completed)
+}
+
+/// Pre-flight disk-space check: a long video can require tens of GB of
+/// intermediate source + upscaled frames. Fail fast with a clear error
+/// instead of letting the disk fill up mid-job, which previously produced a
+/// silently truncated "successful" output (see the extraction-error fix
+/// above) or an opaque ffmpeg/NCNN failure partway through.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+fn check_available_disk_space(
+    ctx: &VideoJobContext,
+    meta: &VideoMetadata,
+    effective_scale: i32,
+) -> Result<(), String> {
+    let Some(total_frames) = meta.total_frames_estimate else {
+        // Unknown duration/frame count -- nothing reliable to estimate
+        // against, so don't block the job over a guess.
+        return Ok(());
+    };
+
+    // Conservative per-frame estimate for a q:v2 JPEG source frame; the
+    // upscaled output frame is estimated to grow with the scaled pixel
+    // area (scale^2), which is intentionally generous since JPEG tends to
+    // compress larger images more efficiently per pixel, not less.
+    const SOURCE_FRAME_BYTES: u64 = 300_000;
+    let scale = effective_scale.max(1) as u64;
+    let scale_area = scale * scale;
+    let output_frame_bytes = SOURCE_FRAME_BYTES.saturating_mul(scale_area);
+    let required_bytes = (total_frames as u64)
+        .saturating_mul(SOURCE_FRAME_BYTES.saturating_add(output_frame_bytes));
+
+    match crate::model_manager::get_available_disk_space(&ctx.job_temp_dir) {
+        Ok(available_bytes) if available_bytes < required_bytes => {
+            let required_mb = required_bytes / 1_000_000;
+            Err(crate::error::AppError::InsufficientStorage { required_mb }.to_string())
+        }
+        // If the query itself fails, don't block the job on an unreliable
+        // check -- proceed and let the actual pipeline surface any real
+        // disk-full error.
+        _ => Ok(()),
+    }
 }
 
 fn count_image_files(dir: &Path) -> usize {
