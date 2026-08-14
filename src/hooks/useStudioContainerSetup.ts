@@ -135,10 +135,8 @@ export function useStudioContainerSetup() {
   useStudioEvents({
     handleQueueJobProgress: batch.handleQueueJobProgress,
     studioJobState,
-    refreshInstalledModels: catalog.refreshInstalledModels,
     setDownloadingModelId: catalog.setDownloadingModelId,
     setDownloadProgress: catalog.setDownloadProgress,
-    onNotify: state.handleNotify,
   });
 
   const telemetry = useTelemetry({

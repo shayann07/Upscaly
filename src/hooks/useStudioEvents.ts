@@ -6,23 +6,15 @@ import { handleStudioJobStatus, StudioJobState } from '../lib/studioJobHandler';
 interface StudioEventsOptions {
   handleQueueJobProgress: (progress: JobProgress) => void;
   studioJobState: StudioJobState;
-  refreshInstalledModels: () => void;
   setDownloadingModelId?: (id: string | null) => void;
   setDownloadProgress?: (progress: number) => void;
-  onNotify: (
-    type: 'success' | 'error' | 'info' | 'warning',
-    title: string,
-    message: string
-  ) => void;
 }
 
 export function useStudioEvents({
   handleQueueJobProgress,
   studioJobState,
-  refreshInstalledModels,
   setDownloadingModelId,
   setDownloadProgress,
-  onNotify,
 }: StudioEventsOptions) {
   const studioJobStateRef = useRef(studioJobState);
   useEffect(() => {
@@ -37,22 +29,19 @@ export function useStudioEvents({
     [handleQueueJobProgress]
   );
 
+  // Each model download streams progress for two files (.param then .bin),
+  // so percentage resets partway through and hits 100 twice -- it is not a
+  // reliable "the whole model finished" signal. That completion event
+  // (success toast, catalog refresh, clearing downloadingModelId) is owned
+  // solely by useModelCatalog.handleDownloadModel's invoke().then(), which
+  // only resolves once both files are downloaded and verified. This
+  // handler exists purely to drive the live progress bar.
   const handleDownloadProgress = useCallback(
     (payload: { model_id: string; percentage: number }) => {
       if (setDownloadingModelId) setDownloadingModelId(payload.model_id);
       if (setDownloadProgress) setDownloadProgress(payload.percentage);
-      if (payload.percentage >= 100) {
-        if (setDownloadingModelId) setDownloadingModelId(null);
-        if (setDownloadProgress) setDownloadProgress(0);
-        refreshInstalledModels();
-        onNotify(
-          'success',
-          'Model Downloaded',
-          `Model ${payload.model_id} installed successfully.`
-        );
-      }
     },
-    [refreshInstalledModels, onNotify, setDownloadingModelId, setDownloadProgress]
+    [setDownloadingModelId, setDownloadProgress]
   );
 
   useJobEvents(handleJobStatusChanged, handleDownloadProgress);
