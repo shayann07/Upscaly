@@ -41,7 +41,7 @@ export function AdvancedSettings({
   accentColor = 'var(--accent)',
   onClose = () => {},
   onAutoTune,
-  isProcessing = false,
+  isProcessing: _isProcessing = false,
 }: AdvancedSettingsProps) {
   const EASE = 'var(--ease-spring)';
 
@@ -79,14 +79,22 @@ export function AdvancedSettings({
   }, [currentGpu]);
 
   const usedVramGb = useMemo(() => {
-    const baseIdle = Math.round(totalVramGb * 0.12 * 10) / 10;
-    const tileFootprint =
-      tileSize === 512 ? 3.0 : tileSize === 256 ? 1.5 : tileSize === 128 ? 0.7 : 1.2;
-    if (isProcessing) {
-      return Math.round((baseIdle + tileFootprint * 1.1) * 10) / 10;
+    const baseIdle = Math.round(totalVramGb * 0.08 * 10) / 10;
+    let tileFootprint = 1.8;
+    if (tileSize === 512) {
+      tileFootprint = totalVramGb <= 6 ? 3.4 : 6.2;
+    } else if (tileSize === 384) {
+      tileFootprint = 4.2;
+    } else if (tileSize === 256) {
+      tileFootprint = 2.0;
+    } else if (tileSize === 128) {
+      tileFootprint = 0.8;
+    } else if (tileSize === 0) {
+      tileFootprint =
+        totalVramGb <= 2 ? 0.8 : totalVramGb <= 4 ? 2.0 : totalVramGb <= 6 ? 4.2 : 5.8;
     }
-    return Math.round((baseIdle + tileFootprint * 0.85) * 10) / 10;
-  }, [isProcessing, tileSize, totalVramGb]);
+    return Math.min(totalVramGb, Math.round((baseIdle + tileFootprint) * 10) / 10);
+  }, [tileSize, totalVramGb]);
 
   const isOverflowing = usedVramGb > totalVramGb;
   const vramPct = Math.min(100, Math.round((usedVramGb / totalVramGb) * 100));
@@ -97,12 +105,12 @@ export function AdvancedSettings({
       currentGpu &&
       (currentGpu.name.toLowerCase().includes('intel') ||
         currentGpu.name.toLowerCase().includes('uhd'));
-    if (isIntel) {
-      recTile = 256;
+    if (isIntel || totalVramGb <= 2) {
+      recTile = 128;
     } else if (totalVramGb <= 4) {
       recTile = 256;
-    } else if (totalVramGb <= 8) {
-      recTile = 256;
+    } else if (totalVramGb <= 6) {
+      recTile = 384;
     } else {
       recTile = 512;
     }
@@ -112,7 +120,7 @@ export function AdvancedSettings({
     if (onAutoTune) {
       onAutoTune(
         recTile,
-        `${totalVramGb}.0 GB VRAM (${isIntel ? 'Intel GPU Tuned' : 'Auto Tuned'})`
+        `${totalVramGb}.0 GB VRAM (${isIntel ? 'Intel GPU Tuned' : 'Adaptive Tuned'})`
       );
     }
   };

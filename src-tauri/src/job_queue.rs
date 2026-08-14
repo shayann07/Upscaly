@@ -352,6 +352,17 @@ pub fn kill_all_active_jobs() {
     JobQueueService::global().kill_all();
 }
 
+pub fn get_gpu_vram_mb_for_id(app: &AppHandle, gpu_id: i32) -> u64 {
+    if let Ok(gpus) = crate::sidecar_manager::get_gpu_list(app) {
+        if let Some(gpu) = gpus.iter().find(|g| g.id == gpu_id) {
+            if gpu.vram_mb > 0 {
+                return gpu.vram_mb;
+            }
+        }
+    }
+    get_estimated_vram_mb()
+}
+
 pub fn get_estimated_vram_mb() -> u64 {
     #[cfg(target_os = "windows")]
     {
@@ -369,25 +380,16 @@ pub fn get_estimated_vram_mb() -> u64 {
             }
         }
     }
-    6000 // Default fallback for mid-tier GPUs (6GB VRAM)
+    6144 // Default fallback for modern 6GB GPUs
 }
 
 pub fn normalize_tile_size(user_tile: i32) -> i32 {
-    if user_tile <= 0 {
-        // Dynamic AUTO mode: Calculate optimal tile size respecting host GPU VRAM
-        let vram_mb = get_estimated_vram_mb();
-        if vram_mb < 4000 {
-            192
-        } else if vram_mb < 8000 {
-            256
-        } else if vram_mb < 12000 {
-            400
-        } else {
-            512
-        }
-    } else {
-        ((user_tile / 32) * 32).clamp(32, 1024)
-    }
+    let profile = crate::engine::vram_governor::calculate_safe_execution_profile(
+        get_estimated_vram_mb(),
+        user_tile,
+        false,
+    );
+    profile.tile_size
 }
 
 pub fn resolve_effective_scale(
@@ -438,8 +440,12 @@ fn run_single_image_job(
     let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan")?;
     let models_dir = get_models_dir(app);
 
-    let thread_profile = compute_workload_threads(&job.input_path, job.is_video);
-    let tile_size = normalize_tile_size(job.tile_size);
+    let gpu_vram_mb = get_gpu_vram_mb_for_id(app, job.gpu_id);
+    let exec_profile = crate::engine::vram_governor::calculate_safe_execution_profile(
+        gpu_vram_mb,
+        job.tile_size,
+        job.is_video,
+    );
     let effective_scale = resolve_effective_scale(&job.model_name, job.scale, Some(&models_dir));
 
     let args = vec![
@@ -456,9 +462,9 @@ fn run_single_image_job(
         "-s".to_string(),
         effective_scale.to_string(),
         "-t".to_string(),
-        tile_size.to_string(),
+        exec_profile.tile_size.to_string(),
         "-j".to_string(),
-        thread_profile.to_string(),
+        exec_profile.thread_arg.clone(),
         "-v".to_string(),
     ];
 
@@ -570,7 +576,7 @@ mod tests {
         assert!(normalize_tile_size(0) >= 192);
         assert!(normalize_tile_size(-100) >= 192);
         assert_eq!(normalize_tile_size(200), 192);
-        assert_eq!(normalize_tile_size(2000), 1024);
+        assert_eq!(normalize_tile_size(2000), 512); // Safe ceiling on 6GB GPU
         assert_eq!(normalize_tile_size(10), 32);
     }
 
