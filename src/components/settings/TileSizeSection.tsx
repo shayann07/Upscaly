@@ -5,6 +5,7 @@ interface TileSizeSectionProps {
   isOverflowing: boolean;
   usedVramGb: number;
   totalVramGb: number;
+  statusMessage?: string;
   accentColor: string;
 }
 
@@ -15,6 +16,7 @@ export function TileSizeSection({
   isOverflowing,
   usedVramGb,
   totalVramGb,
+  statusMessage,
   accentColor,
 }: TileSizeSectionProps) {
   return (
@@ -63,11 +65,10 @@ export function TileSizeSection({
         className="text-[11.5px] leading-[1.5] mt-2 transition-colors duration-200"
         style={{ color: isOverflowing ? '#E88A80' : 'var(--text-muted)' }}
       >
-        {isOverflowing
-          ? `Projected VRAM usage (${usedVramGb.toFixed(1)} GB) exceeds GPU memory (${totalVramGb.toFixed(1)} GB). Consider selecting 256px or 128px.`
-          : tileSize === 0
-            ? `AUTO dynamically selects the optimal tile size and thread count for your ${totalVramGb.toFixed(0)} GB GPU.`
-            : `Selected tile size: ${tileSize}px. Projected VRAM usage: ${usedVramGb.toFixed(1)} GB.`}
+        {statusMessage ||
+          (isOverflowing
+            ? `Projected VRAM usage (${usedVramGb.toFixed(1)} GB) exceeds GPU memory (${totalVramGb.toFixed(1)} GB). Consider selecting 256px or 128px.`
+            : `Selected tile size: ${tileSize}px. Projected VRAM usage: ${usedVramGb.toFixed(1)} GB.`)}
       </div>
     </div>
   );

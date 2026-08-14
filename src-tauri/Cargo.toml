@@ -30,7 +30,13 @@ thiserror = "1.0"
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = "0.3"
-windows-sys = { version = "0.52", features = ["Win32_System_JobObjects", "Win32_Foundation", "Win32_System_Threading", "Win32_Security"] }
+windows-sys = { version = "0.52", features = [
+    "Win32_System_JobObjects",
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_LibraryLoader",
+    "Win32_Security",
+] }
 image = "0.25"
 
 

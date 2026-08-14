@@ -35,6 +35,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::gpu::list_gpus,
             commands::gpu::get_gpus,
+            commands::gpu::get_vram_profile,
             commands::models::get_installed_models,
             commands::models::list_installed_models,
             commands::models::list_available_models,

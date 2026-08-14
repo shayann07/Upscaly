@@ -1,11 +1,13 @@
 import { useMemo } from 'react';
 import { DeviceSelectorSection } from './settings/DeviceSelectorSection';
 import { TileSizeSection } from './settings/TileSizeSection';
+import { useVramProfile } from '../hooks/useVramProfile';
 
 export interface GpuInfo {
   id: number;
   name: string;
   detail?: string;
+  vram_mb?: number;
 }
 
 export interface AdvancedSettingsProps {
@@ -52,6 +54,7 @@ export function AdvancedSettings({
           id: g.id,
           name: g.name,
           detail: g.detail || 'VULKAN',
+          vram_mb: g.vram_mb,
         }))
       : []);
   const handleTileSize = onSetTileSize || onSelectTileSize || (() => {});
@@ -61,66 +64,20 @@ export function AdvancedSettings({
     return devices.find((g) => g.id === selectedGpu) || devices[0];
   }, [devices, selectedGpu]);
 
-  const totalVramGb = useMemo(() => {
-    if (!currentGpu) return 8;
-    const match =
-      currentGpu.name.match(/(\d+)\s*GB/i) ||
-      (currentGpu.detail && currentGpu.detail.match(/(\d+)\s*GB/i));
-    if (match && match[1]) {
-      return parseInt(match[1], 10);
-    }
-    if (
-      currentGpu.name.toLowerCase().includes('intel') ||
-      currentGpu.name.toLowerCase().includes('uhd')
-    ) {
-      return 2;
-    }
-    return 8;
-  }, [currentGpu]);
+  // Query authoritative hardware profile and memory metrics from Rust engine
+  const { totalVramGb, usedVramGb, autoTileSize, isOverflowing, statusMessage } = useVramProfile(
+    currentGpu ? currentGpu.id : selectedGpu,
+    tileSize
+  );
 
-  const usedVramGb = useMemo(() => {
-    const baseIdle = Math.round(totalVramGb * 0.08 * 10) / 10;
-    let tileFootprint = 1.8;
-    if (tileSize === 512) {
-      tileFootprint = totalVramGb <= 6 ? 3.4 : 6.2;
-    } else if (tileSize === 384) {
-      tileFootprint = 4.2;
-    } else if (tileSize === 256) {
-      tileFootprint = 2.0;
-    } else if (tileSize === 128) {
-      tileFootprint = 0.8;
-    } else if (tileSize === 0) {
-      tileFootprint =
-        totalVramGb <= 2 ? 0.8 : totalVramGb <= 4 ? 2.0 : totalVramGb <= 6 ? 4.2 : 5.8;
-    }
-    return Math.min(totalVramGb, Math.round((baseIdle + tileFootprint) * 10) / 10);
-  }, [tileSize, totalVramGb]);
-
-  const isOverflowing = usedVramGb > totalVramGb;
-  const vramPct = Math.min(100, Math.round((usedVramGb / totalVramGb) * 100));
+  const vramPct = Math.min(100, Math.round((usedVramGb / Math.max(0.1, totalVramGb)) * 100));
 
   const handleAutoTuneClick = () => {
-    let recTile: number;
-    const isIntel =
-      currentGpu &&
-      (currentGpu.name.toLowerCase().includes('intel') ||
-        currentGpu.name.toLowerCase().includes('uhd'));
-    if (isIntel || totalVramGb <= 2) {
-      recTile = 128;
-    } else if (totalVramGb <= 4) {
-      recTile = 256;
-    } else if (totalVramGb <= 6) {
-      recTile = 384;
-    } else {
-      recTile = 512;
-    }
-
-    handleTileSize(recTile);
-
+    handleTileSize(autoTileSize);
     if (onAutoTune) {
       onAutoTune(
-        recTile,
-        `${totalVramGb}.0 GB VRAM (${isIntel ? 'Intel GPU Tuned' : 'Adaptive Tuned'})`
+        autoTileSize,
+        `${totalVramGb.toFixed(1)} GB VRAM (Adaptive Tuned: ${autoTileSize}px)`
       );
     }
   };
@@ -159,6 +116,7 @@ export function AdvancedSettings({
           isOverflowing={isOverflowing}
           usedVramGb={usedVramGb}
           totalVramGb={totalVramGb}
+          statusMessage={statusMessage}
           accentColor={accentColor}
         />
 
