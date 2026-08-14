@@ -1,5 +1,5 @@
 use crate::job_queue::{Job, JobProgress};
-use crate::process_runner::ProcessHandle;
+use crate::process_runner::{MultiProcessHandle, ProcessHandle};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -23,7 +23,9 @@ pub struct VideoJobContext<'a> {
     pub job: &'a Job,
     pub cancel_requested: Arc<AtomicBool>,
     pub process_handle: Arc<Mutex<Option<Box<dyn ProcessHandle>>>>,
+    pub active_handles: Arc<Mutex<Vec<Box<dyn ProcessHandle>>>>,
     pub job_temp_dir: PathBuf,
+    pub staging_dir: PathBuf,
     pub frames_in_dir: PathBuf,
     pub frames_out_dir: PathBuf,
 }
@@ -42,26 +44,58 @@ impl<'a> VideoJobContext<'a> {
         let job_temp_dir = cache_dir.join(format!("upscaler_job_{}", job.id));
         let guard = TempFolderGuard(job_temp_dir.clone());
 
+        let staging_dir = job_temp_dir.join("staging");
         let frames_in_dir = job_temp_dir.join("frames_in");
         let frames_out_dir = job_temp_dir.join("frames_out");
 
         let _ = fs::remove_dir_all(&job_temp_dir);
+        fs::create_dir_all(&staging_dir)
+            .map_err(|e| format!("Failed to create staging frames folder: {e}"))?;
         fs::create_dir_all(&frames_in_dir)
             .map_err(|e| format!("Failed to create input frames folder: {e}"))?;
         fs::create_dir_all(&frames_out_dir)
             .map_err(|e| format!("Failed to create output frames folder: {e}"))?;
+
+        let active_handles = Arc::new(Mutex::new(Vec::new()));
+
+        {
+            let mut handle_guard = process_handle
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            *handle_guard = Some(Box::new(MultiProcessHandle::new(Arc::clone(
+                &active_handles,
+            ))));
+        }
 
         let context = Self {
             app,
             job,
             cancel_requested,
             process_handle,
+            active_handles,
             job_temp_dir,
+            staging_dir,
             frames_in_dir,
             frames_out_dir,
         };
 
         Ok((context, guard))
+    }
+
+    pub fn register_handle(&self, handle: Box<dyn ProcessHandle>) {
+        let mut list = self
+            .active_handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        list.push(handle);
+    }
+
+    pub fn unregister_handle(&self, id: u32) {
+        let mut list = self
+            .active_handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        list.retain(|h| h.id() != id);
     }
 
     pub fn is_cancelled(&self) -> bool {
@@ -70,17 +104,27 @@ impl<'a> VideoJobContext<'a> {
     }
 
     pub fn emit_progress(&self, percentage: f64, phase_text: &str) {
+        self.emit_progress_with_meta(percentage, phase_text, None, None);
+    }
+
+    pub fn emit_progress_with_meta(
+        &self,
+        percentage: f64,
+        phase_text: &str,
+        eta_seconds: Option<u64>,
+        fps: Option<f64>,
+    ) {
         let _ = self.app.emit(
             "job-status-changed",
             JobProgress {
                 job_id: self.job.id.clone(),
                 percentage,
-                status: "processing".to_string(),
+                status: "running".to_string(),
                 error: None,
                 phase: Some(phase_text.to_string()),
-                eta_seconds: None,
-                fps: None,
-                output_path: None,
+                eta_seconds,
+                fps,
+                output_path: Some(self.job.output_path.clone()),
             },
         );
     }
