@@ -573,8 +573,8 @@ mod tests {
 
     #[test]
     fn test_normalize_tile_size() {
-        assert!(normalize_tile_size(0) >= 192);
-        assert!(normalize_tile_size(-100) >= 192);
+        assert_eq!(normalize_tile_size(0), 0);
+        assert_eq!(normalize_tile_size(-100), 0);
         assert_eq!(normalize_tile_size(200), 192);
         assert_eq!(normalize_tile_size(2000), 512); // Safe ceiling on 6GB GPU
         assert_eq!(normalize_tile_size(10), 32);

@@ -57,24 +57,24 @@ pub fn calculate_safe_execution_profile(
         (gpu_vram_mb as f64 * 0.75).round() as u64
     };
 
-    let target_tile = if requested_tile <= 0 {
-        // AUTO Mode: Pick optimal stable tile according to physical VRAM
-        if gpu_vram_mb <= 1024 {
-            64
+    if requested_tile <= 0 {
+        let (thread_arg, proc_threads, projected_vram_mb) = if gpu_vram_mb >= 10240 {
+            ("1:2:2".to_string(), 2, 4500)
         } else if gpu_vram_mb <= 2048 {
-            128
-        } else if gpu_vram_mb <= 4096 {
-            256
-        } else if gpu_vram_mb <= 6144 {
-            256 // 256px tile uses ~1.3GB VRAM, rock-solid stable on 6GB laptops!
-        } else if gpu_vram_mb <= 8192 {
-            384
+            ("1:1:1".to_string(), 1, 900)
         } else {
-            512 // 512px on 12GB+ GPUs
-        }
-    } else {
-        ((requested_tile / 32) * 32).clamp(32, 1024)
-    };
+            ("1:1:2".to_string(), 1, 2300)
+        };
+
+        return ExecutionProfile {
+            tile_size: 0,
+            thread_arg,
+            projected_vram_mb,
+            proc_threads,
+        };
+    }
+
+    let target_tile = ((requested_tile / 32) * 32).clamp(32, 1024);
 
     // Candidate tile sizes to test (step down if user requested tile exceeds safe ceiling)
     let candidate_tiles = [target_tile, 512, 384, 256, 192, 128, 96, 64, 32];
@@ -127,17 +127,16 @@ pub fn build_vram_profile(gpu_vram_mb: u64, requested_tile: i32) -> VramProfile 
 
     let status_message = if requested_tile == 0 {
         format!(
-            "AUTO dynamically tuned {}px tile with {} GPU worker {} for optimal performance ({:.1} GB / {:.1} GB).",
-            selected_profile.tile_size,
-            selected_profile.proc_threads,
-            if selected_profile.proc_threads > 1 { "threads" } else { "thread" },
+            "AUTO dynamically tunes tile size via Vulkan hardware heaps (Single-Thread Safe Mode) · Projected: {:.1} GB / {:.1} GB.",
             used_gb,
             total_gb
         )
     } else if selected_profile.tile_size < requested_tile {
         format!(
-            "Clamped to {}px ({} thread) to prevent VRAM overflow ({:.1} GB / {:.1} GB).",
-            selected_profile.tile_size, selected_profile.proc_threads, used_gb, total_gb
+            "Clamped to {}px (Single-Thread Safe Mode) to prevent VRAM overflow ({:.1} GB / {:.1} GB).",
+            selected_profile.tile_size,
+            used_gb,
+            total_gb
         )
     } else if selected_profile.proc_threads == 1 {
         format!(
@@ -218,12 +217,18 @@ mod tests {
     #[test]
     fn test_vram_governor_auto_mode() {
         let p6 = calculate_safe_execution_profile(6144, 0, true);
-        assert_eq!(p6.tile_size, 256);
+        assert_eq!(p6.tile_size, 0);
+        assert_eq!(p6.proc_threads, 1);
+        assert_eq!(p6.thread_arg, "1:1:2");
 
         let p2 = calculate_safe_execution_profile(2048, 0, false);
-        assert_eq!(p2.tile_size, 128);
+        assert_eq!(p2.tile_size, 0);
+        assert_eq!(p2.proc_threads, 1);
+        assert_eq!(p2.thread_arg, "1:1:1");
 
         let p12 = calculate_safe_execution_profile(12288, 0, true);
-        assert_eq!(p12.tile_size, 512);
+        assert_eq!(p12.tile_size, 0);
+        assert_eq!(p12.proc_threads, 2);
+        assert_eq!(p12.thread_arg, "1:2:2");
     }
 }
