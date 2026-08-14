@@ -8,6 +8,18 @@ pub struct ExecutionProfile {
     pub proc_threads: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VramProfile {
+    pub total_vram_mb: u64,
+    pub used_vram_mb: u64,
+    pub safe_tile_size: i32,
+    pub auto_tile_size: i32,
+    pub proc_threads: u32,
+    pub thread_arg: String,
+    pub is_overflowing: bool,
+    pub status_message: String,
+}
+
 /// Calculate single tile memory footprint in megabytes (including model baseline tensors).
 #[must_use]
 pub fn estimate_single_tile_memory_mb(tile_size: i32) -> u64 {
@@ -101,6 +113,53 @@ pub fn calculate_safe_execution_profile(
         thread_arg: "1:1:1".to_string(),
         projected_vram_mb: estimate_total_vram_mb(32, 1),
         proc_threads: 1,
+    }
+}
+
+#[must_use]
+pub fn build_vram_profile(gpu_vram_mb: u64, requested_tile: i32) -> VramProfile {
+    let auto_profile = calculate_safe_execution_profile(gpu_vram_mb, 0, false);
+    let selected_profile = calculate_safe_execution_profile(gpu_vram_mb, requested_tile, false);
+
+    let is_overflowing = selected_profile.projected_vram_mb > gpu_vram_mb;
+    let total_gb = gpu_vram_mb as f64 / 1024.0;
+    let used_gb = selected_profile.projected_vram_mb as f64 / 1024.0;
+
+    let status_message = if requested_tile == 0 {
+        format!(
+            "AUTO dynamically tuned {}px tile with {} GPU worker {} for optimal performance ({:.1} GB / {:.1} GB).",
+            selected_profile.tile_size,
+            selected_profile.proc_threads,
+            if selected_profile.proc_threads > 1 { "threads" } else { "thread" },
+            used_gb,
+            total_gb
+        )
+    } else if selected_profile.tile_size < requested_tile {
+        format!(
+            "Clamped to {}px ({} thread) to prevent VRAM overflow ({:.1} GB / {:.1} GB).",
+            selected_profile.tile_size, selected_profile.proc_threads, used_gb, total_gb
+        )
+    } else if selected_profile.proc_threads == 1 {
+        format!(
+            "Selected {}px tile (Single-Thread Safe Mode) · Projected: {:.1} GB / {:.1} GB.",
+            selected_profile.tile_size, used_gb, total_gb
+        )
+    } else {
+        format!(
+            "Selected {}px tile (Dual-Thread Accelerated) · Projected: {:.1} GB / {:.1} GB.",
+            selected_profile.tile_size, used_gb, total_gb
+        )
+    };
+
+    VramProfile {
+        total_vram_mb: gpu_vram_mb,
+        used_vram_mb: selected_profile.projected_vram_mb,
+        safe_tile_size: selected_profile.tile_size,
+        auto_tile_size: auto_profile.tile_size,
+        proc_threads: selected_profile.proc_threads,
+        thread_arg: selected_profile.thread_arg,
+        is_overflowing,
+        status_message,
     }
 }
 

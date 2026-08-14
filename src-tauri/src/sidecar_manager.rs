@@ -303,7 +303,7 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
                                     && !lower.contains("uhd")
                                     && !lower.contains("iris");
 
-                                let vram_mb = extract_gpu_vram_mb(&name, is_discrete);
+                                let vram_mb = query_dxgi_vram_mb(&name, is_discrete);
 
                                 let detail = if is_discrete {
                                     format!("High-Performance Discrete GPU · {:.1} GB VRAM · Vulkan 1.2", vram_mb as f64 / 1024.0)
@@ -348,6 +348,163 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     });
 
     Ok(gpus)
+}
+
+#[cfg(target_os = "windows")]
+#[allow(unsafe_code)]
+pub fn query_dxgi_vram_mb(name: &str, is_discrete: bool) -> u64 {
+    use std::ffi::c_void;
+
+    #[repr(C)]
+    struct GUID {
+        data1: u32,
+        data2: u16,
+        data3: u16,
+        data4: [u8; 8],
+    }
+
+    #[repr(C)]
+    struct DXGI_ADAPTER_DESC1 {
+        description: [u16; 128],
+        vendor_id: u32,
+        device_id: u32,
+        sub_sys_id: u32,
+        revision: u32,
+        dedicated_video_memory: usize,
+        dedicated_system_memory: usize,
+        shared_system_memory: usize,
+        adapter_luid_low: u32,
+        adapter_luid_high: i32,
+        flags: u32,
+    }
+
+    #[repr(C)]
+    struct IDXGIAdapter1Vtbl {
+        query_interface: *const c_void,
+        add_ref: *const c_void,
+        release: unsafe extern "system" fn(this: *mut c_void) -> u32,
+        set_private_data: *const c_void,
+        set_private_data_interface: *const c_void,
+        get_private_data: *const c_void,
+        get_parent: *const c_void,
+        get_desc: *const c_void,
+        get_desc1:
+            unsafe extern "system" fn(this: *mut c_void, desc: *mut DXGI_ADAPTER_DESC1) -> i32,
+    }
+
+    #[repr(C)]
+    struct IDXGIAdapter1 {
+        lp_vtbl: *const IDXGIAdapter1Vtbl,
+    }
+
+    #[repr(C)]
+    struct IDXGIFactory1Vtbl {
+        query_interface: *const c_void,
+        add_ref: *const c_void,
+        release: unsafe extern "system" fn(this: *mut c_void) -> u32,
+        set_private_data: *const c_void,
+        set_private_data_interface: *const c_void,
+        get_private_data: *const c_void,
+        get_parent: *const c_void,
+        enum_adapters: *const c_void,
+        make_window_association: *const c_void,
+        get_window_association: *const c_void,
+        create_swap_chain: *const c_void,
+        create_software_adapter: *const c_void,
+        enum_adapters1: unsafe extern "system" fn(
+            this: *mut c_void,
+            adapter_index: u32,
+            pp_adapter: *mut *mut IDXGIAdapter1,
+        ) -> i32,
+    }
+
+    #[repr(C)]
+    struct IDXGIFactory1 {
+        lp_vtbl: *const IDXGIFactory1Vtbl,
+    }
+
+    type CreateDXGIFactory1Fn =
+        unsafe extern "system" fn(riid: *const GUID, pp_factory: *mut *mut IDXGIFactory1) -> i32;
+
+    let target_name_lower = name.to_lowercase();
+
+    unsafe {
+        use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
+        let module = LoadLibraryA(b"dxgi.dll\0".as_ptr());
+        if module == 0 {
+            return extract_gpu_vram_mb(name, is_discrete);
+        }
+
+        let func = GetProcAddress(module, b"CreateDXGIFactory1\0".as_ptr());
+        if func.is_none() {
+            return extract_gpu_vram_mb(name, is_discrete);
+        }
+
+        let create_dxgi_factory1: CreateDXGIFactory1Fn = std::mem::transmute(func);
+
+        let iid = GUID {
+            data1: 0x770aae78,
+            data2: 0xf26f,
+            data3: 0x4dba,
+            data4: [0xa8, 0x29, 0x25, 0x3c, 0x83, 0xd1, 0xb3, 0x87],
+        };
+
+        let mut factory: *mut IDXGIFactory1 = std::ptr::null_mut();
+        if create_dxgi_factory1(&iid, &mut factory) >= 0 && !factory.is_null() {
+            let mut i = 0u32;
+            let mut matched_vram = 0u64;
+
+            loop {
+                let mut adapter: *mut IDXGIAdapter1 = std::ptr::null_mut();
+                if ((*(*factory).lp_vtbl).enum_adapters1)(factory as *mut _, i, &mut adapter) < 0
+                    || adapter.is_null()
+                {
+                    break;
+                }
+
+                let mut desc: DXGI_ADAPTER_DESC1 = std::mem::zeroed();
+                if ((*(*adapter).lp_vtbl).get_desc1)(adapter as *mut _, &mut desc) >= 0 {
+                    let len = desc
+                        .description
+                        .iter()
+                        .position(|&c| c == 0)
+                        .unwrap_or(desc.description.len());
+                    let desc_str =
+                        String::from_utf16_lossy(&desc.description[..len]).to_lowercase();
+                    let vram_mb = (desc.dedicated_video_memory as u64) / (1024 * 1024);
+
+                    if (desc_str.contains("nvidia") && target_name_lower.contains("nvidia"))
+                        || (desc_str.contains("intel") && target_name_lower.contains("intel"))
+                        || (desc_str.contains("amd") && target_name_lower.contains("amd"))
+                        || target_name_lower.contains(&desc_str)
+                        || desc_str.contains(&target_name_lower)
+                    {
+                        if vram_mb > 0 {
+                            matched_vram = vram_mb;
+                            let _ = ((*(*adapter).lp_vtbl).release)(adapter as *mut _);
+                            break;
+                        }
+                    }
+                }
+
+                let _ = ((*(*adapter).lp_vtbl).release)(adapter as *mut _);
+                i += 1;
+            }
+
+            let _ = ((*(*factory).lp_vtbl).release)(factory as *mut _);
+
+            if matched_vram > 0 {
+                return matched_vram;
+            }
+        }
+    }
+
+    extract_gpu_vram_mb(name, is_discrete)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn query_dxgi_vram_mb(name: &str, is_discrete: bool) -> u64 {
+    extract_gpu_vram_mb(name, is_discrete)
 }
 
 pub fn extract_gpu_vram_mb(name: &str, is_discrete: bool) -> u64 {
