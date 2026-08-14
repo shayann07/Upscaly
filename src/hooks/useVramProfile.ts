@@ -17,6 +17,14 @@ export function useVramProfile(gpuId: number = 0, tileSize: number = 0) {
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   useEffect(() => {
+    // gpuId -1 is the "system RAM" pseudo-GPU (CPU fallback) -- there is
+    // no VRAM profile to query for it.
+    if (gpuId < 0) {
+      setProfile(null);
+      setIsLoading(false);
+      return;
+    }
+
     let isCancelled = false;
     setIsLoading(true);
 

@@ -1,4 +1,5 @@
 import { GpuInfo } from '../lib/types';
+import { useVramProfile } from './useVramProfile';
 
 interface TelemetryOptions {
   gpus: GpuInfo[];
@@ -7,33 +8,25 @@ interface TelemetryOptions {
   tileSize: number;
 }
 
-export function useTelemetry({ gpus, selectedGpu, jobStatus, tileSize }: TelemetryOptions) {
-  const currentGpuInfo = gpus.find((g) => g.id === selectedGpu) || gpus[0];
+// selectedGpu === -1 is the "system RAM" pseudo-GPU choice (CPU fallback),
+// which has no VRAM profile to query.
+const SYSTEM_RAM_GPU_ID = -1;
 
-  const totalGpuVramGb = (() => {
-    if (!currentGpuInfo) return 8;
-    const match =
-      currentGpuInfo.name.match(/(\d+)\s*GB/i) ||
-      (currentGpuInfo.detail && currentGpuInfo.detail.match(/(\d+)\s*GB/i));
-    if (match && match[1]) return parseInt(match[1], 10);
-    if (currentGpuInfo.name.toLowerCase().includes('intel')) return 2;
-    return 8;
-  })();
+/**
+ * Was previously fabricated: it parsed a GB figure out of the GPU *name*
+ * string via regex, then multiplied by a hardcoded tile-size guess
+ * (0.25/0.45/0.75) to invent a "used VRAM" number -- capped at the total,
+ * which made isVramOverflowing mathematically unable to ever be true. The
+ * real number (get_vram_profile) was already one invoke away and used
+ * elsewhere (AdvancedSettings), just never fed into the titlebar/progress
+ * overlay that actually displayed a VRAM figure to the user.
+ */
+export function useTelemetry({ selectedGpu, tileSize }: TelemetryOptions) {
+  const { usedVramGb, isOverflowing } = useVramProfile(selectedGpu, tileSize);
 
-  const activeVramGb = (() => {
-    if (selectedGpu === -1) return 'SYSTEM RAM';
-    const isProc = jobStatus === 'processing' || jobStatus === 'queued';
-    if (isProc) {
-      const tileMult = tileSize === 512 ? 0.75 : tileSize === 256 ? 0.45 : 0.25;
-      const used = Math.min(totalGpuVramGb, Math.round(totalGpuVramGb * tileMult * 10) / 10);
-      return `${used.toFixed(1)} GB`;
-    }
-    const idle = Math.round(totalGpuVramGb * 0.22 * 10) / 10;
-    return `${idle.toFixed(1)} GB`;
-  })();
-
-  const isVramOverflowing =
-    activeVramGb !== 'SYSTEM RAM' && parseFloat(activeVramGb) > totalGpuVramGb;
+  const isSystemRam = selectedGpu === SYSTEM_RAM_GPU_ID;
+  const activeVramGb = isSystemRam ? 'SYSTEM RAM' : `${usedVramGb.toFixed(1)} GB`;
+  const isVramOverflowing = !isSystemRam && isOverflowing;
 
   return { activeVramGb, isVramOverflowing };
 }

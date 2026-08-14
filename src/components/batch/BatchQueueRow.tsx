@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { BatchItem } from '../../lib/types';
 import { BatchQueueRowThumbnail } from './BatchQueueRowThumbnail';
 import { BatchQueueRowControls } from './BatchQueueRowControls';
@@ -48,7 +49,15 @@ function getRowStyle(open: boolean, active: boolean, index: number): React.CSSPr
   };
 }
 
-export function BatchQueueRow({
+// Batch progress events can fire 10+/sec; setBatchItems' .map() keeps the
+// same object reference for every item except the one whose event just
+// arrived. Memoizing lets every other row skip re-rendering on each tick
+// instead of the whole list re-rendering for one row's progress change --
+// this only actually works because the callback props below (onSelect,
+// onDragStart/Enter/End, onRemoveItem, onCancelItem) are now kept stable
+// by their callers (StudioCanvas, BatchQueueView) rather than being fresh
+// inline closures on every parent render.
+export const BatchQueueRow = memo(function BatchQueueRow({
   file,
   index,
   open,
@@ -88,7 +97,7 @@ export function BatchQueueRow({
 
       <div className="flex-1 min-w-0" style={{ display: open ? 'block' : 'none' }}>
         <div className="text-[11.5px] font-medium text-[#EDEAE6] whitespace-nowrap overflow-hidden text-ellipsis mb-0.5">
-          {file.name}
+          {file.fileName || file.name || 'Untitled'}
         </div>
         {file.w && file.h ? (
           <div className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-muted)] tracking-[0.03em] whitespace-nowrap overflow-hidden text-ellipsis">
@@ -117,4 +126,4 @@ export function BatchQueueRow({
       />
     </div>
   );
-}
+});

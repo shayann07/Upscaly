@@ -2,8 +2,8 @@ import React from 'react';
 import { ComparisonMediaOverlay } from './ComparisonMediaOverlay';
 
 interface ComparisonSideViewProps {
-  handleWheel: (e: React.WheelEvent) => void;
-  handleCanvasMouseDown: (e: React.MouseEvent) => void;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  handleCanvasMouseDown: (e: React.PointerEvent) => void;
   zoom: number;
   isPanning: boolean;
   inputSrc: string;
@@ -19,7 +19,7 @@ interface ComparisonSideViewProps {
 }
 
 export function ComparisonSideView({
-  handleWheel,
+  containerRef,
   handleCanvasMouseDown,
   zoom,
   isPanning,
@@ -36,8 +36,8 @@ export function ComparisonSideView({
 }: ComparisonSideViewProps) {
   return (
     <div
-      onWheel={handleWheel}
-      onMouseDown={handleCanvasMouseDown}
+      ref={containerRef}
+      onPointerDown={handleCanvasMouseDown}
       className="absolute inset-0 grid grid-cols-2 gap-0.5 bg-[var(--bg-base)] select-none"
       style={{
         cursor: zoom > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default',

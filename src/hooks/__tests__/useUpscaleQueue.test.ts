@@ -148,3 +148,70 @@ describe('useUpscaleQueue hook', () => {
     expect(result!.current.batchItems[0].status).toBe('done');
   });
 });
+
+describe('useUpscaleQueue late/out-of-order events', () => {
+  it('ignores a late/out-of-order event for an already-terminal item', async () => {
+    const onItemCompleted = vi.fn();
+    let result: { current: ReturnType<typeof useUpscaleQueue> };
+
+    await act(async () => {
+      const rendered = renderHook(() =>
+        useUpscaleQueue({
+          selectedGpu: 0,
+          selectedModel: 'realesrgan-x4plus',
+          scale: 4,
+          tileSize: 0,
+          customOutputPath: '',
+          onItemCompleted,
+        })
+      );
+      result = rendered.result;
+    });
+
+    act(() => {
+      result!.current.setBatchItems([
+        {
+          id: 'job-1',
+          filePath: 'C:/in.png',
+          fileName: 'in.png',
+          progress: 0,
+          status: 'queued',
+        },
+      ]);
+    });
+
+    act(() => {
+      result!.current.handleJobProgress({
+        job_id: 'job-1',
+        percentage: 100,
+        status: 'cancelled',
+      });
+    });
+    expect(result!.current.batchItems[0].status).toBe('cancelled');
+
+    // A stale "running" tick for the same job arrives after cancellation
+    // was already recorded -- it must not resurrect the row.
+    act(() => {
+      result!.current.handleJobProgress({
+        job_id: 'job-1',
+        percentage: 42,
+        status: 'running',
+      });
+    });
+    expect(result!.current.batchItems[0].status).toBe('cancelled');
+    expect(result!.current.batchItems[0].progress).toBe(100);
+
+    // Nor a stale "succeeded" -- which would otherwise both flip the row
+    // and record an incorrect history entry for a job that was cancelled.
+    act(() => {
+      result!.current.handleJobProgress({
+        job_id: 'job-1',
+        percentage: 100,
+        status: 'succeeded',
+        output_path: 'C:/out/in_upscaled_4x.png',
+      });
+    });
+    expect(result!.current.batchItems[0].status).toBe('cancelled');
+    expect(onItemCompleted).not.toHaveBeenCalled();
+  });
+});
