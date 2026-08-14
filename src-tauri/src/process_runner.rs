@@ -82,6 +82,9 @@ impl ProcessRunner for StdProcessRunner {
                 message: format!("Failed to spawn process '{}': {}", program.display(), e),
             })?;
 
+        // Guarantee child process dies when the parent application exits
+        crate::sidecar_manager::attach_to_job_object(&child);
+
         let progress = Arc::new(Mutex::new(None));
         let progress_clone = Arc::clone(&progress);
         let stderr_log = Arc::new(Mutex::new(Vec::<String>::new()));

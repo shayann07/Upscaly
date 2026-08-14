@@ -62,11 +62,23 @@ pub fn run() {
             commands::diagnostics::get_system_diagnostics
         ])
         .on_window_event(|_window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
+            if matches!(
+                event,
+                tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed
+            ) {
                 kill_all_processes();
                 job_queue::kill_all_active_jobs();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, event| {
+            if matches!(
+                event,
+                tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
+            ) {
+                kill_all_processes();
+                job_queue::kill_all_active_jobs();
+            }
+        });
 }
