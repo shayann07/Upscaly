@@ -449,32 +449,20 @@ pub fn get_gpu_vram_mb_for_id(app: &AppHandle, gpu_id: i32) -> u64 {
 }
 
 pub fn get_estimated_vram_mb() -> u64 {
-    #[cfg(target_os = "windows")]
-    {
-        if let Ok(output) = std::process::Command::new("wmic")
-            .args(["path", "Win32_VideoController", "get", "AdapterRAM"])
-            .output()
-        {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if let Ok(bytes) = line.trim().parse::<u64>() {
-                    if bytes > 500_000_000 {
-                        return bytes / (1024 * 1024);
-                    }
-                }
-            }
-        }
+    // Previously shelled out to `wmic path Win32_VideoController get
+    // AdapterRAM`: wmic.exe has been removed from current Windows 11
+    // builds (silently falling through to the 6144 default below), and
+    // even where it exists, AdapterRAM is a 32-bit field that caps/wraps
+    // at ~4095MB on any GPU with 4GB+ of VRAM -- an 8-12GB card would
+    // report as ~4GB, clamping tiles far smaller than necessary. Reuse the
+    // same DXGI adapter query the primary GPU-detection path already
+    // relies on instead; an empty target name matches the first adapter
+    // that reports any dedicated VRAM.
+    let dxgi_vram = crate::sidecar_manager::query_dxgi_vram_mb("", true);
+    if dxgi_vram > 0 {
+        return dxgi_vram;
     }
     6144 // Default fallback for modern 6GB GPUs
-}
-
-pub fn normalize_tile_size(user_tile: i32) -> i32 {
-    let profile = crate::engine::vram_governor::calculate_safe_execution_profile(
-        get_estimated_vram_mb(),
-        user_tile,
-        false,
-    );
-    profile.tile_size
 }
 
 pub fn resolve_effective_scale(
@@ -690,15 +678,6 @@ mod tests {
         assert!(sanitized
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
-    }
-
-    #[test]
-    fn test_normalize_tile_size() {
-        assert_eq!(normalize_tile_size(0), 0);
-        assert_eq!(normalize_tile_size(-100), 0);
-        assert_eq!(normalize_tile_size(200), 192);
-        assert_eq!(normalize_tile_size(2000), 512); // Safe ceiling on 6GB GPU
-        assert_eq!(normalize_tile_size(10), 32);
     }
 
     #[test]
