@@ -21,6 +21,13 @@ export function useStudioState() {
   }, []);
 
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  // Owned here (rather than in useStudioActions, where the rest of the
+  // cancel-confirmation flow lives) so both useBatchSetup and
+  // useStudioActions -- which have their own circular construction-order
+  // constraints -- can read its current value directly instead of through
+  // a ref-bridge, which only works reliably for callbacks, not values read
+  // during the same render they're threaded through.
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState<boolean>(false);
   const [jobStatus, setJobStatus] = useState<string>('idle');
   const [progressVal, setProgressVal] = useState<number>(0);
   const [statusMessage, setStatusMessage] = useState<string>('');
@@ -89,6 +96,8 @@ export function useStudioState() {
     handleToggleNavTab,
     activeJobId,
     setActiveJobId,
+    confirmCancelOpen,
+    setConfirmCancelOpen,
     jobStatus,
     setJobStatus,
     progressVal,

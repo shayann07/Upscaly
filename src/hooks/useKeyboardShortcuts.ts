@@ -2,20 +2,28 @@ import { useEffect } from 'react';
 
 interface KeyboardShortcutsOptions {
   activeJobId: string | null;
+  isBatchActive: boolean;
+  confirmCancelOpen: boolean;
   batchItemsCount: number;
   handleOpenFile: () => void;
   handleStartBatchUpscale: () => void;
   handleCancelUpscale: () => void;
+  requestCancelConfirmation: () => void;
+  handleDismissCancel: () => void;
   handleToggleNavTab: (tab: 'models' | 'history' | 'settings' | 'about') => void;
   setActiveNavTab: (tab: 'models' | 'history' | 'settings' | 'about' | null) => void;
 }
 
 export function useKeyboardShortcuts({
   activeJobId,
+  isBatchActive,
+  confirmCancelOpen,
   batchItemsCount,
   handleOpenFile,
   handleStartBatchUpscale,
   handleCancelUpscale,
+  requestCancelConfirmation,
+  handleDismissCancel,
   handleToggleNavTab,
   setActiveNavTab,
 }: KeyboardShortcutsOptions) {
@@ -46,8 +54,23 @@ export function useKeyboardShortcuts({
       }
 
       if (e.key === 'Escape') {
-        if (activeJobId) handleCancelUpscale();
-        else setActiveNavTab(null);
+        if (confirmCancelOpen) {
+          // Close the topmost overlay first -- previously Escape fell
+          // through to the cancel/nav-close branch below even while the
+          // confirm dialog was open, instead of dismissing the dialog.
+          handleDismissCancel();
+        } else if (isBatchActive) {
+          // No confirm dialog exists for batch cancellation yet, so this
+          // matches the batch Cancel button's own (also ungated) behavior.
+          handleCancelUpscale();
+        } else if (activeJobId) {
+          // Route through the same confirm dialog the "X" button uses,
+          // instead of instantly killing a possibly hour-long job on an
+          // accidental keypress.
+          requestCancelConfirmation();
+        } else {
+          setActiveNavTab(null);
+        }
         return;
       }
 
@@ -67,10 +90,14 @@ export function useKeyboardShortcuts({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     activeJobId,
+    isBatchActive,
+    confirmCancelOpen,
     batchItemsCount,
     handleOpenFile,
     handleStartBatchUpscale,
     handleCancelUpscale,
+    requestCancelConfirmation,
+    handleDismissCancel,
     handleToggleNavTab,
     setActiveNavTab,
   ]);

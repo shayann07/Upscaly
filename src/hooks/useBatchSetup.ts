@@ -12,9 +12,11 @@ interface BatchSetupOptions {
   customOutputPath: string;
   isMuted: boolean;
   activeJobId: string | null;
+  confirmCancelOpen: boolean;
+  requestCancelConfirmation: () => void;
+  handleDismissCancel: () => void;
   setHistoryItems: React.Dispatch<React.SetStateAction<HistoryItem[]>>;
   handleOpenFile: () => void;
-  handleCancelUpscale: (idToCancel?: string) => void;
   handleToggleNavTab: (tab: 'models' | 'history' | 'settings' | 'about') => void;
   setActiveNavTab: (tab: 'models' | 'history' | 'settings' | 'about' | null) => void;
   onNotify: (
@@ -31,9 +33,11 @@ export function useBatchSetup({
   tileSize,
   customOutputPath,
   activeJobId,
+  confirmCancelOpen,
+  requestCancelConfirmation,
+  handleDismissCancel,
   setHistoryItems,
   handleOpenFile,
-  handleCancelUpscale,
   handleToggleNavTab,
   setActiveNavTab,
   onNotify,
@@ -81,10 +85,18 @@ export function useBatchSetup({
 
   useKeyboardShortcuts({
     activeJobId: effectiveActiveJobId,
+    isBatchActive: isBatchRunning,
+    confirmCancelOpen,
     batchItemsCount: batchItems.length,
     handleOpenFile,
     handleStartBatchUpscale,
-    handleCancelUpscale: () => handleCancelUpscale(effectiveActiveJobId || undefined),
+    // Only reached for the batch-active branch (see useKeyboardShortcuts) --
+    // cancelBatch is already owned by this hook, so there's no need to
+    // bridge through a container-level callback the way the single-file
+    // path (requestCancelConfirmation) does.
+    handleCancelUpscale: cancelBatch,
+    requestCancelConfirmation,
+    handleDismissCancel,
     handleToggleNavTab,
     setActiveNavTab,
   });
