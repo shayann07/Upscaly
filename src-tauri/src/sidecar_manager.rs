@@ -269,18 +269,21 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan")?;
     let models_dir = crate::model_manager::get_models_dir(app);
 
-    let mut child = Command::new(sidecar_path)
-        .args([
-            "-i",
-            "non-existent-image-path.jpg",
-            "-o",
-            "dummy.png",
-            "-m",
-            models_dir.to_str().unwrap_or("models"),
-            "-v",
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+    let mut cmd = Command::new(sidecar_path);
+    cmd.args([
+        "-i",
+        "non-existent-image-path.jpg",
+        "-o",
+        "dummy.png",
+        "-m",
+        models_dir.to_str().unwrap_or("models"),
+        "-v",
+    ])
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+    crate::process_runner::suppress_console_window(&mut cmd);
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to spawn GPU probe process: {e}"))?;
 

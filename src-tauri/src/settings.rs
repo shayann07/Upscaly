@@ -41,8 +41,17 @@ pub fn load_settings(app: &AppHandle) -> AppSettings {
     let path = get_settings_path(app);
     if path.exists() {
         if let Ok(content) = fs::read_to_string(&path) {
-            if let Ok(settings) = serde_json::from_str::<AppSettings>(&content) {
-                return settings;
+            match serde_json::from_str::<AppSettings>(&content) {
+                Ok(settings) => return settings,
+                Err(_) => {
+                    // Preserve the unreadable file instead of silently
+                    // discarding the user's saved preferences (GPU choice,
+                    // output directory, mute state) -- the next save would
+                    // otherwise overwrite it with fresh defaults with no
+                    // trace of what was there before.
+                    let backup_path = path.with_extension("json.corrupt");
+                    let _ = fs::rename(&path, &backup_path);
+                }
             }
         }
     }
@@ -52,7 +61,14 @@ pub fn load_settings(app: &AppHandle) -> AppSettings {
 pub fn save_settings(app: &AppHandle, settings: &AppSettings) -> Result<(), String> {
     let path = get_settings_path(app);
     let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
-    fs::write(path, json).map_err(|e| e.to_string())
+
+    // Write to a temp file and rename into place instead of truncating
+    // settings.json directly -- a crash or power loss mid-write previously
+    // left a truncated/corrupt file, which load_settings could only
+    // recover from by resetting to defaults.
+    let tmp_path = path.with_extension("json.tmp");
+    fs::write(&tmp_path, json).map_err(|e| e.to_string())?;
+    fs::rename(&tmp_path, &path).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
