@@ -1,26 +1,23 @@
 # GSD Project State
 
-> Milestone Refactor Modularization Quality Gate Audit & Gap Closure Completed on 2026-08-09
+> Codebase Mapping completed on 2026-08-14
 
-## Current Milestone
-- **Milestone Name**: `Refactor Modularization Quality Gate`
-- **Goal**: Execute the audit-backed modularization roadmap without changing product behavior, while driving the branch from the documented failing baseline to a clean quality gate.
-- **Phase**: Phase 12: Gap Closure (COMPLETE)
-- **Status**: 100% Quality Gate Passed (`check:quality` Clean Pass), 0 Gaps Remaining
+## Current Status
+- **Project**: `Upscaly` (Desktop AI Image & Video Upscaler)
+- **Status**: Codebase mapped and documented for planning context.
 
 ## Last Session Summary
-Executed `/verifier`, `/audit-milestone`, and `/plan-milestone-gaps`:
-- Performed verification comparing `HEAD` against `main`.
-- Created `refactor-modularization-AUDIT.md` capturing gaps in folder dialogs, batch CTA execution, background radial vignette, and queue rail rendering.
-- Executed Phase 12 (Gap Closure):
-  - Wired `handleOpenFolder` through `StudioCanvas` and `StudioPreviewSection` into `<DropZone />`.
-  - Re-ordered hook execution in `useStudioContainerSetup` so `useBatchSetup` is created before `useStudioActions`, passing `batchItems` and `handleStartBatchUpscale` to `useStudioActions`.
-  - Verified `npm.cmd run check:quality` passes 100% cleanly (0 TS errors, 37 Vitest tests passing, 0 Clippy warnings, 100% formatted).
+Codebase mapping complete:
+- **40 Frontend Components** identified across modular directory trees (`src/components/studio/`, `batch/`, `comparison/`, `settings/`, `titlebar/`, root).
+- **15 Custom Hooks** mapped (`src/hooks/`) handling UI state, batch queuing, audio, comparisons, and Tauri IPC lifecycle.
+- **8 Core Utility Modules** mapped (`src/lib/`) covering types, state machine, audio chimes, output naming, and models.
+- **21 Backend Modules** analyzed (`src-tauri/src/`) covering commands, engine, video pipeline, JobObjects sandboxing, and job queue.
+- **41 Dependencies** analyzed across `package.json` (10 prod, 15 dev) and `Cargo.toml` (16 crates).
+- **4 Technical Debt items** surfaced (4 ESLint warnings, 1 Clippy warning in `phases.rs:222`, Prettier/rustfmt formatting drift, 8 outdated packages).
 
 ## Architecture & Planning Documents
 - [SPEC.md](file:///d:/Work/Extras/image%20upscaler/.gsd/SPEC.md)
 - [ROADMAP.md](file:///d:/Work/Extras/image%20upscaler/.gsd/ROADMAP.md)
 - [ARCHITECTURE.md](file:///d:/Work/Extras/image%20upscaler/.gsd/ARCHITECTURE.md)
 - [STACK.md](file:///d:/Work/Extras/image%20upscaler/.gsd/STACK.md)
-- [REFACTORING_PLAN.md](file:///d:/Work/Extras/image%20upscaler/docs/REFACTORING_PLAN.md)
-- [refactor-modularization-AUDIT.md](file:///d:/Work/Extras/image%20upscaler/.gsd/milestones/refactor-modularization-AUDIT.md)
+- [STATE.md](file:///d:/Work/Extras/image%20upscaler/.gsd/STATE.md)
