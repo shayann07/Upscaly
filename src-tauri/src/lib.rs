@@ -57,6 +57,7 @@ pub fn run() {
             commands::files::close_window,
             commands::files::minimize_window,
             commands::files::toggle_maximize_window,
+            commands::files::get_file_size_bytes,
             commands::diagnostics::get_system_diagnostics
         ])
         .on_window_event(|_window, event| {

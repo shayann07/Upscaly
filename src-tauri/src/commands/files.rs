@@ -74,3 +74,10 @@ pub async fn toggle_maximize_window(window: tauri::Window) -> Result<(), String>
         window.maximize().map_err(|e| e.to_string())
     }
 }
+
+#[tauri::command]
+pub async fn get_file_size_bytes(path: String) -> Result<u64, String> {
+    let p = validate_safe_path(&path)?;
+    let meta = std::fs::metadata(&p).map_err(|e| format!("Failed to read file metadata: {e}"))?;
+    Ok(meta.len())
+}
