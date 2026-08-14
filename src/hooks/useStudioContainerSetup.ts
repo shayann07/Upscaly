@@ -108,6 +108,7 @@ export function useStudioContainerSetup() {
   const studioJobState = useStudioJobStateSetup({
     activeJobId: state.activeJobId,
     activeJobIdRef: actions.activeJobIdRef,
+    jobSnapshotsRef: actions.jobSnapshotsRef,
     pendingOutputPath: actions.pendingOutputPath,
     jobStartTimeRef: actions.jobStartTimeRef,
     currentFileDims: media.currentFileDims,
