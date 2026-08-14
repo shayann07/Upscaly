@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
-import { StudioJobState } from '../lib/studioJobHandler';
+import { StudioJobState, JobInputSnapshot } from '../lib/studioJobHandler';
 import { HistoryItem } from '../lib/history';
 
 interface StudioJobStateSetupOptions {
   activeJobId: string | null;
   activeJobIdRef: React.MutableRefObject<string | null>;
+  jobSnapshotsRef: React.MutableRefObject<Map<string, JobInputSnapshot>>;
   pendingOutputPath: React.MutableRefObject<string>;
   jobStartTimeRef?: React.MutableRefObject<number | null>;
   currentFileDims?: { w: number; h: number } | null;
@@ -36,6 +37,7 @@ interface StudioJobStateSetupOptions {
 export function useStudioJobStateSetup({
   activeJobId,
   activeJobIdRef,
+  jobSnapshotsRef,
   pendingOutputPath,
   jobStartTimeRef,
   currentFileDims,
@@ -63,6 +65,7 @@ export function useStudioJobStateSetup({
     () => ({
       activeJobId,
       activeJobIdRef,
+      jobSnapshotsRef,
       pendingOutputPath,
       jobStartTimeRef,
       currentFileDims,
@@ -89,6 +92,7 @@ export function useStudioJobStateSetup({
     [
       activeJobId,
       activeJobIdRef,
+      jobSnapshotsRef,
       pendingOutputPath,
       jobStartTimeRef,
       currentFileDims,

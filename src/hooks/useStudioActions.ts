@@ -6,6 +6,7 @@ import { ModelInfo, BatchItem, HistoryEntry } from '../lib/types';
 import { SUPPORTED_MODELS } from '../lib/types';
 import { joinPath } from '../lib/outputPaths';
 import { allowMediaPath } from '../lib/assetScope';
+import { JobInputSnapshot } from '../lib/studioJobHandler';
 
 interface StudioActionsOptions {
   filePath: string | null;
@@ -89,6 +90,13 @@ export function useStudioActions({
   const pendingOutputPath = useRef<string>('');
   const activeJobIdRef = useRef<string | null>(null);
   const jobStartTimeRef = useRef<number | null>(null);
+  // Snapshots the input (filePath/fileName/isVideo) that was active when
+  // each job was *started*, keyed by job id. handleStudioJobStatus reads
+  // from this -- not the live filePath/fileName -- when a job's completion
+  // event arrives, so opening a different file while a job is still
+  // running can no longer pair the new file's name with the old job's
+  // output in history, or flip the UI to show that mismatched result.
+  const jobSnapshotsRef = useRef<Map<string, JobInputSnapshot>>(new Map());
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
 
   const handleSelectCategory = useCallback(
@@ -179,6 +187,7 @@ export function useStudioActions({
       activeJobIdRef.current = clientJobId;
       setActiveJobId(clientJobId);
       jobStartTimeRef.current = Date.now();
+      jobSnapshotsRef.current.set(clientJobId, { filePath, fileName, isVideo });
 
       setJobStatus('queued');
       setProgressVal(0);
@@ -386,6 +395,7 @@ export function useStudioActions({
   return {
     pendingOutputPath,
     activeJobIdRef,
+    jobSnapshotsRef,
     jobStartTimeRef,
     confirmCancelOpen,
     handleSelectCategory,
