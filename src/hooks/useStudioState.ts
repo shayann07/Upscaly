@@ -18,7 +18,7 @@ export function useStudioState() {
   const [jobPhase, setJobPhase] = useState<string>('');
   const [etaSeconds, setEtaSeconds] = useState<number | undefined>(undefined);
   const [fps, setFps] = useState<number | undefined>(undefined);
-  const [rateStr, setRateStr] = useState<string>('14.2 MP/s');
+  const [rateStr, setRateStr] = useState<string>('');
 
   const [comparisonViewMode, setComparisonViewMode] = useState<'split' | 'side-by-side'>('split');
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -60,7 +60,7 @@ export function useStudioState() {
     setJobPhase('');
     setEtaSeconds(undefined);
     setFps(undefined);
-    setRateStr('14.2 MP/s');
+    setRateStr('');
   }, []);
 
   return {

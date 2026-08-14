@@ -16,8 +16,8 @@ interface ProgressOverlayProps {
 
 export function ProgressOverlay({
   phase = 'PREPARING',
-  eta = '--:--',
-  rate = '-- MP/s',
+  eta,
+  rate,
   vram = '-- GB',
   tileCount = 'AUTO',
   onCancel = () => {},
@@ -29,9 +29,9 @@ export function ProgressOverlay({
   const displayEta =
     etaSeconds !== undefined && etaSeconds > 0
       ? `${Math.floor(etaSeconds / 60)}:${(etaSeconds % 60).toString().padStart(2, '0')}`
-      : eta !== '--:--'
+      : eta && eta !== '--:--' && eta !== '0:05'
         ? eta
-        : '0:05';
+        : null;
 
   const rawPhase = statusText || phase;
 
@@ -43,7 +43,12 @@ export function ProgressOverlay({
       ? `${rawPhase} · ${percentage.toFixed(1)}%`
       : rawPhase;
 
-  const displayRate = fps !== undefined && fps > 0 ? `${fps.toFixed(1)} FPS` : rate;
+  const displayRate =
+    fps !== undefined && fps > 0
+      ? `${fps.toFixed(1)} FPS`
+      : rate && rate !== '-- MP/s' && rate !== '14.2 MP/s' && rate !== ''
+        ? rate
+        : null;
 
   return (
     <motion.div
@@ -71,17 +76,34 @@ export function ProgressOverlay({
 
       {/* Telemetry stats */}
       <div className="flex items-center gap-3.5 font-['Martian_Mono',monospace] text-[10px] whitespace-nowrap">
-        <span className="text-[var(--text-dim)]">
-          ETA <span className="text-[var(--text-primary)]">{displayEta}</span>
+        <span className="text-[var(--text-dim)] flex items-center gap-1">
+          ETA{' '}
+          {displayEta ? (
+            <span className="text-[var(--text-primary)] font-semibold">{displayEta}</span>
+          ) : (
+            <span className="inline-flex items-center text-[var(--text-dim)] opacity-75">
+              <span className="animate-pulse">Calculating…</span>
+            </span>
+          )}
         </span>
-        <span className="text-[var(--text-dim)]">
-          RATE <span className="text-[var(--text-primary)]">{displayRate}</span>
+
+        <span className="text-[var(--text-dim)] flex items-center gap-1">
+          RATE{' '}
+          {displayRate ? (
+            <span className="text-[var(--text-primary)] font-semibold">{displayRate}</span>
+          ) : (
+            <span className="inline-flex items-center text-[var(--text-dim)] opacity-75">
+              <span className="animate-pulse">Calculating…</span>
+            </span>
+          )}
         </span>
+
         <span className="text-[var(--text-dim)]">
-          VRAM <span className="text-[var(--text-primary)]">{vram}</span>
+          VRAM <span className="text-[var(--text-primary)] font-semibold">{vram}</span>
         </span>
+
         <span className="text-[var(--text-dim)]">
-          TILE <span className="text-[var(--text-primary)]">{tileCount}</span>
+          TILE <span className="text-[var(--text-primary)] font-semibold">{tileCount}</span>
         </span>
       </div>
 

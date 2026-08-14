@@ -106,9 +106,9 @@ export function handleStudioJobStatus(progress: JobProgress, state: StudioJobSta
 
   if (eta_seconds !== undefined && eta_seconds > 0) {
     state.setEtaSeconds(eta_seconds);
-  } else if (state.jobStartTimeRef?.current && percentage > 0 && (!state.isVideo || percentage >= 10)) {
+  } else if (state.jobStartTimeRef?.current && percentage >= 15) {
     const elapsedSec = (Date.now() - state.jobStartTimeRef.current) / 1000;
-    if (elapsedSec > 0.5) {
+    if (elapsedSec >= 2.0) {
       const pctPerSec = percentage / elapsedSec;
       const remPct = Math.max(0, 100 - percentage);
       const calcEta = Math.max(1, Math.ceil(remPct / Math.max(0.1, pctPerSec)));
@@ -121,19 +121,24 @@ export function handleStudioJobStatus(progress: JobProgress, state: StudioJobSta
     if (state.setRateStr) {
       state.setRateStr(`${jobFps.toFixed(1)} FPS`);
     }
-  } else if (state.jobStartTimeRef?.current && percentage > 0 && state.setRateStr) {
-    const elapsedSec = Math.max(0.1, (Date.now() - state.jobStartTimeRef.current) / 1000);
-    let totalMp = 12.0;
-    if (state.currentFileDims && state.currentFileDims.w && state.currentFileDims.h) {
-      totalMp = (state.currentFileDims.w * state.currentFileDims.h * state.scale) / 1_000_000;
-    }
+  } else if (
+    !state.isVideo &&
+    state.jobStartTimeRef?.current &&
+    percentage >= 10 &&
+    state.currentFileDims &&
+    state.currentFileDims.w > 0 &&
+    state.currentFileDims.h > 0 &&
+    state.setRateStr
+  ) {
+    const elapsedSec = Math.max(0.5, (Date.now() - state.jobStartTimeRef.current) / 1000);
+    const totalMp = (state.currentFileDims.w * state.currentFileDims.h * state.scale) / 1_000_000;
     const processedMp = totalMp * (percentage / 100);
-    const mps = Math.max(0.5, processedMp / elapsedSec);
+    const mps = Math.max(0.1, processedMp / elapsedSec);
     state.setRateStr(`${mps.toFixed(1)} MP/s`);
   }
 
   if (isProc) {
-    state.setStatusMessage(`Upscaling in progress... ${percentage.toFixed(1)}%`);
+    state.setStatusMessage(phase || `Upscaling in progress... ${percentage.toFixed(1)}%`);
   } else if (status === 'queued') {
     state.setStatusMessage('Queued in GPU worker thread...');
   } else if (isDone) {
