@@ -58,7 +58,11 @@ pub struct EngineModelItem {
     pub status: ModelStatus,
     pub is_custom: bool,
     pub param_url: String,
+    pub param_sha256: Option<String>,
+    pub param_size: Option<u64>,
     pub bin_url: String,
+    pub bin_sha256: Option<String>,
+    pub bin_size: Option<u64>,
 }
 
 pub struct ModelStore;
@@ -101,7 +105,11 @@ impl ModelStore {
                 status,
                 is_custom: false,
                 param_url: entry.param_url,
+                param_sha256: entry.param_sha256,
+                param_size: entry.param_size,
                 bin_url: entry.bin_url,
+                bin_sha256: entry.bin_sha256,
+                bin_size: entry.bin_size,
             });
         }
 
@@ -146,7 +154,11 @@ impl ModelStore {
                                 },
                                 is_custom: true,
                                 param_url: String::new(),
+                                param_sha256: None,
+                                param_size: None,
                                 bin_url: String::new(),
+                                bin_sha256: None,
+                                bin_size: None,
                             });
                         }
                     }
@@ -184,51 +196,42 @@ impl ModelStore {
         models_dir: &Path,
         item: &EngineModelItem,
     ) -> Result<(), String> {
+        if item.param_url.is_empty() || item.bin_url.is_empty() {
+            return Err(format!("No download URL configured for {}", item.id));
+        }
+
         let param_target = models_dir.join(format!("{}.param", item.id));
         let bin_target = models_dir.join(format!("{}.bin", item.id));
 
-        Self::download_atomic_file(app, &item.id, "param", &item.param_url, &param_target).await?;
-        Self::download_atomic_file(app, &item.id, "bin", &item.bin_url, &bin_target).await?;
+        // Route through model_manager::download_file, which streams progress
+        // events (the frontend's download-progress listener otherwise never
+        // fires) and verifies the SHA-256 the registry publishes for each
+        // file -- previously a tampered or truncated download landed in the
+        // models dir unchecked and only surfaced later as an opaque NCNN
+        // failure.
+        crate::model_manager::download_file(
+            app,
+            &item.id,
+            "param",
+            &item.param_url,
+            &param_target,
+            item.param_size.unwrap_or(0),
+            item.param_sha256.as_deref().unwrap_or(""),
+        )
+        .await?;
+
+        crate::model_manager::download_file(
+            app,
+            &item.id,
+            "bin",
+            &item.bin_url,
+            &bin_target,
+            item.bin_size.unwrap_or(0),
+            item.bin_sha256.as_deref().unwrap_or(""),
+        )
+        .await?;
 
         let _ = app.emit("model-catalog-updated", ());
-
-        Ok(())
-    }
-
-    async fn download_atomic_file(
-        _app: &AppHandle,
-        model_id: &str,
-        ext: &str,
-        url: &str,
-        target_path: &Path,
-    ) -> Result<(), String> {
-        if url.is_empty() {
-            return Err(format!("No download URL configured for {}", model_id));
-        }
-
-        let tmp_path = target_path.with_extension(format!("{}.tmp", ext));
-
-        let client = reqwest::Client::new();
-        let response = client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| format!("Network request failed for {}: {}", url, e))?;
-
-        if !response.status().is_success() {
-            return Err(format!("Download HTTP failure: {}", response.status()));
-        }
-
-        let content = response
-            .bytes()
-            .await
-            .map_err(|e| format!("Failed to read stream for {}: {}", model_id, e))?;
-
-        fs::write(&tmp_path, &content)
-            .map_err(|e| format!("Failed to write tmp file {}: {}", tmp_path.display(), e))?;
-
-        fs::rename(&tmp_path, target_path)
-            .map_err(|e| format!("Atomic rename failed for {}: {}", target_path.display(), e))?;
 
         Ok(())
     }

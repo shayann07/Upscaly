@@ -41,7 +41,6 @@ pub struct SignedManifest {
     pub data: String, // JSON string of ManifestData
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DownloadProgress {
     pub model_id: String,
@@ -201,7 +200,6 @@ pub fn copy_bundled_models(app: &AppHandle, dest_dir: &Path) {
 }
 
 /// Downloads a single file with resume capability and progress updates.
-#[allow(dead_code)]
 pub async fn download_file(
     app: &AppHandle,
     model_id: &str,
