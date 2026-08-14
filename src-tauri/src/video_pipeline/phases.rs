@@ -29,6 +29,7 @@ pub struct ExtractionControl {
 pub fn spawn_background_extraction(
     ctx: &VideoJobContext,
     ffmpeg_binary: &str,
+    fps_string: &str,
 ) -> Result<ExtractionControl, String> {
     let input_frame_pattern = ctx.staging_dir.join("frame_%08d.jpg");
     let extract_args = vec![
@@ -37,12 +38,27 @@ pub fn spawn_background_extraction(
         "0".to_string(),
         "-i".to_string(),
         ctx.job.input_path.clone(),
+        // Force the same constant frame rate here that reassemble_video
+        // later declares via -framerate. The previous -vsync 0 extracted
+        // one image per *source* frame at its original (possibly
+        // variable) timestamps, which reassembly then reinterpreted as a
+        // plain CFR sequence at fps_string -- on VFR sources (phone
+        // recordings, screen captures) this drifted the video against the
+        // untouched, separately-muxed audio track over the length of the
+        // output, silently truncated further by -shortest.
         "-vsync".to_string(),
-        "0".to_string(),
+        "cfr".to_string(),
+        "-r".to_string(),
+        fps_string.to_string(),
         "-q:v".to_string(),
         "2".to_string(),
+        // Pin full chroma resolution on the intermediate JPEG instead of
+        // letting ffmpeg fall back to default 4:2:0 -- more color detail
+        // for the upscaler to work with. (The previous "-pix_fmt rgb24"
+        // was a no-op here: mjpeg doesn't support rgb24, so ffmpeg was
+        // silently substituting its own default anyway.)
         "-pix_fmt".to_string(),
-        "rgb24".to_string(),
+        "yuvj444p".to_string(),
         input_frame_pattern.to_string_lossy().to_string(),
     ];
 
@@ -143,7 +159,7 @@ pub fn run_overlapping_upscale_pipeline(
 
     check_available_disk_space(ctx, meta, effective_scale)?;
 
-    let extraction = spawn_background_extraction(ctx, ffmpeg_binary)?;
+    let extraction = spawn_background_extraction(ctx, ffmpeg_binary, &meta.fps_string)?;
     let sidecar_path = resolve_sidecar_path(ctx.app, "realesrgan-ncnn-vulkan")?;
     let gpu_vram_mb = crate::job_queue::get_gpu_vram_mb_for_id(ctx.app, ctx.job.gpu_id);
     let mut exec_profile = crate::engine::vram_governor::calculate_safe_execution_profile(
@@ -181,6 +197,18 @@ pub fn run_overlapping_upscale_pipeline(
         // Collect ready frames from staging_dir
         let mut ready_frames = get_sorted_image_files(&ctx.staging_dir);
         let extraction_done = extraction.is_finished.load(Ordering::SeqCst);
+
+        // While extraction is still running, the lexicographically-last
+        // frame may still be the one ffmpeg is actively writing -- a
+        // directory listing can show a file before all its bytes are
+        // flushed and the handle closed. Taking it risked NCNN decoding a
+        // partially-written JPEG, and the rename below could hit a sharing
+        // violation on Windows while ffmpeg still had it open. Leave it in
+        // staging for one more tick; once a newer frame appears after it,
+        // that proves this one is fully written.
+        if !extraction_done {
+            ready_frames.pop();
+        }
 
         if ready_frames.is_empty() {
             if extraction_done {
@@ -364,10 +392,23 @@ pub fn run_overlapping_upscale_pipeline(
                         break;
                     }
                     Err(err)
-                        if (err.contains("Vulkan memory overflow")
-                            || err.contains("vkAllocateMemory"))
-                            && exec_profile.tile_size > 64 =>
+                        if err.contains("Vulkan memory overflow")
+                            || err.contains("vkAllocateMemory") =>
                     {
+                        // AUTO delegates tiling to NCNN's own heap heuristic
+                        // via tile_size == 0. The old guard required
+                        // tile_size > 64, which AUTO can never satisfy (0 is
+                        // never > 64) -- ironically making AUTO the only
+                        // mode with no VRAM-overflow retry at all. Give it a
+                        // concrete starting tile on its first overflow
+                        // instead of failing outright; once there's no
+                        // smaller tile left to retry with, fail same as
+                        // before.
+                        if exec_profile.tile_size != 0 && exec_profile.tile_size <= 64 {
+                            let _ = fs::remove_dir_all(&batch_dir);
+                            return Err(err);
+                        }
+
                         // Move files back to staging directory to retry with safer profile
                         if let Ok(entries) = fs::read_dir(&batch_dir) {
                             for entry in entries.flatten() {
@@ -379,7 +420,11 @@ pub fn run_overlapping_upscale_pipeline(
                             }
                         }
                         let _ = fs::remove_dir_all(&batch_dir);
-                        exec_profile.tile_size = (exec_profile.tile_size / 2).max(64);
+                        exec_profile.tile_size = if exec_profile.tile_size == 0 {
+                            256
+                        } else {
+                            (exec_profile.tile_size / 2).max(64)
+                        };
                         exec_profile.thread_arg = "1:1:1".to_string();
                         ctx.emit_progress_with_meta(
                             current_progress.min(92.0),
@@ -537,7 +582,14 @@ pub fn reassemble_video(
 pub fn probe_video_metadata(app: &AppHandle, video_path: &str) -> Result<VideoMetadata, String> {
     let ffprobe_bin = resolve_ffprobe_binary(app)?;
 
-    let output = Command::new(&ffprobe_bin)
+    // Command::output() blocks with no timeout, and the pipeline's single
+    // worker thread processes jobs serially -- a dead network share or a
+    // pathological file that makes ffprobe hang wedged the current job in
+    // Running forever *and* blocked every job queued behind it, with no
+    // way to cancel it. Bounded the same way probe_gpus_raw is: drain
+    // stdout/stderr on background threads while polling try_wait(), and
+    // kill on timeout.
+    let mut child = Command::new(&ffprobe_bin)
         .args([
             "-v",
             "error",
@@ -551,17 +603,66 @@ pub fn probe_video_metadata(app: &AppHandle, video_path: &str) -> Result<VideoMe
             "default=noprint_wrappers=1:nokey=1",
             video_path,
         ])
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| format!("Failed to run ffprobe: {e}"))?;
 
-    if !output.status.success() {
+    crate::sidecar_manager::attach_to_job_object(&child);
+
+    let stdout_buf: std::sync::Arc<std::sync::Mutex<String>> = std::sync::Arc::default();
+    let stdout_handle = child.stdout.take().map(|mut out| {
+        let buf = std::sync::Arc::clone(&stdout_buf);
+        thread::spawn(move || {
+            use std::io::Read;
+            let mut s = String::new();
+            let _ = out.read_to_string(&mut s);
+            if let Ok(mut guard) = buf.lock() {
+                *guard = s;
+            }
+        })
+    });
+    // stderr isn't parsed, but must still be drained so the child can
+    // never block on a full stderr pipe while we're only reading stdout.
+    if let Some(mut err) = child.stderr.take() {
+        thread::spawn(move || {
+            use std::io::Read;
+            let mut s = String::new();
+            let _ = err.read_to_string(&mut s);
+        });
+    }
+
+    let start_time = Instant::now();
+    let succeeded = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status.success(),
+            Ok(None) => {
+                if start_time.elapsed() > Duration::from_secs(10) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break false;
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(_) => {
+                let _ = child.kill();
+                break false;
+            }
+        }
+    };
+
+    if let Some(h) = stdout_handle {
+        let _ = h.join();
+    }
+
+    if !succeeded {
         return Ok(VideoMetadata {
             fps_string: "30/1".to_string(),
             total_frames_estimate: None,
         });
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = stdout_buf.lock().map(|g| g.clone()).unwrap_or_default();
     let lines: Vec<&str> = stdout
         .lines()
         .map(str::trim)
