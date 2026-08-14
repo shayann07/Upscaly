@@ -31,11 +31,12 @@ export function TileSizeSection({
           AUTO-TUNE
         </button>
       </div>
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className="grid grid-cols-5 gap-1.5">
         {[
           { v: 0, label: 'AUTO' },
           { v: 128, label: '128' },
           { v: 256, label: '256' },
+          { v: 384, label: '384' },
           { v: 512, label: '512' },
         ].map((t) => (
           <button
@@ -65,7 +66,7 @@ export function TileSizeSection({
         {isOverflowing
           ? `Projected VRAM usage (${usedVramGb.toFixed(1)} GB) exceeds GPU memory (${totalVramGb.toFixed(1)} GB). Consider selecting 256px or 128px.`
           : tileSize === 0
-            ? 'AUTO selects optimal 256px tile size for smooth GPU VRAM processing.'
+            ? `AUTO dynamically selects the optimal tile size and thread count for your ${totalVramGb.toFixed(0)} GB GPU.`
             : `Selected tile size: ${tileSize}px. Projected VRAM usage: ${usedVramGb.toFixed(1)} GB.`}
       </div>
     </div>

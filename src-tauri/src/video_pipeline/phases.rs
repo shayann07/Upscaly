@@ -142,7 +142,12 @@ pub fn run_overlapping_upscale_pipeline(
         ctx.job.scale,
         Some(&models_dir),
     );
-    let tile_size = crate::job_queue::normalize_tile_size(ctx.job.tile_size);
+    let gpu_vram_mb = crate::job_queue::get_gpu_vram_mb_for_id(ctx.app, ctx.job.gpu_id);
+    let mut exec_profile = crate::engine::vram_governor::calculate_safe_execution_profile(
+        gpu_vram_mb,
+        ctx.job.tile_size,
+        true,
+    );
 
     let mut total_discovered_frames = 0usize;
     let mut batch_index = 0usize;
@@ -222,7 +227,7 @@ pub fn run_overlapping_upscale_pipeline(
             }
         }
 
-        // Spawn NCNN on this batch
+        // Spawn NCNN on this batch with safe VRAM profile
         let upscale_args = vec![
             "-i".to_string(),
             batch_dir.to_string_lossy().to_string(),
@@ -237,11 +242,11 @@ pub fn run_overlapping_upscale_pipeline(
             "-s".to_string(),
             effective_scale.to_string(),
             "-t".to_string(),
-            tile_size.to_string(),
+            exec_profile.tile_size.to_string(),
             "-f".to_string(),
             "jpg".to_string(),
             "-j".to_string(),
-            "2:2:2".to_string(),
+            exec_profile.thread_arg.clone(),
             "-v".to_string(),
         ];
 
@@ -348,9 +353,42 @@ pub fn run_overlapping_upscale_pipeline(
             );
 
             if let Some(res) = is_batch_done {
-                let _ = fs::remove_dir_all(&batch_dir);
-                res?;
-                break;
+                match res {
+                    Ok(()) => {
+                        let _ = fs::remove_dir_all(&batch_dir);
+                        break;
+                    }
+                    Err(err)
+                        if (err.contains("Vulkan memory overflow")
+                            || err.contains("vkAllocateMemory"))
+                            && exec_profile.tile_size > 64 =>
+                    {
+                        // Move files back to staging directory to retry with safer profile
+                        if let Ok(entries) = fs::read_dir(&batch_dir) {
+                            for entry in entries.flatten() {
+                                let path = entry.path();
+                                if let Some(file_name) = path.file_name() {
+                                    let target_path = ctx.staging_dir.join(file_name);
+                                    let _ = fs::rename(&path, &target_path);
+                                }
+                            }
+                        }
+                        let _ = fs::remove_dir_all(&batch_dir);
+                        exec_profile.tile_size = (exec_profile.tile_size / 2).max(64);
+                        exec_profile.thread_arg = "1:1:1".to_string();
+                        ctx.emit_progress_with_meta(
+                            current_progress.min(92.0),
+                            &format!("VRAM Limit Reached: Automatically Downscaling Tile to {}px & Retrying...", exec_profile.tile_size),
+                            eta_sec,
+                            current_fps,
+                        );
+                        break;
+                    }
+                    Err(err) => {
+                        let _ = fs::remove_dir_all(&batch_dir);
+                        return Err(err);
+                    }
+                }
             }
 
             thread::sleep(Duration::from_millis(100));

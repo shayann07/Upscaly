@@ -10,6 +10,7 @@ pub struct GpuDevice {
     pub id: i32,
     pub name: String,
     pub detail: String,
+    pub vram_mb: u64,
     pub fp16_storage_supported: bool,
     pub fp16_arithmetic_supported: bool,
     pub compute_queue_count: u32,
@@ -302,12 +303,17 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
                                     && !lower.contains("uhd")
                                     && !lower.contains("iris");
 
+                                let vram_mb = extract_gpu_vram_mb(&name, is_discrete);
+
                                 let detail = if is_discrete {
-                                    "High-Performance Discrete GPU · Vulkan 1.2 FP16".to_string()
+                                    format!("High-Performance Discrete GPU · {:.1} GB VRAM · Vulkan 1.2", vram_mb as f64 / 1024.0)
                                 } else if lower.contains("intel") {
-                                    "Integrated Graphics · Vulkan 1.2".to_string()
+                                    format!(
+                                        "Integrated Graphics · {:.1} GB Shared · Vulkan 1.2",
+                                        vram_mb as f64 / 1024.0
+                                    )
                                 } else if !lower.contains("cpu") {
-                                    "Vulkan 1.2 · FP16 Supported".to_string()
+                                    format!("Vulkan 1.2 · {:.1} GB VRAM", vram_mb as f64 / 1024.0)
                                 } else {
                                     "Vulkan Compute Device".to_string()
                                 };
@@ -316,6 +322,7 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
                                     id,
                                     name: name.clone(),
                                     detail,
+                                    vram_mb,
                                     fp16_storage_supported: is_discrete || !lower.contains("cpu"),
                                     fp16_arithmetic_supported: is_discrete
                                         || !lower.contains("cpu"),
@@ -341,6 +348,56 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     });
 
     Ok(gpus)
+}
+
+pub fn extract_gpu_vram_mb(name: &str, is_discrete: bool) -> u64 {
+    let lower = name.to_lowercase();
+    for part in lower.split_whitespace() {
+        if let Some(gb_str) = part.strip_suffix("gb") {
+            if let Ok(gb) = gb_str.parse::<u64>() {
+                if (1..=64).contains(&gb) {
+                    return gb * 1024;
+                }
+            }
+        }
+    }
+
+    if lower.contains("4090") || lower.contains("3090") {
+        24576
+    } else if lower.contains("4080") || lower.contains("7900") {
+        16384
+    } else if lower.contains("4070") || lower.contains("3080") || lower.contains("6800") {
+        12288
+    } else if lower.contains("4060")
+        || lower.contains("3070")
+        || lower.contains("3060")
+        || lower.contains("6700")
+    {
+        8192
+    } else if lower.contains("3050")
+        || lower.contains("2060")
+        || lower.contains("1660")
+        || lower.contains("1060")
+        || lower.contains("5600")
+    {
+        6144
+    } else if lower.contains("1650")
+        || lower.contains("1050")
+        || lower.contains("5500")
+        || lower.contains("580")
+    {
+        4096
+    } else if is_discrete {
+        6144
+    } else if lower.contains("intel")
+        || lower.contains("uhd")
+        || lower.contains("iris")
+        || lower.contains("vega")
+    {
+        2048
+    } else {
+        1024
+    }
 }
 
 /// Track a newly spawned child process
@@ -371,6 +428,7 @@ mod tests {
             id: 0,
             name: "NVIDIA GeForce RTX 3050 Laptop GPU 6GB".to_string(),
             detail: "Vulkan 1.2 · FP16 Storage/Arith Supported".to_string(),
+            vram_mb: 6144,
             fp16_storage_supported: true,
             fp16_arithmetic_supported: true,
             compute_queue_count: 8,
