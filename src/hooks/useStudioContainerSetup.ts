@@ -90,6 +90,7 @@ export function useStudioContainerSetup() {
     activeJobId: state.activeJobId,
     activeJobIdRef: actions.activeJobIdRef,
     pendingOutputPath: actions.pendingOutputPath,
+    jobStartTimeRef: actions.jobStartTimeRef,
     currentFileDims: media.currentFileDims,
     upscaledPath: media.upscaledPath,
     selectedModel: catalog.selectedModel,

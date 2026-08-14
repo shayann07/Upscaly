@@ -121,20 +121,18 @@ export function handleStudioJobStatus(progress: JobProgress, state: StudioJobSta
     if (state.setRateStr) {
       state.setRateStr(`${jobFps.toFixed(1)} FPS`);
     }
-  } else if (
-    !state.isVideo &&
-    state.jobStartTimeRef?.current &&
-    percentage >= 10 &&
-    state.currentFileDims &&
-    state.currentFileDims.w > 0 &&
-    state.currentFileDims.h > 0 &&
-    state.setRateStr
-  ) {
-    const elapsedSec = Math.max(0.5, (Date.now() - state.jobStartTimeRef.current) / 1000);
-    const totalMp = (state.currentFileDims.w * state.currentFileDims.h * state.scale) / 1_000_000;
-    const processedMp = totalMp * (percentage / 100);
-    const mps = Math.max(0.1, processedMp / elapsedSec);
-    state.setRateStr(`${mps.toFixed(1)} MP/s`);
+  } else if (!state.isVideo && state.setRateStr && percentage >= 5) {
+    const startTime = state.jobStartTimeRef?.current;
+    if (startTime) {
+      const elapsedSec = Math.max(0.3, (Date.now() - startTime) / 1000);
+      const w = state.currentFileDims?.w || 1920;
+      const h = state.currentFileDims?.h || 1080;
+      const scale = state.scale || 4;
+      const totalMp = (w * h * scale) / 1_000_000;
+      const processedMp = totalMp * (percentage / 100);
+      const mps = Math.max(0.1, processedMp / elapsedSec);
+      state.setRateStr(`${mps.toFixed(1)} MP/s`);
+    }
   }
 
   if (isProc) {
