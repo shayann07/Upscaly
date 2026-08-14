@@ -289,18 +289,37 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
                             if !seen_ids.contains(&id) {
                                 seen_ids.insert(id);
                                 let name = parts[1].trim().to_string();
-                                let has_fp16 = !name.to_lowercase().contains("cpu");
+                                let lower = name.to_lowercase();
+                                let is_discrete = (lower.contains("nvidia")
+                                    || lower.contains("geforce")
+                                    || lower.contains("rtx")
+                                    || lower.contains("gtx")
+                                    || lower.contains("quadro")
+                                    || lower.contains("radeon")
+                                    || (lower.contains("amd")
+                                        && !lower.contains("radeon(tm) graphics")))
+                                    && !lower.contains("intel")
+                                    && !lower.contains("uhd")
+                                    && !lower.contains("iris");
+
+                                let detail = if is_discrete {
+                                    "High-Performance Discrete GPU · Vulkan 1.2 FP16".to_string()
+                                } else if lower.contains("intel") {
+                                    "Integrated Graphics · Vulkan 1.2".to_string()
+                                } else if !lower.contains("cpu") {
+                                    "Vulkan 1.2 · FP16 Supported".to_string()
+                                } else {
+                                    "Vulkan Compute Device".to_string()
+                                };
+
                                 gpus.push(GpuDevice {
                                     id,
                                     name: name.clone(),
-                                    detail: if has_fp16 {
-                                        "Vulkan 1.2 · FP16 Storage/Arith Supported".to_string()
-                                    } else {
-                                        "Vulkan Compute Device".to_string()
-                                    },
-                                    fp16_storage_supported: has_fp16,
-                                    fp16_arithmetic_supported: has_fp16,
-                                    compute_queue_count: 8,
+                                    detail,
+                                    fp16_storage_supported: is_discrete || !lower.contains("cpu"),
+                                    fp16_arithmetic_supported: is_discrete
+                                        || !lower.contains("cpu"),
+                                    compute_queue_count: if is_discrete { 16 } else { 2 },
                                 });
                             }
                         }
@@ -310,7 +329,17 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
         }
     }
 
-    gpus.sort_by_key(|g| g.id);
+    // Prioritize discrete GPUs (NVIDIA, AMD Radeon) first, then integrated GPUs, then CPU
+    gpus.sort_by(|a, b| {
+        let is_a_discrete = a.detail.contains("Discrete");
+        let is_b_discrete = b.detail.contains("Discrete");
+        match (is_a_discrete, is_b_discrete) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.id.cmp(&b.id),
+        }
+    });
+
     Ok(gpus)
 }
 

@@ -54,9 +54,20 @@ export function useSettings(onGpuReady?: (gpuName: string) => void) {
       .then((res) => {
         setGpus(res);
         if (res.length > 0) {
-          setSelectedGpu(res[0].id);
+          const discreteGpu = res.find((g) => {
+            const n = g.name.toLowerCase();
+            return (
+              n.includes('nvidia') ||
+              n.includes('geforce') ||
+              n.includes('rtx') ||
+              n.includes('gtx') ||
+              n.includes('radeon')
+            );
+          });
+          const defaultChoice = discreteGpu || res[0];
+          setSelectedGpu(defaultChoice.id);
           if (onGpuReady) {
-            onGpuReady(res[0].name);
+            onGpuReady(defaultChoice.name);
           }
         }
       })
