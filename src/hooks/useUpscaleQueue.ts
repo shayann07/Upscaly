@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { BatchItem, JobProgress } from '../lib/types';
 import { joinPath } from '../lib/outputPaths';
+import { normalizeJobStatus, isValidStateTransition } from '../lib/jobState';
 
 const TERMINAL_STATUSES = new Set(['done', 'error', 'cancelled']);
 
@@ -156,6 +157,21 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
   const handleJobProgress = useCallback(
     (progress: JobProgress) => {
       const { job_id, percentage, status, error, output_path } = progress;
+
+      // A job that already reached a terminal state can still have an
+      // event arrive after it -- out-of-order delivery, or a duplicate
+      // late tick. Applying it would resurrect a finished/cancelled row
+      // back to "processing" with no live job behind it. This table
+      // already existed (jobState.ts) but was previously exercised only
+      // by its own tests, never by the real event handler.
+      const existing = batchItemsRef.current.find((item) => item.id === job_id);
+      if (
+        existing &&
+        !isValidStateTransition(normalizeJobStatus(existing.status), normalizeJobStatus(status))
+      ) {
+        return;
+      }
+
       const isDone = status === 'succeeded' || status === 'completed';
       const isErr = status === 'failed';
       const isCanc = status === 'cancelled';
@@ -170,7 +186,6 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
       // Side effects (history writes) must not live inside the setState
       // updater below -- React (StrictMode in particular) can invoke that
       // updater more than once per commit, which would double-write history.
-      const existing = batchItemsRef.current.find((item) => item.id === job_id);
       if (existing && isDone && onItemCompleted) {
         const finalOut = output_path || existing.outputPath;
         if (finalOut) {

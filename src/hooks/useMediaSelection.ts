@@ -102,10 +102,13 @@ export function useMediaSelection({
       setUpscaledPath('');
       if (onResetJob) onResetJob();
 
-      const newItems: BatchItem[] = [];
-      for (const path of paths) {
-        newItems.push(await buildBatchItem(path, selectedModel));
-      }
+      // Probe every file concurrently rather than one at a time -- with a
+      // serial loop, a single stalled/slow file (now bounded by
+      // getMediaDimensions' own timeout, but still slower than the rest)
+      // blocked every subsequent file in the selection from even starting.
+      const newItems: BatchItem[] = await Promise.all(
+        paths.map((path) => buildBatchItem(path, selectedModel))
+      );
 
       setBatchItems((prev) => (paths.length === 1 ? newItems : [...prev, ...newItems]));
       setFilePath(newItems[0].filePath || '');

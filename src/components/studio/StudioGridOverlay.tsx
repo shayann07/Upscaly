@@ -1,8 +1,17 @@
+import { memo } from 'react';
+
 interface StudioGridOverlayProps {
   progressVal: number;
 }
 
-export function StudioGridOverlay({ progressVal }: StudioGridOverlayProps) {
+// Renders 48 divs purely from progressVal. Memoized so a re-render
+// elsewhere in the app (unrelated state, a sibling prop changing) doesn't
+// force this grid to recompute and re-diff on every parent render --
+// StudioCanvas alone re-renders on every job-status-changed event, which
+// can fire 10+ times a second while a job is running.
+export const StudioGridOverlay = memo(function StudioGridOverlay({
+  progressVal,
+}: StudioGridOverlayProps) {
   return (
     <div
       style={{
@@ -38,4 +47,4 @@ export function StudioGridOverlay({ progressVal }: StudioGridOverlayProps) {
       })}
     </div>
   );
-}
+});

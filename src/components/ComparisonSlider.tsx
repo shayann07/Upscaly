@@ -54,7 +54,6 @@ export function ComparisonSlider(props: ComparisonSliderProps) {
     isPanning,
     isHolding,
     panOffset,
-    handleWheel,
     handleCanvasMouseDown,
     handleHandleMouseDown,
   } = useComparisonDrag({ zoom, onZoomChange, activeMode });
@@ -118,7 +117,7 @@ export function ComparisonSlider(props: ComparisonSliderProps) {
   if (activeMode === 'side') {
     return (
       <ComparisonSideView
-        handleWheel={handleWheel}
+        containerRef={containerRef}
         handleCanvasMouseDown={handleCanvasMouseDown}
         zoom={zoom}
         isPanning={isPanning}
@@ -139,8 +138,7 @@ export function ComparisonSlider(props: ComparisonSliderProps) {
   return (
     <div
       ref={containerRef}
-      onWheel={handleWheel}
-      onMouseDown={handleCanvasMouseDown}
+      onPointerDown={handleCanvasMouseDown}
       className="absolute inset-0 overflow-hidden select-none"
       style={{
         cursor: zoom > 1 ? (isPanning ? 'grabbing' : 'grab') : 'ew-resize',
@@ -165,7 +163,7 @@ export function ComparisonSlider(props: ComparisonSliderProps) {
 
       {/* Interactive Slider Divider Line & Hit Zone */}
       <div
-        onMouseDown={handleHandleMouseDown}
+        onPointerDown={handleHandleMouseDown}
         className="absolute top-0 bottom-0 w-3 -ml-[6px] z-[20] cursor-ew-resize flex justify-center items-center pointer-events-auto"
         style={{
           left: `${isHolding ? 100 : sliderPct}%`,

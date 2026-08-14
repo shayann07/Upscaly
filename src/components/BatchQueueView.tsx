@@ -1,10 +1,17 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { BatchItem } from '../lib/types';
 import { BatchQueueHeader } from './batch/BatchQueueHeader';
 import { BatchQueueRow } from './batch/BatchQueueRow';
 import { BatchQueueFooter } from './batch/BatchQueueFooter';
 
 export type { BatchItem };
+
+// Module-level (not re-created per render) so an omitted onSelect/onReorder
+// prop doesn't hand BatchQueueRow a fresh function identity on every
+// render, which would defeat its React.memo just as surely as an inline
+// `() => {}` default would.
+const NOOP_SELECT = (_id: string) => {};
+const NOOP_REORDER = (_items: BatchItem[]) => {};
 
 interface BatchQueueViewProps {
   items: BatchItem[];
@@ -63,8 +70,8 @@ export function BatchQueueView(props: BatchQueueViewProps) {
     currentIndex = 0,
     selectedId,
     accentColor = 'var(--accent)',
-    onSelect = () => {},
-    onReorder = () => {},
+    onSelect = NOOP_SELECT,
+    onReorder = NOOP_REORDER,
     onAddFiles,
     onClear,
     selectedScale = 4,
@@ -78,6 +85,21 @@ export function BatchQueueView(props: BatchQueueViewProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
 
+  // Read via refs (not closed over directly) so handleDragEnter/
+  // handleDragEnd keep a stable identity across re-renders -- items in
+  // particular gets a fresh array reference on every progress tick, which
+  // would otherwise force every row's onDragEnter/onDragEnd prop to change
+  // just as often, defeating BatchQueueRow's React.memo for the entire
+  // list on every tick rather than just the row that actually updated.
+  const itemsRef = useRef(items);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+  const dragFromRef = useRef(dragFrom);
+  useEffect(() => {
+    dragFromRef.current = dragFrom;
+  }, [dragFrom]);
+
   const handleDragStart = useCallback((idx: number, e: React.DragEvent) => {
     setDragFrom(idx);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
@@ -85,15 +107,17 @@ export function BatchQueueView(props: BatchQueueViewProps) {
 
   const handleDragEnter = useCallback(
     (idx: number) => {
-      if (dragFrom === null || dragFrom === idx) return;
-      const from = dragFrom;
+      const from = dragFromRef.current;
+      if (from === null || from === idx) return;
       setDragFrom(idx);
-      const newItems = [...items];
+      const newItems = [...itemsRef.current];
       newItems.splice(idx, 0, newItems.splice(from, 1)[0]);
       onReorder(newItems);
     },
-    [dragFrom, items, onReorder]
+    [onReorder]
   );
+
+  const handleDragEnd = useCallback(() => setDragFrom(null), []);
 
   if (!items || items.length === 0) {
     return null;
@@ -156,7 +180,7 @@ export function BatchQueueView(props: BatchQueueViewProps) {
             onSelect={onSelect}
             onDragStart={handleDragStart}
             onDragEnter={handleDragEnter}
-            onDragEnd={() => setDragFrom(null)}
+            onDragEnd={handleDragEnd}
             onRemoveItem={onRemoveItem}
             onCancelItem={onCancelItem}
           />

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { Titlebar } from '../Titlebar';
 import { BatchQueueView } from '../BatchQueueView';
 import { ConfirmCancelDialog } from '../ConfirmCancelDialog';
@@ -120,6 +120,37 @@ export function StudioCanvas(props: StudioCanvasProps) {
   const isProc = jobStatus === 'processing' || jobStatus === 'queued' || jobStatus === 'running';
   const currentFileName = filePath || (batchItems.length > 0 ? batchItems[0].fileName : null);
 
+  // Stable references so BatchQueueRow's React.memo (batch progress ticks
+  // can fire 10+/sec) actually skips re-rendering rows whose own data
+  // didn't change, instead of being defeated by a fresh inline closure on
+  // every StudioCanvas render. batchItems is read via a ref rather than
+  // closed over directly -- its array reference changes on every progress
+  // tick (a fresh array from .map(), even though unaffected items keep
+  // their own object identity), which would otherwise force this
+  // callback's identity to change just as often.
+  const batchItemsRef = useRef(batchItems);
+  useEffect(() => {
+    batchItemsRef.current = batchItems;
+  }, [batchItems]);
+
+  const handleSelectBatchItem = useCallback(
+    (id: string) => {
+      const item = batchItemsRef.current.find((b) => b.id === id);
+      if (item && item.filePath && item.fileName) {
+        setFilePath(item.filePath);
+        setFileName(item.fileName);
+        if (item.w && item.h) setCurrentFileDims({ w: item.w, h: item.h });
+      }
+    },
+    [setFilePath, setFileName, setCurrentFileDims]
+  );
+
+  const handleClearCompletedBatchItems = useCallback(() => {
+    setBatchItems((prev) =>
+      prev.filter((b) => b.status !== 'done' && (b.status as string) !== 'completed')
+    );
+  }, [setBatchItems]);
+
   return (
     <>
       <StudioPreviewSection
@@ -164,22 +195,11 @@ export function StudioCanvas(props: StudioCanvasProps) {
         selectedId={batchItems.find((b) => b.fileName === fileName)?.id}
         selectedScale={scale}
         currentFileDims={currentFileDims}
-        onSelect={(id) => {
-          const item = batchItems.find((b) => b.id === id);
-          if (item && item.filePath && item.fileName) {
-            setFilePath(item.filePath);
-            setFileName(item.fileName);
-            if (item.w && item.h) setCurrentFileDims({ w: item.w, h: item.h });
-          }
-        }}
+        onSelect={handleSelectBatchItem}
         onAddFiles={handleOpenFile}
         onAddMoreFiles={handleOpenFile}
         onClear={handleClearFile}
-        onClearCompleted={() =>
-          setBatchItems((prev) =>
-            prev.filter((b) => b.status !== 'done' && (b.status as string) !== 'completed')
-          )
-        }
+        onClearCompleted={handleClearCompletedBatchItems}
         onRemoveItem={handleRemoveBatchItem}
         onCancelItem={handleCancelItem}
       />
