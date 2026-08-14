@@ -367,6 +367,7 @@ export function useStudioActions({
   return {
     pendingOutputPath,
     activeJobIdRef,
+    jobStartTimeRef,
     confirmCancelOpen,
     handleSelectCategory,
     handleSelectModel,
