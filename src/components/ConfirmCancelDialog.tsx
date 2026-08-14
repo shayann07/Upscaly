@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface ConfirmCancelDialogProps {
@@ -19,10 +20,40 @@ export function ConfirmCancelDialog({
   onConfirm,
   onDismiss,
 }: ConfirmCancelDialogProps) {
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      // Default focus to the safe ("keep running") action, not the
+      // destructive one -- a keyboard user pressing Enter right after the
+      // dialog opens shouldn't accidentally confirm the cancellation.
+      cancelButtonRef.current?.focus();
+    }
+  }, [isOpen]);
+
+  const handleTrapFocus = (e: React.KeyboardEvent) => {
+    // Only two focusable elements exist in this dialog, so trapping focus
+    // is just cycling Tab/Shift+Tab between them instead of letting focus
+    // escape to whatever is behind the backdrop.
+    if (e.key !== 'Tab') return;
+    e.preventDefault();
+    const goingBackward = e.shiftKey;
+    const isCancelFocused = document.activeElement === cancelButtonRef.current;
+    if (goingBackward ? isCancelFocused : !isCancelFocused) {
+      confirmButtonRef.current?.focus();
+    } else {
+      cancelButtonRef.current?.focus();
+    }
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-auto">
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-auto"
+          onKeyDown={handleTrapFocus}
+        >
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -35,6 +66,10 @@ export function ConfirmCancelDialog({
 
           {/* Dialog Window */}
           <motion.div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="confirm-cancel-title"
+            aria-describedby="confirm-cancel-message"
             initial={{ opacity: 0, scale: 0.94, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 8 }}
@@ -58,19 +93,26 @@ export function ConfirmCancelDialog({
                   />
                 </svg>
               </div>
-              <h3 className="font-['Archivo',sans-serif] text-base font-semibold text-[var(--text-primary)]">
+              <h3
+                id="confirm-cancel-title"
+                className="font-['Archivo',sans-serif] text-base font-semibold text-[var(--text-primary)]"
+              >
                 {title}
               </h3>
             </div>
 
             {/* Description */}
-            <p className="text-xs leading-relaxed text-[var(--text-dim)] mb-6 font-['Archivo',sans-serif]">
+            <p
+              id="confirm-cancel-message"
+              className="text-xs leading-relaxed text-[var(--text-dim)] mb-6 font-['Archivo',sans-serif]"
+            >
               {message}
             </p>
 
             {/* Actions */}
             <div className="flex items-center justify-end gap-3">
               <button
+                ref={cancelButtonRef}
                 type="button"
                 onClick={onDismiss}
                 className="px-4 py-2 text-xs font-semibold rounded-xl border border-[var(--border-default)] bg-[var(--bg-glass-subtle)] text-[var(--text-primary)] transition-all duration-150 hover:bg-[var(--border-default)] cursor-pointer"
@@ -79,6 +121,7 @@ export function ConfirmCancelDialog({
               </button>
 
               <button
+                ref={confirmButtonRef}
                 type="button"
                 onClick={onConfirm}
                 className="px-4 py-2 text-xs font-semibold rounded-xl border border-[var(--border-danger)] bg-[var(--danger-bg)] text-[var(--danger-text)] transition-all duration-150 hover:bg-[var(--danger-hover)] hover:text-[#F2C4BE] shadow-lg shadow-red-950/30 cursor-pointer"

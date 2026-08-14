@@ -29,24 +29,30 @@ export function WindowControls() {
     <div className="pointer-events-auto">
       <div className="flex items-center gap-2.5 h-[34px] px-3 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]">
         <div className="flex items-center gap-1.5 group">
-          <div
+          <button
+            type="button"
             onClick={handleClose}
-            className="w-[11px] h-[11px] rounded-full bg-[#FF5F56] flex items-center justify-center font-['Martian_Mono',monospace] text-[8px] font-bold leading-none text-transparent cursor-pointer transition-colors duration-150 hover:text-[#4C0000]"
+            aria-label="Close window"
+            className="w-[11px] h-[11px] p-0 border-0 appearance-none rounded-full bg-[#FF5F56] flex items-center justify-center font-['Martian_Mono',monospace] text-[8px] font-bold leading-none text-transparent cursor-pointer transition-colors duration-150 hover:text-[#4C0000] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/70 focus-visible:outline-offset-1"
           >
             ×
-          </div>
-          <div
+          </button>
+          <button
+            type="button"
             onClick={handleMinimize}
-            className="w-[11px] h-[11px] rounded-full bg-[#FFBD2E] flex items-center justify-center font-['Martian_Mono',monospace] text-[8px] font-bold leading-none text-transparent cursor-pointer transition-colors duration-150 hover:text-[#523A00]"
+            aria-label="Minimize window"
+            className="w-[11px] h-[11px] p-0 border-0 appearance-none rounded-full bg-[#FFBD2E] flex items-center justify-center font-['Martian_Mono',monospace] text-[8px] font-bold leading-none text-transparent cursor-pointer transition-colors duration-150 hover:text-[#523A00] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/70 focus-visible:outline-offset-1"
           >
             −
-          </div>
-          <div
+          </button>
+          <button
+            type="button"
             onClick={handleMaximize}
-            className="w-[11px] h-[11px] rounded-full bg-[#28C840] flex items-center justify-center font-['Martian_Mono',monospace] text-[8px] font-bold leading-none text-transparent cursor-pointer transition-colors duration-150 hover:text-[#032C09]"
+            aria-label="Maximize window"
+            className="w-[11px] h-[11px] p-0 border-0 appearance-none rounded-full bg-[#28C840] flex items-center justify-center font-['Martian_Mono',monospace] text-[8px] font-bold leading-none text-transparent cursor-pointer transition-colors duration-150 hover:text-[#032C09] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/70 focus-visible:outline-offset-1"
           >
             ▢
-          </div>
+          </button>
         </div>
         <div className="w-px h-[15px] bg-[var(--border-default)]" />
         <span className="font-bold text-[12.5px] tracking-[-0.01em]">Upscaly</span>

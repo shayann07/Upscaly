@@ -1,5 +1,28 @@
 @import 'tailwindcss';
 
+/* Self-hosted instead of fetched from fonts.googleapis.com/fonts.gstatic.com
+   at runtime -- the app's own DropZone copy promises "Nothing leaves your
+   machine", and Tauri's CSP (style-src/font-src have no external hosts
+   allowed) already silently blocked these from loading in the packaged
+   build, falling back to system fonts with no visible error. Both files are
+   variable fonts (a single file covers the whole weight range), sourced
+   from Google Fonts under the SIL Open Font License. */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('./assets/fonts/Archivo-Variable.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Martian Mono';
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url('./assets/fonts/MartianMono-Variable.woff2') format('woff2');
+}
+
 :root {
   /* ── Color Tokens ── */
   --bg-base: #0b0a09;

@@ -17,6 +17,21 @@ fn unix_signal_code(_status: &ExitStatus) -> i32 {
     -1
 }
 
+/// Suppresses the console window every child process (ffmpeg, ffprobe,
+/// realesrgan-ncnn-vulkan) would otherwise flash on screen. The app runs
+/// under `windows_subsystem = "windows"` (no console of its own), but a
+/// spawned console-subsystem child still opens its own window briefly
+/// unless explicitly told not to. No-op on non-Windows targets.
+#[cfg(windows)]
+pub fn suppress_console_window(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+pub fn suppress_console_window(_cmd: &mut Command) {}
+
 pub trait ProcessHandle: Send + Sync {
     fn try_wait(&mut self) -> Result<Option<i32>, AppError>;
     fn kill(&mut self) -> Result<(), AppError>;
@@ -93,14 +108,13 @@ impl ProcessHandle for StdProcessHandle {
 
 impl ProcessRunner for StdProcessRunner {
     fn spawn(&self, program: &Path, args: &[String]) -> Result<Box<dyn ProcessHandle>, AppError> {
-        let mut child = Command::new(program)
-            .args(args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| AppError::ExecutionError {
-                message: format!("Failed to spawn process '{}': {}", program.display(), e),
-            })?;
+        let mut cmd = Command::new(program);
+        cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+        suppress_console_window(&mut cmd);
+
+        let mut child = cmd.spawn().map_err(|e| AppError::ExecutionError {
+            message: format!("Failed to spawn process '{}': {}", program.display(), e),
+        })?;
 
         // Guarantee child process dies when the parent application exits
         crate::sidecar_manager::attach_to_job_object(&child);

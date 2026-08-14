@@ -589,22 +589,25 @@ pub fn probe_video_metadata(app: &AppHandle, video_path: &str) -> Result<VideoMe
     // way to cancel it. Bounded the same way probe_gpus_raw is: drain
     // stdout/stderr on background threads while polling try_wait(), and
     // kill on timeout.
-    let mut child = Command::new(&ffprobe_bin)
-        .args([
-            "-v",
-            "error",
-            "-select_streams",
-            "v:0",
-            "-show_entries",
-            "stream=r_frame_rate,avg_frame_rate,nb_frames,duration",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            video_path,
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+    let mut cmd = Command::new(&ffprobe_bin);
+    cmd.args([
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=r_frame_rate,avg_frame_rate,nb_frames,duration",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        video_path,
+    ])
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+    crate::process_runner::suppress_console_window(&mut cmd);
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to run ffprobe: {e}"))?;
 
@@ -729,11 +732,13 @@ pub fn resolve_ffmpeg_binary(app: &AppHandle) -> Result<String, String> {
         }
     }
 
-    let system_check = Command::new("ffmpeg")
+    let mut ffmpeg_check_cmd = Command::new("ffmpeg");
+    ffmpeg_check_cmd
         .arg("-version")
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
+        .stderr(Stdio::null());
+    crate::process_runner::suppress_console_window(&mut ffmpeg_check_cmd);
+    let system_check = ffmpeg_check_cmd.status();
 
     if let Ok(status) = system_check {
         if status.success() {
@@ -751,11 +756,13 @@ pub fn resolve_ffprobe_binary(app: &AppHandle) -> Result<String, String> {
         }
     }
 
-    let system_check = Command::new("ffprobe")
+    let mut ffprobe_check_cmd = Command::new("ffprobe");
+    ffprobe_check_cmd
         .arg("-version")
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
+        .stderr(Stdio::null());
+    crate::process_runner::suppress_console_window(&mut ffprobe_check_cmd);
+    let system_check = ffprobe_check_cmd.status();
 
     if let Ok(status) = system_check {
         if status.success() {
