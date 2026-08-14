@@ -200,7 +200,11 @@ mod tests {
         assert_eq!(scale, 2);
 
         // A second Interp layer multiplies further: 2 * 2 = 4
-        parse_layer_line("Interp interp2 1 1 out2 0=1 1=2 2=2", &mut chans, &mut scale);
+        parse_layer_line(
+            "Interp interp2 1 1 out2 0=1 1=2 2=2",
+            &mut chans,
+            &mut scale,
+        );
         assert_eq!(scale, 4);
     }
 }

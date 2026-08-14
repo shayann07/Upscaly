@@ -1,19 +1,27 @@
 # GSD Project State
 
-> Codebase Mapping completed on 2026-08-14
+> Vulkan Physical Device Mapping & Discrete GPU Auto-Prioritization verified on 2026-08-14
 
 ## Current Status
 - **Project**: `Upscaly` (Desktop AI Image & Video Upscaler)
-- **Status**: Codebase mapped and documented for planning context.
+- **Status**: Discrete GPU auto-prioritization, device mapping, and telemetry verified.
 
 ## Last Session Summary
-Codebase mapping complete:
-- **40 Frontend Components** identified across modular directory trees (`src/components/studio/`, `batch/`, `comparison/`, `settings/`, `titlebar/`, root).
-- **15 Custom Hooks** mapped (`src/hooks/`) handling UI state, batch queuing, audio, comparisons, and Tauri IPC lifecycle.
-- **8 Core Utility Modules** mapped (`src/lib/`) covering types, state machine, audio chimes, output naming, and models.
-- **21 Backend Modules** analyzed (`src-tauri/src/`) covering commands, engine, video pipeline, JobObjects sandboxing, and job queue.
-- **41 Dependencies** analyzed across `package.json` (10 prod, 15 dev) and `Cargo.toml` (16 crates).
-- **4 Technical Debt items** surfaced (4 ESLint warnings, 1 Clippy warning in `phases.rs:222`, Prettier/rustfmt formatting drift, 8 outdated packages).
+1. **Root Cause of 76% Intel GPU & 0.1 FPS Rate**:
+   - Vulkan physical device probe returns:
+     - `[0 Intel(R) UHD Graphics]`
+     - `[1 NVIDIA GeForce RTX 3050 6GB Laptop GPU]`
+   - The app previously initialized `selectedGpu` with index `0` (which bound to Intel Integrated Graphics instead of NVIDIA RTX 3050).
+   - NCNN ran on the low-power Intel iGPU with `-g 0`, causing 76% Intel GPU load and 0.1 FPS.
+2. **Fixes Applied**:
+   - `get_gpu_list` in `sidecar_manager.rs` detects discrete GPUs (NVIDIA/AMD) and sorts them to the top of the list.
+   - `useSettings.ts` defaults to the high-performance discrete GPU (`selectedGpu: 1`).
+   - Clean multi-threaded CPU extraction (`-threads 0`) + Dedicated NVIDIA NCNN AI Upscaling (`-g 1`) + NVENC Reassembly (`h264_nvenc`).
+3. **Verification**:
+   - 17/17 Rust tests passed.
+   - 42/42 Frontend tests passed.
+   - 0 Clippy warnings.
+   - Clean formatting across TS and Rust.
 
 ## Architecture & Planning Documents
 - [SPEC.md](file:///d:/Work/Extras/image%20upscaler/.gsd/SPEC.md)
