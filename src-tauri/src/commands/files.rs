@@ -1,3 +1,5 @@
+use tauri::{AppHandle, Manager};
+
 fn validate_safe_path(path_str: &str) -> Result<std::path::PathBuf, String> {
     if path_str.trim().is_empty() {
         return Err("Path cannot be empty".to_string());
@@ -13,47 +15,38 @@ fn validate_safe_path(path_str: &str) -> Result<std::path::PathBuf, String> {
 }
 
 #[tauri::command]
-pub async fn check_file_exists(path: String) -> Result<bool, String> {
+pub async fn get_file_size_bytes(path: String) -> Result<u64, String> {
     let p = validate_safe_path(&path)?;
-    Ok(p.exists() && p.is_file())
+    let meta = std::fs::metadata(&p).map_err(|e| format!("Failed to read file metadata: {e}"))?;
+    Ok(meta.len())
 }
 
+/// Grants the webview's `asset:` protocol read access to the directory
+/// containing `path` (or `path` itself, if it is already a directory).
+///
+/// The app lets the user pick media files from anywhere on disk, so the
+/// asset protocol's static scope in `tauri.conf.json` is intentionally
+/// empty -- nothing is readable by default. Instead, whenever the user
+/// actually selects a file/folder, sets a custom output directory, or
+/// loads a history entry, the frontend calls this command to extend
+/// access to exactly that one directory (non-recursive), which is enough
+/// to preview both the input file and its sibling output file.
 #[tauri::command]
-pub async fn open_file_native(path: String) -> Result<(), String> {
+pub async fn allow_media_path(app: AppHandle, path: String) -> Result<(), String> {
     let p = validate_safe_path(&path)?;
-    let clean_path = p.to_string_lossy().to_string();
-
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("cmd")
-            .args(&["/c", "start", "", &clean_path])
-            .spawn()
-            .map_err(|e| format!("Failed to open file: {}", e))?;
-        Ok(())
+    if !p.exists() {
+        return Err("Path does not exist".to_string());
     }
-    #[cfg(not(target_os = "windows"))]
-    {
-        open::that(&clean_path).map_err(|e| format!("Failed to open file: {}", e))
-    }
-}
-
-#[tauri::command]
-pub async fn show_in_explorer_native(path: String) -> Result<(), String> {
-    let p = validate_safe_path(&path)?;
-    let clean_path = p.to_string_lossy().to_string();
-
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("explorer")
-            .args(&["/select,", &clean_path])
-            .spawn()
-            .map_err(|e| format!("Failed to open explorer: {}", e))?;
-        Ok(())
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        open::that(&clean_path).map_err(|e| format!("Failed to open folder: {}", e))
-    }
+    let dir = if p.is_dir() {
+        p
+    } else {
+        p.parent()
+            .map(std::path::Path::to_path_buf)
+            .ok_or_else(|| "Path has no parent directory".to_string())?
+    };
+    app.asset_protocol_scope()
+        .allow_directory(&dir, false)
+        .map_err(|e| format!("Failed to extend asset scope: {e}"))
 }
 
 #[tauri::command]
@@ -73,11 +66,4 @@ pub async fn toggle_maximize_window(window: tauri::Window) -> Result<(), String>
     } else {
         window.maximize().map_err(|e| e.to_string())
     }
-}
-
-#[tauri::command]
-pub async fn get_file_size_bytes(path: String) -> Result<u64, String> {
-    let p = validate_safe_path(&path)?;
-    let meta = std::fs::metadata(&p).map_err(|e| format!("Failed to read file metadata: {e}"))?;
-    Ok(meta.len())
 }

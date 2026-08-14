@@ -2,6 +2,7 @@ import { JobProgress } from './types';
 import { getModelMetadata } from './models';
 import { addHistoryItem, HistoryItem } from './history';
 import { playCompleteSound, playErrorSound } from './sound';
+import { allowMediaPath } from './assetScope';
 
 export interface StudioJobState {
   activeJobId: string | null;
@@ -38,6 +39,7 @@ function handleCompletedStatus(eventOutPath: string | undefined, state: StudioJo
   state.setStatusMessage('Upscaling Completed Successfully!');
   const finalPath = eventOutPath || state.pendingOutputPath.current || state.upscaledPath;
   if (finalPath) {
+    allowMediaPath(finalPath);
     state.setUpscaledPath(finalPath);
     const meta = getModelMetadata(state.selectedModel);
     const newHist = addHistoryItem({
