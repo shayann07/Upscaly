@@ -177,8 +177,18 @@ pub fn attach_to_job_object(child: &Child) {
 #[cfg(not(target_os = "windows"))]
 pub fn attach_to_job_object(_child: &Child) {}
 
-/// Discovers Vulkan GPU devices with 24-hour cache lifecycle.
+static IN_MEMORY_GPU_CACHE: std::sync::Mutex<Option<Vec<GpuDevice>>> = std::sync::Mutex::new(None);
+
+/// Discovers Vulkan GPU devices with 24-hour cache lifecycle and instant in-memory lookup.
 pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
+    if let Ok(guard) = IN_MEMORY_GPU_CACHE.lock() {
+        if let Some(ref cached) = *guard {
+            if !cached.is_empty() {
+                return Ok(cached.clone());
+            }
+        }
+    }
+
     let app_dir = app
         .path()
         .app_data_dir()
@@ -205,6 +215,9 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
                     cache.sidecar_hash.is_empty() || cache.sidecar_hash == current_hash;
 
                 if age < 86400 && hash_matches && !cache.devices.is_empty() {
+                    if let Ok(mut guard) = IN_MEMORY_GPU_CACHE.lock() {
+                        *guard = Some(cache.devices.clone());
+                    }
                     return Ok(cache.devices);
                 }
             }
@@ -214,8 +227,12 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     // 2. Perform raw discovery
     let gpus = probe_gpus_raw(app)?;
 
-    // 3. Write cache envelope to disk if GPUs were successfully discovered
+    // 3. Write cache envelope to disk and memory if GPUs were successfully discovered
     if !gpus.is_empty() {
+        if let Ok(mut guard) = IN_MEMORY_GPU_CACHE.lock() {
+            *guard = Some(gpus.clone());
+        }
+
         let _ = std::fs::create_dir_all(&app_dir);
         let envelope = GpuCacheEnvelope {
             timestamp: now_secs,
