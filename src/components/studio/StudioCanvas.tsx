@@ -1,6 +1,7 @@
 import React from 'react';
 import { Titlebar } from '../Titlebar';
 import { BatchQueueView } from '../BatchQueueView';
+import { ConfirmCancelDialog } from '../ConfirmCancelDialog';
 import { StudioPreviewSection } from './StudioPreviewSection';
 import { StudioControlsSection } from './StudioControlsSection';
 import { BatchItem, ModelInfo, GpuInfo } from '../../lib/types';
@@ -19,6 +20,9 @@ interface StudioCanvasProps {
   handleOpenFolder?: () => void;
   handleShowInExplorerNative: (path: string) => void;
   handleClearFile: () => void;
+  confirmCancelOpen?: boolean;
+  handleConfirmCancelAndClear?: () => void;
+  handleDismissCancel?: () => void;
   jobStatus: string;
   progressVal: number;
   statusMessage: string;
@@ -70,6 +74,9 @@ export function StudioCanvas(props: StudioCanvasProps) {
     handleOpenFolder,
     handleShowInExplorerNative,
     handleClearFile,
+    confirmCancelOpen,
+    handleConfirmCancelAndClear,
+    handleDismissCancel,
     jobStatus,
     progressVal,
     statusMessage,
@@ -106,7 +113,7 @@ export function StudioCanvas(props: StudioCanvasProps) {
     setActiveNavTab,
   } = props;
 
-  const isProc = jobStatus === 'processing' || jobStatus === 'queued';
+  const isProc = jobStatus === 'processing' || jobStatus === 'queued' || jobStatus === 'running';
   const currentFileName = filePath || (batchItems.length > 0 ? batchItems[0].fileName : null);
 
   return (
@@ -133,6 +140,7 @@ export function StudioCanvas(props: StudioCanvasProps) {
           currentFileDims ? { w: currentFileDims.w * scale, h: currentFileDims.h * scale } : null
         }
         isDone={jobStatus === 'completed'}
+        isProcessing={isProc}
         selectedGpu={selectedGpu}
         availableGpus={gpus.map((g) => ({
           id: g.id,
@@ -204,6 +212,12 @@ export function StudioCanvas(props: StudioCanvasProps) {
         isMuted={isMuted}
         handleToggleMute={handleToggleMute}
         setActiveNavTab={setActiveNavTab}
+      />
+
+      <ConfirmCancelDialog
+        isOpen={Boolean(confirmCancelOpen)}
+        onConfirm={handleConfirmCancelAndClear || (() => {})}
+        onDismiss={handleDismissCancel || (() => {})}
       />
     </>
   );

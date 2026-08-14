@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { playErrorSound } from '../lib/sound';
@@ -22,11 +22,15 @@ interface StudioActionsOptions {
   supportedModels: ModelInfo[];
   installedModels: string[];
   activeJobId: string | null;
+  jobStatus?: string;
   setActiveJobId: (id: string | null) => void;
   setJobStatus: (status: string) => void;
   setProgressVal: (val: number) => void;
   setStatusMessage: (msg: string) => void;
   setJobPhase: (phase: string) => void;
+  setEtaSeconds?: (eta: number | undefined) => void;
+  setFps?: (fps: number | undefined) => void;
+  setRateStr?: (rate: string) => void;
   setCategory: (cat: 'photos' | 'anime' | 'video') => void;
   setSelectedModel: (id: string) => void;
   setScale: (s: number) => void;
@@ -58,11 +62,15 @@ export function useStudioActions({
   supportedModels,
   installedModels,
   activeJobId,
+  jobStatus,
   setActiveJobId,
   setJobStatus,
   setProgressVal,
   setStatusMessage,
   setJobPhase,
+  setEtaSeconds,
+  setFps,
+  setRateStr,
   setCategory,
   setSelectedModel,
   setScale,
@@ -76,6 +84,7 @@ export function useStudioActions({
   const pendingOutputPath = useRef<string>('');
   const activeJobIdRef = useRef<string | null>(null);
   const jobStartTimeRef = useRef<number | null>(null);
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
 
   const handleSelectCategory = useCallback(
     (cat: 'photos' | 'anime' | 'video') => {
@@ -86,7 +95,8 @@ export function useStudioActions({
         const scaleMatched = filtered.find((m) => m.scale === scale);
         const installedFiltered = filtered.filter((m) => installedModels.includes(m.id));
         const chosen =
-          (scaleMatched && (installedModels.length === 0 || installedModels.includes(scaleMatched.id))
+          (scaleMatched &&
+          (installedModels.length === 0 || installedModels.includes(scaleMatched.id))
             ? scaleMatched
             : null) ||
           scaleMatched ||
@@ -104,7 +114,8 @@ export function useStudioActions({
       const modelInfo = supportedModels.find((m) => m.id === modelId);
       if (modelInfo) {
         if (modelInfo.scale) setScale(modelInfo.scale);
-        const modelCat = modelInfo.cat === 'photo' ? 'photos' : (modelInfo.cat as 'anime' | 'video');
+        const modelCat =
+          modelInfo.cat === 'photo' ? 'photos' : (modelInfo.cat as 'anime' | 'video');
         setCategory(modelCat);
       }
     },
@@ -168,6 +179,9 @@ export function useStudioActions({
       setProgressVal(0);
       setStatusMessage('Queued in GPU worker thread...');
       setJobPhase('PREPARING');
+      setEtaSeconds?.(undefined);
+      setFps?.(undefined);
+      setRateStr?.('');
 
       const ext = isVideo ? '.mp4' : '.png';
       const baseName = fileName.replace(/\.[^/.]+$/, '');
@@ -199,6 +213,7 @@ export function useStudioActions({
       setJobStatus('processing');
       onNotify('info', 'Upscaling Started', `Job ID: ${jobId.slice(0, 8)}...`);
     } catch (err) {
+      activeJobIdRef.current = null;
       setActiveJobId(null);
       setJobStatus('idle');
       playErrorSound(isMuted);
@@ -206,18 +221,23 @@ export function useStudioActions({
     }
   };
 
-  const handleCancelUpscale = async (idToCancel?: string) => {
-    const targetId = idToCancel || activeJobId;
-    if (!targetId) return;
-    try {
-      await invoke('cancel_upscale', { jobId: targetId });
-      setActiveJobId(null);
-      setJobStatus('idle');
-      onNotify('info', 'Cancelled', 'Upscaling cancelled.');
-    } catch (err) {
-      console.error('Cancel upscale failed:', err);
-    }
-  };
+  const handleCancelUpscale = useCallback(
+    async (idToCancel?: string) => {
+      const targetId = idToCancel || activeJobId || activeJobIdRef.current;
+      if (!targetId) return;
+      try {
+        await invoke('cancel_upscale', { jobId: targetId });
+      } catch (err) {
+        console.error('Cancel upscale failed:', err);
+      } finally {
+        activeJobIdRef.current = null;
+        setActiveJobId(null);
+        setJobStatus('idle');
+        onNotify('info', 'Cancelled', 'Upscaling cancelled and resources freed.');
+      }
+    },
+    [activeJobId, setActiveJobId, setJobStatus, onNotify]
+  );
 
   const handleShowInExplorerNative = async (outPath?: string) => {
     const target = outPath || pendingOutputPath.current;
@@ -229,7 +249,20 @@ export function useStudioActions({
     }
   };
 
-  const handleClearFile = () => {
+  const handleClearFile = useCallback(() => {
+    const isJobActive = Boolean(
+      activeJobId ||
+      activeJobIdRef.current ||
+      jobStatus === 'processing' ||
+      jobStatus === 'running' ||
+      jobStatus === 'queued'
+    );
+
+    if (isJobActive) {
+      setConfirmCancelOpen(true);
+      return;
+    }
+
     setFilePath('');
     setFileName('');
     setUpscaledPath('');
@@ -238,11 +271,76 @@ export function useStudioActions({
     setProgressVal(0);
     setStatusMessage('');
     setJobPhase('');
+    setEtaSeconds?.(undefined);
+    setFps?.(undefined);
+    setRateStr?.('');
     pendingOutputPath.current = '';
     activeJobIdRef.current = null;
     setActiveJobId(null);
     onNotify('info', 'Queue Cleared', 'Ready for next input.');
-  };
+  }, [
+    activeJobId,
+    jobStatus,
+    setFilePath,
+    setFileName,
+    setUpscaledPath,
+    setIsVideo,
+    setJobStatus,
+    setProgressVal,
+    setStatusMessage,
+    setJobPhase,
+    setEtaSeconds,
+    setFps,
+    setRateStr,
+    setActiveJobId,
+    onNotify,
+  ]);
+
+  const handleConfirmCancelAndClear = useCallback(async () => {
+    const targetId = activeJobId || activeJobIdRef.current;
+    if (targetId) {
+      try {
+        await invoke('cancel_upscale', { jobId: targetId });
+      } catch (err) {
+        console.error('Cancel backend upscale failed:', err);
+      }
+    }
+    setConfirmCancelOpen(false);
+    setFilePath('');
+    setFileName('');
+    setUpscaledPath('');
+    setIsVideo(false);
+    setJobStatus('idle');
+    setProgressVal(0);
+    setStatusMessage('');
+    setJobPhase('');
+    setEtaSeconds?.(undefined);
+    setFps?.(undefined);
+    setRateStr?.('');
+    pendingOutputPath.current = '';
+    activeJobIdRef.current = null;
+    setActiveJobId(null);
+    onNotify('info', 'Upscale Cancelled', 'Processing stopped and GPU resources released.');
+  }, [
+    activeJobId,
+    setFilePath,
+    setFileName,
+    setUpscaledPath,
+    setIsVideo,
+    setJobStatus,
+    setProgressVal,
+    setStatusMessage,
+    setJobPhase,
+    setEtaSeconds,
+    setFps,
+    setRateStr,
+    setActiveJobId,
+    onNotify,
+  ]);
+
+  const handleDismissCancel = useCallback(() => {
+    setConfirmCancelOpen(false);
+  }, []);
 
   const handleSelectHistoryItem = (item: HistoryEntry) => {
     if (item.originalPath) {
@@ -269,6 +367,7 @@ export function useStudioActions({
   return {
     pendingOutputPath,
     activeJobIdRef,
+    confirmCancelOpen,
     handleSelectCategory,
     handleSelectModel,
     handleSelectScale,
@@ -276,6 +375,8 @@ export function useStudioActions({
     handleCancelUpscale,
     handleShowInExplorerNative,
     handleClearFile,
+    handleConfirmCancelAndClear,
+    handleDismissCancel,
     handleSelectHistoryItem,
   };
 }
