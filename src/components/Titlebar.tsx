@@ -21,6 +21,7 @@ interface TitlebarProps {
   onOpenCatalog?: () => void;
   onOpenHistory?: () => void;
   onOpenAbout?: () => void;
+  isProcessing?: boolean;
   onRemoveFile?: () => void;
   accentColor?: string;
   onShowModelCatalog?: () => void;
@@ -48,6 +49,7 @@ export function Titlebar(props: TitlebarProps) {
     currentFile = null,
     outputDims = null,
     isDone = false,
+    isProcessing = false,
     selectedGpu = 0,
     availableGpus = [],
     onSelectGpu = () => {},
@@ -76,6 +78,7 @@ export function Titlebar(props: TitlebarProps) {
           kindTag={kindTag}
           outDims={outDims}
           isDone={isDone}
+          isProcessing={isProcessing}
           onRemoveFile={onRemoveFile}
         />
       ) : (

@@ -33,6 +33,9 @@ export function StudioLayoutContainer() {
         handleOpenFolder={setup.handleOpenFolder}
         handleShowInExplorerNative={setup.handleShowInExplorerNative}
         handleClearFile={setup.handleClearFile}
+        confirmCancelOpen={setup.confirmCancelOpen}
+        handleConfirmCancelAndClear={setup.handleConfirmCancelAndClear}
+        handleDismissCancel={setup.handleDismissCancel}
         jobStatus={setup.jobStatus}
         progressVal={setup.progressVal}
         statusMessage={setup.statusMessage}
