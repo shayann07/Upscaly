@@ -1,35 +1,44 @@
+use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use std::time::{Duration, Instant};
+use tauri::AppHandle;
 
-use crate::job_queue::JobProgress;
 use crate::model_manager::get_models_dir;
 use crate::process_runner::{ProcessRunner, StdProcessRunner};
 use crate::sidecar_manager::resolve_sidecar_path;
 use crate::video_pipeline::context::VideoJobContext;
 use crate::video_pipeline::encoder::reassemble_with_encoders;
 
-fn lock_handle<'a>(
-    ctx: &'a VideoJobContext,
-) -> std::sync::MutexGuard<'a, Option<Box<dyn crate::process_runner::ProcessHandle>>> {
-    ctx.process_handle
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+#[derive(Debug, Clone)]
+pub struct VideoMetadata {
+    pub fps_string: String,
+    pub total_frames_estimate: Option<usize>,
 }
 
-pub fn extract_frames(ctx: &VideoJobContext, ffmpeg_binary: &str) -> Result<usize, String> {
-    ctx.emit_progress(2.0, "Extracting Video Frames (FFmpeg Multi-Thread)...");
+pub struct ExtractionControl {
+    pub is_finished: Arc<AtomicBool>,
+    pub error_msg: Arc<Mutex<Option<String>>>,
+}
 
-    let input_frame_pattern = ctx.frames_in_dir.join("frame_%08d.png");
+/// Spawns multi-threaded fast frame extraction in a background thread writing to staging_dir.
+pub fn spawn_background_extraction(
+    ctx: &VideoJobContext,
+    ffmpeg_binary: &str,
+) -> Result<ExtractionControl, String> {
+    let input_frame_pattern = ctx.staging_dir.join("frame_%08d.jpg");
     let extract_args = vec![
         "-y".to_string(),
         "-threads".to_string(),
         "0".to_string(),
         "-i".to_string(),
         ctx.job.input_path.clone(),
+        "-vsync".to_string(),
+        "0".to_string(),
         "-q:v".to_string(),
         "2".to_string(),
         "-pix_fmt".to_string(),
@@ -40,73 +49,92 @@ pub fn extract_frames(ctx: &VideoJobContext, ffmpeg_binary: &str) -> Result<usiz
     let runner = StdProcessRunner::new();
     let extract_handle = runner
         .spawn(&PathBuf::from(ffmpeg_binary), &extract_args)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("Failed to spawn FFmpeg extractor: {e}"))?;
 
-    {
-        let mut handle_guard = lock_handle(ctx);
-        *handle_guard = Some(extract_handle);
-    }
+    let handle_id = extract_handle.id();
+    ctx.register_handle(extract_handle);
 
-    loop {
-        if ctx.is_cancelled() {
-            let mut handle_guard = lock_handle(ctx);
-            if let Some(ref mut h) = *handle_guard {
-                let _ = h.kill();
+    let is_finished = Arc::new(AtomicBool::new(false));
+    let is_finished_clone = Arc::clone(&is_finished);
+    let error_msg = Arc::new(Mutex::new(None));
+    let error_msg_clone = Arc::clone(&error_msg);
+
+    let cancel_requested = Arc::clone(&ctx.cancel_requested);
+    let active_handles = Arc::clone(&ctx.active_handles);
+
+    thread::spawn(move || loop {
+        if cancel_requested.load(Ordering::SeqCst) {
+            let mut list = active_handles
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(pos) = list.iter().position(|h| h.id() == handle_id) {
+                let mut handle = list.remove(pos);
+                let _ = handle.kill();
             }
-            return Err("cancelled".to_string());
+            is_finished_clone.store(true, Ordering::SeqCst);
+            return;
         }
 
-        let mut handle_guard = lock_handle(ctx);
-        if let Some(ref mut h) = *handle_guard {
-            match h.try_wait() {
-                Ok(Some(0)) => break,
-                Ok(Some(code)) => {
-                    return Err(format!(
-                        "FFmpeg frame extractor failed with exit code: {code}"
-                    ))
+        let status = {
+            let mut list = active_handles
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(pos) = list.iter().position(|h| h.id() == handle_id) {
+                match list[pos].try_wait() {
+                    Ok(Some(0)) => {
+                        list.remove(pos);
+                        Some(Ok(()))
+                    }
+                    Ok(Some(code)) => {
+                        let log = list[pos].get_stderr_log();
+                        list.remove(pos);
+                        Some(Err(format!(
+                            "FFmpeg extraction failed with exit code {code}: {log}"
+                        )))
+                    }
+                    Ok(None) => None,
+                    Err(e) => {
+                        list.remove(pos);
+                        Some(Err(e.to_string()))
+                    }
                 }
-                Ok(None) => {}
-                Err(e) => return Err(e.to_string()),
+            } else {
+                Some(Ok(()))
             }
-        } else {
+        };
+
+        if let Some(res) = status {
+            if let Err(e) = res {
+                if let Ok(mut lock) = error_msg_clone.lock() {
+                    *lock = Some(e);
+                }
+            }
+            is_finished_clone.store(true, Ordering::SeqCst);
             break;
         }
-        drop(handle_guard);
-        thread::sleep(Duration::from_millis(100));
-    }
 
-    if ctx.is_cancelled() {
-        return Err("cancelled".to_string());
-    }
+        thread::sleep(Duration::from_millis(50));
+    });
 
-    let total_frames = fs::read_dir(&ctx.frames_in_dir)
-        .map_err(|e| e.to_string())?
-        .filter_map(Result::ok)
-        .filter(|entry| {
-            entry.path().extension().is_some_and(|ext| {
-                ext.eq_ignore_ascii_case("png") || ext.eq_ignore_ascii_case("jpg")
-            })
-        })
-        .count();
-
-    if total_frames == 0 {
-        return Err("No video frames extracted. Check if input file is a valid video.".to_string());
-    }
-
-    Ok(total_frames)
+    Ok(ExtractionControl {
+        is_finished,
+        error_msg,
+    })
 }
 
-pub fn upscale_frames(ctx: &VideoJobContext, total_frames: usize) -> Result<(), String> {
-    ctx.emit_progress(
-        10.0,
-        &format!("GPU Accelerated Upscaling ({total_frames} frames)..."),
-    );
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+pub fn run_overlapping_upscale_pipeline(
+    ctx: &VideoJobContext,
+    ffmpeg_binary: &str,
+    meta: &VideoMetadata,
+) -> Result<usize, String> {
+    ctx.emit_progress(1.0, "Initializing Hardware-Accelerated Video Pipeline...");
 
-    spawn_upscale_engine(ctx)?;
-    poll_upscale_progress(ctx, total_frames)
-}
-
-fn spawn_upscale_engine(ctx: &VideoJobContext) -> Result<(), String> {
+    let extraction = spawn_background_extraction(ctx, ffmpeg_binary)?;
     let sidecar_path = resolve_sidecar_path(ctx.app, "realesrgan-ncnn-vulkan")?;
     let models_dir = get_models_dir(ctx.app);
     let effective_scale = crate::job_queue::resolve_effective_scale(
@@ -116,148 +144,265 @@ fn spawn_upscale_engine(ctx: &VideoJobContext) -> Result<(), String> {
     );
     let tile_size = crate::job_queue::normalize_tile_size(ctx.job.tile_size);
 
-    let upscale_args = vec![
-        "-i".to_string(),
-        ctx.frames_in_dir.to_string_lossy().to_string(),
-        "-o".to_string(),
-        ctx.frames_out_dir.to_string_lossy().to_string(),
-        "-n".to_string(),
-        ctx.job.model_name.clone(),
-        "-m".to_string(),
-        models_dir.to_str().unwrap_or("models").to_string(),
-        "-g".to_string(),
-        ctx.job.gpu_id.to_string(),
-        "-s".to_string(),
-        effective_scale.to_string(),
-        "-t".to_string(),
-        tile_size.to_string(),
-        "-f".to_string(),
-        "png".to_string(),
-        "-j".to_string(),
-        "2:2:2".to_string(),
-        "-v".to_string(),
-    ];
-
-    let runner = StdProcessRunner::new();
-    let upscale_handle = runner
-        .spawn(&sidecar_path, &upscale_args)
-        .map_err(|e| e.to_string())?;
-
-    let mut handle_guard = lock_handle(ctx);
-    *handle_guard = Some(upscale_handle);
-    Ok(())
-}
-
-#[allow(
-    clippy::cast_precision_loss,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss
-)]
-fn poll_upscale_progress(ctx: &VideoJobContext, total_frames: usize) -> Result<(), String> {
-    let total_frames_f = total_frames as f64;
-    let start_time = std::time::Instant::now();
-    let mut first_frame_time: Option<std::time::Instant> = None;
+    let mut total_discovered_frames = 0usize;
+    let mut batch_index = 0usize;
+    let mut history_window: VecDeque<(Instant, usize)> = VecDeque::with_capacity(32);
+    let mut total_completed = 0usize;
+    let warmup_frames_required = 5;
+    let batch_target_size = 40usize;
 
     loop {
         if ctx.is_cancelled() {
-            let mut handle_guard = lock_handle(ctx);
-            if let Some(ref mut h) = *handle_guard {
-                let _ = h.kill();
-            }
             return Err("cancelled".to_string());
         }
 
-        let is_done = {
-            let mut handle_guard = lock_handle(ctx);
-            if let Some(ref mut h) = *handle_guard {
-                match h.try_wait() {
-                    Ok(Some(0)) => {
-                        let stderr_log = h.get_stderr_log();
-                        if stderr_log.contains("vkAllocateMemory failed")
-                            || stderr_log.contains("vkQueueSubmit failed")
-                        {
-                            return Err("GPU VRAM allocation failed (Vulkan memory overflow). Try selecting a smaller tile size (e.g. 256px or 128px).".to_string());
-                        }
-                        true
+        // Check if extraction failed with no frames
+        if extraction.is_finished.load(Ordering::SeqCst) {
+            if let Ok(err_lock) = extraction.error_msg.lock() {
+                if let Some(ref err) = *err_lock {
+                    let staging_count = count_image_files(&ctx.staging_dir);
+                    if staging_count == 0 && total_completed == 0 {
+                        return Err(err.clone());
                     }
-                    Ok(Some(code)) => {
-                        let stderr_log = h.get_stderr_log();
-                        if stderr_log.trim().is_empty() {
-                            return Err(format!("NCNN upscale engine failed with exit code: {code}"));
-                        }
-                        return Err(format!(
-                            "NCNN upscale engine failed with exit code {code}: {stderr_log}"
-                        ));
-                    }
-                    Ok(None) => false,
-                    Err(e) => return Err(e.to_string()),
                 }
-            } else {
-                true
             }
+        }
+
+        // Collect ready frames from staging_dir
+        let mut ready_frames = get_sorted_image_files(&ctx.staging_dir);
+        let extraction_done = extraction.is_finished.load(Ordering::SeqCst);
+
+        if ready_frames.is_empty() {
+            if extraction_done {
+                // All extraction is complete and no more frames to process
+                break;
+            }
+            // Wait for extractor to produce frames
+            thread::sleep(Duration::from_millis(60));
+            continue;
+        }
+
+        // Only start NCNN if we have enough frames for a batch, OR if extraction has finished
+        if ready_frames.len() < batch_target_size && !extraction_done {
+            let current_staging_count = ready_frames.len();
+            let estimated_total = meta
+                .total_frames_estimate
+                .unwrap_or(current_staging_count.max(1));
+            ctx.emit_progress_with_meta(
+                2.0 + ((current_staging_count as f64 / estimated_total as f64) * 6.0).min(6.0),
+                &format!("Extracting Video Frames ({current_staging_count} / {estimated_total})"),
+                None,
+                None,
+            );
+            thread::sleep(Duration::from_millis(60));
+            continue;
+        }
+
+        // Prepare next batch folder
+        batch_index += 1;
+        let batch_dir = ctx.job_temp_dir.join(format!("batch_{batch_index:06}"));
+        fs::create_dir_all(&batch_dir)
+            .map_err(|e| format!("Failed to create batch folder: {e}"))?;
+
+        // Take up to batch_target_size * 2 frames (or all if extraction is done)
+        let count_to_take = if extraction_done {
+            ready_frames.len()
+        } else {
+            ready_frames.len().min(batch_target_size * 2)
         };
 
-        if is_done {
-            break;
+        let batch_items = ready_frames.drain(..count_to_take).collect::<Vec<_>>();
+        let batch_count = batch_items.len();
+        total_discovered_frames += batch_count;
+
+        for frame_path in batch_items {
+            if let Some(file_name) = frame_path.file_name() {
+                let target_path = batch_dir.join(file_name);
+                let _ = fs::rename(&frame_path, &target_path);
+            }
         }
 
-        if let Ok(entries) = fs::read_dir(&ctx.frames_out_dir) {
-            let completed = entries
-                .filter_map(Result::ok)
-                .filter(|entry| {
-                    entry.path().extension().is_some_and(|ext| {
-                        ext.eq_ignore_ascii_case("jpg") || ext.eq_ignore_ascii_case("png")
-                    })
-                })
-                .count();
+        // Spawn NCNN on this batch
+        let upscale_args = vec![
+            "-i".to_string(),
+            batch_dir.to_string_lossy().to_string(),
+            "-o".to_string(),
+            ctx.frames_out_dir.to_string_lossy().to_string(),
+            "-n".to_string(),
+            ctx.job.model_name.clone(),
+            "-m".to_string(),
+            models_dir.to_str().unwrap_or("models").to_string(),
+            "-g".to_string(),
+            ctx.job.gpu_id.to_string(),
+            "-s".to_string(),
+            effective_scale.to_string(),
+            "-t".to_string(),
+            tile_size.to_string(),
+            "-f".to_string(),
+            "jpg".to_string(),
+            "-j".to_string(),
+            "2:2:2".to_string(),
+            "-v".to_string(),
+        ];
 
-            if completed > 0 && first_frame_time.is_none() {
-                first_frame_time = Some(std::time::Instant::now());
+        let runner = StdProcessRunner::new();
+        let upscale_handle = runner
+            .spawn(&sidecar_path, &upscale_args)
+            .map_err(|e| format!("Failed to spawn NCNN engine: {e}"))?;
+
+        let ncnn_handle_id = upscale_handle.id();
+        ctx.register_handle(upscale_handle);
+
+        // Poll NCNN execution for this batch
+        loop {
+            if ctx.is_cancelled() {
+                ctx.unregister_handle(ncnn_handle_id);
+                let _ = fs::remove_dir_all(&batch_dir);
+                return Err("cancelled".to_string());
             }
 
-            let upscale_ratio = completed as f64 / total_frames_f;
-            let current_progress = 10.0 + (upscale_ratio * 80.0);
-
-            let (eta_sec, current_fps) = if completed >= 2 && first_frame_time.is_some() {
-                let active_elapsed = first_frame_time.unwrap().elapsed().as_secs_f64();
-                let secs_per_frame = if completed > 1 && active_elapsed > 0.1 {
-                    active_elapsed / (completed - 1) as f64
+            let is_batch_done = {
+                let mut list = ctx
+                    .active_handles
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if let Some(pos) = list.iter().position(|h| h.id() == ncnn_handle_id) {
+                    match list[pos].try_wait() {
+                        Ok(Some(0)) => {
+                            list.remove(pos);
+                            Some(Ok(()))
+                        }
+                        Ok(Some(code)) => {
+                            let stderr_log = list[pos].get_stderr_log();
+                            list.remove(pos);
+                            if stderr_log.contains("vkAllocateMemory failed")
+                                || stderr_log.contains("vkQueueSubmit failed")
+                            {
+                                Some(Err("GPU VRAM allocation failed (Vulkan memory overflow). Try selecting a smaller tile size (e.g. 256px or 128px).".to_string()))
+                            } else {
+                                Some(Err(format!("NCNN upscale engine failed with exit code {code}: {stderr_log}")))
+                            }
+                        }
+                        Ok(None) => None,
+                        Err(e) => {
+                            list.remove(pos);
+                            Some(Err(e.to_string()))
+                        }
+                    }
                 } else {
-                    start_time.elapsed().as_secs_f64() / completed as f64
-                };
-                let remaining_frames = total_frames.saturating_sub(completed);
-                let eta = (remaining_frames as f64 * secs_per_frame) as u64;
-                let fps_val = if secs_per_frame > 0.0 { 1.0 / secs_per_frame } else { 0.0 };
-                (Some(eta), Some((fps_val * 10.0).round() / 10.0))
-            } else {
-                (None, None)
+                    Some(Ok(()))
+                }
             };
 
-            let _ = ctx.app.emit(
-                "job-status-changed",
-                JobProgress {
-                    job_id: ctx.job.id.clone(),
-                    percentage: current_progress.min(90.0),
-                    status: "running".to_string(),
-                    error: None,
-                    phase: Some(format!(
-                        "Upscaling Video Frames ({completed} / {total_frames})"
-                    )),
-                    eta_seconds: eta_sec,
-                    fps: current_fps,
-                    output_path: None,
-                },
-            );
-        }
+            total_completed = count_image_files(&ctx.frames_out_dir);
+            let total_expected = meta
+                .total_frames_estimate
+                .unwrap_or(total_discovered_frames.max(total_completed).max(1));
 
-        thread::sleep(Duration::from_millis(200));
+            let now = Instant::now();
+            history_window.push_back((now, total_completed));
+
+            while let Some(&(time, _)) = history_window.front() {
+                if now.duration_since(time) > Duration::from_secs(20) && history_window.len() > 6 {
+                    history_window.pop_front();
+                } else {
+                    break;
+                }
+            }
+
+            let upscale_ratio = if total_expected > 0 {
+                (total_completed as f64 / total_expected as f64).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let current_progress = 8.0 + (upscale_ratio * 84.0); // 8% to 92%
+
+            let (eta_sec, current_fps) =
+                if total_completed >= warmup_frames_required && history_window.len() >= 3 {
+                    let &(first_time, first_completed) =
+                        history_window.front().expect("history_window is non-empty");
+                    let time_delta = now.duration_since(first_time).as_secs_f64();
+                    let frame_delta = total_completed.saturating_sub(first_completed);
+
+                    if time_delta > 0.5 && frame_delta > 0 {
+                        let fps = frame_delta as f64 / time_delta;
+                        let remaining = total_expected.saturating_sub(total_completed);
+                        let eta = if fps > 0.01 {
+                            (remaining as f64 / fps).ceil() as u64
+                        } else {
+                            0
+                        };
+                        (Some(eta), Some((fps * 10.0).round() / 10.0))
+                    } else {
+                        (None, None)
+                    }
+                } else {
+                    (None, None)
+                };
+
+            ctx.emit_progress_with_meta(
+                current_progress.min(92.0),
+                &format!("Upscaling Video Frames ({total_completed} / {total_expected})"),
+                eta_sec,
+                current_fps,
+            );
+
+            if let Some(res) = is_batch_done {
+                let _ = fs::remove_dir_all(&batch_dir);
+                res?;
+                break;
+            }
+
+            thread::sleep(Duration::from_millis(100));
+        }
     }
 
     if ctx.is_cancelled() {
         return Err("cancelled".to_string());
     }
 
-    Ok(())
+    let final_completed = count_image_files(&ctx.frames_out_dir);
+    if final_completed == 0 {
+        return Err(
+            "No video frames were upscaled. Please verify GPU drivers and input file.".to_string(),
+        );
+    }
+
+    Ok(final_completed)
+}
+
+fn count_image_files(dir: &Path) -> usize {
+    fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .filter(|entry| {
+                    entry.path().extension().is_some_and(|ext| {
+                        ext.eq_ignore_ascii_case("jpg") || ext.eq_ignore_ascii_case("png")
+                    })
+                })
+                .count()
+        })
+        .unwrap_or(0)
+}
+
+fn get_sorted_image_files(dir: &Path) -> Vec<PathBuf> {
+    let mut files = fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .map(|e| e.path())
+                .filter(|path| {
+                    path.extension().is_some_and(|ext| {
+                        ext.eq_ignore_ascii_case("jpg") || ext.eq_ignore_ascii_case("png")
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    files.sort();
+    files
 }
 
 pub fn reassemble_video(
@@ -288,16 +433,21 @@ pub fn reassemble_video(
                 None
             })
         })
-        .unwrap_or("png");
+        .unwrap_or("jpg");
 
     let out_frame_pattern = ctx.frames_out_dir.join(format!("frame_%08d.{sample_ext}"));
     let normalized_pattern = out_frame_pattern.to_string_lossy().replace('\\', "/");
 
-    ctx.emit_progress(92.0, "Reassembling Video & Merging Audio...");
+    ctx.emit_progress(92.0, "Reassembling Video & Merging Audio Stream...");
     reassemble_with_encoders(ctx, ffmpeg_binary, fps_string, &normalized_pattern)
 }
 
-pub fn check_and_get_framerate(app: &AppHandle, video_path: &str) -> Result<String, String> {
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+pub fn probe_video_metadata(app: &AppHandle, video_path: &str) -> Result<VideoMetadata, String> {
     let ffprobe_bin = resolve_ffprobe_binary(app)?;
 
     let output = Command::new(&ffprobe_bin)
@@ -307,7 +457,9 @@ pub fn check_and_get_framerate(app: &AppHandle, video_path: &str) -> Result<Stri
             "-select_streams",
             "v:0",
             "-show_entries",
-            "stream=r_frame_rate,avg_frame_rate",
+            "stream=r_frame_rate,avg_frame_rate,nb_frames,duration",
+            "-show_entries",
+            "format=duration",
             "-of",
             "default=noprint_wrappers=1:nokey=1",
             video_path,
@@ -316,7 +468,10 @@ pub fn check_and_get_framerate(app: &AppHandle, video_path: &str) -> Result<Stri
         .map_err(|e| format!("Failed to run ffprobe: {e}"))?;
 
     if !output.status.success() {
-        return Ok("30/1".to_string());
+        return Ok(VideoMetadata {
+            fps_string: "30/1".to_string(),
+            total_frames_estimate: None,
+        });
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -326,25 +481,43 @@ pub fn check_and_get_framerate(app: &AppHandle, video_path: &str) -> Result<Stri
         .filter(|s| !s.is_empty())
         .collect();
 
-    if lines.len() >= 2 {
-        let r_fps = lines[0];
-        let avg_fps = lines[1];
+    let mut fps_str = "30/1".to_string();
+    let mut total_frames_estimate = None;
+    let mut duration_sec: Option<f64> = None;
+    let mut parsed_fps: Option<f64> = None;
 
-        if r_fps != avg_fps && r_fps != "0/0" && avg_fps != "0/0" {
-            if let (Some(r_val), Some(avg_val)) =
-                (parse_fps_fraction(r_fps), parse_fps_fraction(avg_fps))
-            {
-                if (r_val - avg_val).abs() > 0.5 {
-                    return Err("Variable frame rate (VFR) videos are not supported in this release. Please convert to constant frame rate (CFR) before upscaling.".to_string());
+    for line in lines {
+        if line.contains('/') {
+            if let Some(fps_val) = parse_fps_fraction(line) {
+                if (1.0..=240.0).contains(&fps_val) {
+                    fps_str = line.to_string();
+                    parsed_fps = Some(fps_val);
                 }
             }
+        } else if let Ok(frames) = line.parse::<usize>() {
+            if frames > 0 {
+                total_frames_estimate = Some(frames);
+            }
+        } else if let Ok(dur) = line.parse::<f64>() {
+            if dur > 0.0 && duration_sec.is_none() {
+                duration_sec = Some(dur);
+            }
         }
-        return Ok(r_fps.to_string());
-    } else if lines.len() == 1 {
-        return Ok(lines[0].to_string());
     }
 
-    Ok("30/1".to_string())
+    if total_frames_estimate.is_none() {
+        if let (Some(dur), Some(fps)) = (duration_sec, parsed_fps) {
+            let est = (dur * fps).round() as usize;
+            if est > 0 {
+                total_frames_estimate = Some(est);
+            }
+        }
+    }
+
+    Ok(VideoMetadata {
+        fps_string: fps_str,
+        total_frames_estimate,
+    })
 }
 
 fn parse_fps_fraction(s: &str) -> Option<f64> {

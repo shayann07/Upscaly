@@ -204,6 +204,67 @@ impl ProcessRunner for MockProcessRunner {
     }
 }
 
+/// Composite process handle that manages multiple concurrent processes
+pub struct MultiProcessHandle {
+    handles: Arc<Mutex<Vec<Box<dyn ProcessHandle>>>>,
+}
+
+impl MultiProcessHandle {
+    pub fn new(handles: Arc<Mutex<Vec<Box<dyn ProcessHandle>>>>) -> Self {
+        Self { handles }
+    }
+}
+
+impl ProcessHandle for MultiProcessHandle {
+    fn try_wait(&mut self) -> Result<Option<i32>, AppError> {
+        let mut list = self
+            .handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut any_running = false;
+        let mut last_err = None;
+
+        for h in list.iter_mut() {
+            match h.try_wait() {
+                Ok(Some(code)) if code != 0 => {
+                    last_err = Some(code);
+                }
+                Ok(Some(_)) => {}
+                Ok(None) => {
+                    any_running = true;
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+
+        if let Some(err_code) = last_err {
+            Ok(Some(err_code))
+        } else if any_running {
+            Ok(None)
+        } else {
+            Ok(Some(0))
+        }
+    }
+
+    fn kill(&mut self) -> Result<(), AppError> {
+        let mut list = self
+            .handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for h in list.iter_mut() {
+            let _ = h.kill();
+        }
+        list.clear();
+        Ok(())
+    }
+
+    fn id(&self) -> u32 {
+        0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,5 +294,21 @@ mod tests {
         runner.fail_on_spawn = true;
         let result = runner.spawn(Path::new("dummy"), &[]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_multi_process_handle_kill_all() {
+        let runner1 = MockProcessRunner::new(None);
+        let runner2 = MockProcessRunner::new(None);
+        let handle1 = runner1.spawn(Path::new("dummy1"), &[]).unwrap();
+        let handle2 = runner2.spawn(Path::new("dummy2"), &[]).unwrap();
+
+        let list = Arc::new(Mutex::new(vec![handle1, handle2]));
+        let mut multi = MultiProcessHandle::new(Arc::clone(&list));
+
+        assert_eq!(multi.try_wait().unwrap(), None);
+        multi.kill().unwrap();
+        assert!(*runner1.was_killed.lock().unwrap());
+        assert!(*runner2.was_killed.lock().unwrap());
     }
 }
