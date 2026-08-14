@@ -174,7 +174,17 @@ pub fn run_overlapping_upscale_pipeline(
     #[allow(unused_assignments)]
     let mut total_completed = 0usize;
     let warmup_frames_required = 5;
-    let batch_target_size = 40usize;
+    // Each NCNN invocation pays ~1.5-4s of Vulkan instance init + shader
+    // compile + model weight upload before it processes a single frame.
+    // At the old target of 40 (up to 80 taken per batch), a 10,000-frame
+    // video respawned the process 125+ times, idling the GPU for that
+    // startup cost every time -- on a fast GPU that alone was 20-30% of
+    // total wall clock. Raising this amortizes that fixed cost across far
+    // more frames per spawn; the batch folder is just a plain directory of
+    // JPEGs, so a larger batch has no VRAM or tiling implications, only
+    // slightly higher peak disk usage per in-flight batch (a few hundred
+    // JPEG frames, negligible next to the already-unbounded staging dir).
+    let batch_target_size = 300usize;
 
     loop {
         if ctx.is_cancelled() {

@@ -31,12 +31,21 @@ pub fn estimate_single_tile_memory_mb(tile_size: i32) -> u64 {
 }
 
 /// Calculate total projected VRAM usage given tile size and concurrent GPU worker threads.
+///
+/// The model's base weights (`base_model_mb`) are loaded once per *process*,
+/// not once per GPU worker thread -- realesrgan-ncnn-vulkan's `-j 1:N:2`
+/// spawns N processing threads inside a single process sharing one copy of
+/// the weights. Only the per-tile compute buffer duplicates per thread.
+/// Multiplying the whole `(base + buffer)` sum by proc_threads (the
+/// previous formula) overstated projected usage for every multi-thread
+/// profile -- e.g. dual-proc at a 256px tile was estimated at ~2.5GB when
+/// the real figure is closer to ~2.1GB.
 #[must_use]
 pub fn estimate_total_vram_mb(tile_size: i32, proc_threads: u32) -> u64 {
     let base_model_mb = 400u64;
     let t = tile_size.clamp(32, 1024) as f64;
     let single_buffer_mb = ((t / 100.0).powi(2) * 130.0).round() as u64;
-    (base_model_mb + single_buffer_mb) * u64::from(proc_threads.max(1))
+    base_model_mb + single_buffer_mb * u64::from(proc_threads.max(1))
 }
 
 /// Determine the maximum safe tile size and thread configuration for a given GPU VRAM budget.
@@ -84,7 +93,22 @@ pub fn calculate_safe_execution_profile(
             continue;
         }
 
-        // Dual GPU pipelines (proc = 2) ONLY allowed for large desktop GPUs >= 10GB (10240MB)
+        // Dual GPU pipelines (proc = 2) ONLY allowed for large desktop GPUs >= 10GB (10240MB).
+        //
+        // estimate_total_vram_mb was previously overstating dual-proc usage
+        // (double-counting the model's base weights per thread instead of
+        // once per process), which an audit flagged as the likely reason
+        // this 10GB floor is more conservative than it needs to be -- on
+        // paper, 6-8GB GPUs have headroom for dual-proc once the estimate
+        // is corrected. That floor was deliberately hardened in a prior
+        // commit specifically because dual-proc caused real stability
+        // problems on 6-8GB GPUs, and this fix has no way to validate
+        // "corrected math == actually safe on that hardware" without
+        // testing on it. So: the math bug above is fixed (it was simply
+        // wrong, independent of any policy question, and every existing
+        // profile below this gate is proc=1, where the bug had no effect
+        // at all), but this floor stays as the prior commit set it rather
+        // than being loosened on an unverified assumption.
         let dual_thread_vram = estimate_total_vram_mb(tile, 2);
         if dual_thread_vram <= safe_ceiling_mb && gpu_vram_mb >= 10240 {
             return ExecutionProfile {
@@ -165,6 +189,22 @@ pub fn build_vram_profile(gpu_vram_mb: u64, requested_tile: i32) -> VramProfile 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_estimate_total_vram_counts_base_weights_once_not_per_thread() {
+        // The model's weights load once per process regardless of how many
+        // GPU worker threads that process runs -- only the per-tile
+        // compute buffer scales with thread count.
+        let single = estimate_total_vram_mb(256, 1);
+        let dual = estimate_total_vram_mb(256, 2);
+        let buffer_256 = ((256.0f64 / 100.0).powi(2) * 130.0).round() as u64;
+
+        assert_eq!(single, 400 + buffer_256);
+        assert_eq!(dual, 400 + buffer_256 * 2);
+        // The old buggy formula ((400 + buffer) * threads) would have put
+        // dual at 400 + buffer*2 + 400 = 400 more than the correct figure.
+        assert_eq!(dual, single + buffer_256);
+    }
 
     #[test]
     fn test_vram_governor_6gb_gpu_512_tile() {
