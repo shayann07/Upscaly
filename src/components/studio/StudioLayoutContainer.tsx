@@ -31,6 +31,7 @@ export function StudioLayoutContainer() {
         setZoomLevel={setup.setZoomLevel}
         handleOpenFile={setup.handleOpenFile}
         handleOpenFolder={setup.handleOpenFolder}
+        isDragOver={setup.isDragOver}
         handleShowInExplorerNative={setup.handleShowInExplorerNative}
         handleClearFile={setup.handleClearFile}
         confirmCancelOpen={setup.confirmCancelOpen}

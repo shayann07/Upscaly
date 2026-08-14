@@ -92,19 +92,11 @@ export function useMediaSelection({
     }
   }, [isMuted, onResetJob, setBatchItems]);
 
-  const handleOpenFile = useCallback(async () => {
-    try {
-      const selected = await open({
-        multiple: true,
-        filters: [
-          {
-            name: 'Media Files',
-            extensions: ['png', 'jpg', 'jpeg', 'webp', 'mp4', 'mkv', 'mov', 'avi'],
-          },
-        ],
-      });
-      if (!selected) return;
-      const paths = Array.isArray(selected) ? selected : [selected];
+  // Shared by both the file picker (handleOpenFile) and OS drag-and-drop
+  // (handleFilesDropped) -- everything past "we now have a list of real
+  // file paths" is identical for the two entry points.
+  const ingestPaths = useCallback(
+    async (paths: string[]) => {
       if (paths.length === 0) return;
       playDropSound(isMuted);
       setUpscaledPath('');
@@ -140,10 +132,37 @@ export function useMediaSelection({
       } else if (onNotify) {
         onNotify('info', 'Batch Loaded', `Added ${paths.length} files to queue.`);
       }
+    },
+    [isMuted, selectedModel, onCategorySelect, onNotify, onResetJob, setBatchItems]
+  );
+
+  const handleOpenFile = useCallback(async () => {
+    try {
+      const selected = await open({
+        multiple: true,
+        filters: [
+          {
+            name: 'Media Files',
+            extensions: ['png', 'jpg', 'jpeg', 'webp', 'mp4', 'mkv', 'mov', 'avi'],
+          },
+        ],
+      });
+      if (!selected) return;
+      const paths = Array.isArray(selected) ? selected : [selected];
+      await ingestPaths(paths);
     } catch (err) {
       console.error('Failed to select file:', err);
     }
-  }, [isMuted, selectedModel, onCategorySelect, onNotify, onResetJob, setBatchItems]);
+  }, [ingestPaths]);
+
+  const handleFilesDropped = useCallback(
+    (paths: string[]) => {
+      ingestPaths(paths).catch((err) => {
+        console.error('Failed to ingest dropped files:', err);
+      });
+    },
+    [ingestPaths]
+  );
 
   return {
     filePath,
@@ -158,6 +177,7 @@ export function useMediaSelection({
     setUpscaledPath,
     handleClearFile,
     handleOpenFile,
+    handleFilesDropped,
     handleOpenFolder,
   };
 }

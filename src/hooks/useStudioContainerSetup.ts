@@ -8,6 +8,7 @@ import { useStudioState } from './useStudioState';
 import { useStudioEvents } from './useStudioEvents';
 import { useBatchSetup } from './useBatchSetup';
 import { useStudioJobStateSetup } from './useStudioJobStateSetup';
+import { useDragDrop } from './useDragDrop';
 
 export function useStudioContainerSetup() {
   const state = useStudioState();
@@ -52,6 +53,8 @@ export function useStudioContainerSetup() {
   });
 
   handleOpenFileRef.current = media.handleOpenFile;
+
+  const { isDragOver } = useDragDrop(media.handleFilesDropped, state.handleNotify);
 
   const actions = useStudioActions({
     filePath: media.filePath,
@@ -166,6 +169,7 @@ export function useStudioContainerSetup() {
     handleStartUpscale,
     handleCancelUpscale,
     handleCancelItem: actions.handleCancelUpscale,
+    isDragOver,
     handleSelectModel: actions.handleSelectModel,
     setScale: actions.handleSelectScale,
     handleSelectDestinationFolder: settings.handleSelectDestinationFolder,
