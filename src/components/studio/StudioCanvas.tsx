@@ -18,6 +18,7 @@ interface StudioCanvasProps {
   setZoomLevel: React.Dispatch<React.SetStateAction<number>>;
   handleOpenFile: () => void;
   handleOpenFolder?: () => void;
+  isDragOver?: boolean;
   handleShowInExplorerNative: (path: string) => void;
   handleClearFile: () => void;
   confirmCancelOpen?: boolean;
@@ -73,6 +74,7 @@ export function StudioCanvas(props: StudioCanvasProps) {
     setZoomLevel,
     handleOpenFile,
     handleOpenFolder,
+    isDragOver,
     handleShowInExplorerNative,
     handleClearFile,
     confirmCancelOpen,
@@ -130,6 +132,7 @@ export function StudioCanvas(props: StudioCanvasProps) {
         setZoomLevel={setZoomLevel}
         handleOpenFile={handleOpenFile}
         handleOpenFolder={handleOpenFolder}
+        isDragOver={isDragOver}
         isProc={isProc}
         progressVal={progressVal}
       />

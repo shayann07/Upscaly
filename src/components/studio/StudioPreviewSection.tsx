@@ -15,6 +15,7 @@ interface StudioPreviewSectionProps {
   setZoomLevel: React.Dispatch<React.SetStateAction<number>>;
   handleOpenFile: () => void;
   handleOpenFolder?: () => void;
+  isDragOver?: boolean;
   isProc: boolean;
   progressVal: number;
 }
@@ -29,6 +30,7 @@ export function StudioPreviewSection({
   setZoomLevel,
   handleOpenFile,
   handleOpenFolder,
+  isDragOver = false,
   isProc,
   progressVal,
 }: StudioPreviewSectionProps) {
@@ -74,7 +76,7 @@ export function StudioPreviewSection({
               }}
             />
             <DropZone
-              isDragOver={false}
+              isDragOver={isDragOver}
               onAddFiles={handleOpenFile}
               onAddBatch={handleOpenFolder || handleOpenFile}
               onBrowseClick={handleOpenFile}
