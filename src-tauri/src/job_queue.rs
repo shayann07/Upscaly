@@ -598,10 +598,22 @@ mod tests {
     #[test]
     fn test_resolve_effective_scale() {
         assert_eq!(resolve_effective_scale("realesrgan-x4plus", 2, None), 4);
-        assert_eq!(resolve_effective_scale("realesrgan-x4plus-anime", 2, None), 4);
-        assert_eq!(resolve_effective_scale("realesr-animevideov3-x2", 4, None), 2);
-        assert_eq!(resolve_effective_scale("realesr-animevideov3-x3", 4, None), 3);
-        assert_eq!(resolve_effective_scale("realesr-animevideov3-x4", 2, None), 4);
+        assert_eq!(
+            resolve_effective_scale("realesrgan-x4plus-anime", 2, None),
+            4
+        );
+        assert_eq!(
+            resolve_effective_scale("realesr-animevideov3-x2", 4, None),
+            2
+        );
+        assert_eq!(
+            resolve_effective_scale("realesr-animevideov3-x3", 4, None),
+            3
+        );
+        assert_eq!(
+            resolve_effective_scale("realesr-animevideov3-x4", 2, None),
+            4
+        );
         assert_eq!(resolve_effective_scale("custom-model-4x", 2, None), 4);
         assert_eq!(resolve_effective_scale("unknown-model", 3, None), 3);
         assert_eq!(resolve_effective_scale("unknown-model", 99, None), 4);

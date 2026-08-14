@@ -116,7 +116,11 @@ impl ModelStore {
 
                             let metadata_res = parse_ncnn_param_cached(&path);
                             let is_corrupt = metadata_res.is_err() || !bin_path.exists();
-                            let scale = crate::job_queue::resolve_effective_scale(stem, 4, Some(models_dir)) as u32;
+                            let scale = crate::job_queue::resolve_effective_scale(
+                                stem,
+                                4,
+                                Some(models_dir),
+                            ) as u32;
 
                             let cat = if stem.contains("anime") {
                                 "anime".to_string()
