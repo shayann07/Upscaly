@@ -185,6 +185,15 @@ pub fn run_overlapping_upscale_pipeline(
     // slightly higher peak disk usage per in-flight batch (a few hundred
     // JPEG frames, negligible next to the already-unbounded staging dir).
     let batch_target_size = 300usize;
+    // get_sorted_image_files does a full directory read + sort of
+    // staging_dir, and count_image_files a full directory read of
+    // frames_out_dir, on every loop tick -- for a long video these can
+    // hold tens to hundreds of thousands of entries by the later stages of
+    // a job, pegging a core on repeated full scans for no benefit beyond a
+    // marginally smoother progress bar. 60-100ms was far more often than
+    // the UI needs; still smooth at a third of the frequency.
+    const STAGING_POLL_INTERVAL: Duration = Duration::from_millis(200);
+    const NCNN_POLL_INTERVAL: Duration = Duration::from_millis(300);
 
     loop {
         if ctx.is_cancelled() {
@@ -226,7 +235,7 @@ pub fn run_overlapping_upscale_pipeline(
                 break;
             }
             // Wait for extractor to produce frames
-            thread::sleep(Duration::from_millis(60));
+            thread::sleep(STAGING_POLL_INTERVAL);
             continue;
         }
 
@@ -242,7 +251,7 @@ pub fn run_overlapping_upscale_pipeline(
                 None,
                 None,
             );
-            thread::sleep(Duration::from_millis(60));
+            thread::sleep(STAGING_POLL_INTERVAL);
             continue;
         }
 
@@ -451,7 +460,7 @@ pub fn run_overlapping_upscale_pipeline(
                 }
             }
 
-            thread::sleep(Duration::from_millis(100));
+            thread::sleep(NCNN_POLL_INTERVAL);
         }
     }
 
