@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useCallback } from 'react';
 import { useSettings } from './useSettings';
 import { useModelCatalog } from './useModelCatalog';
 import { useMediaSelection } from './useMediaSelection';
@@ -17,17 +17,15 @@ export function useStudioContainerSetup() {
   const onCategorySelectRef = useRef<(cat: 'photos' | 'anime' | 'video') => void>((cat) =>
     state.setCategory(cat)
   );
-
-  const media = useMediaSelection(
-    settings.isMuted,
-    catalog.selectedModel,
-    (cat) => onCategorySelectRef.current(cat),
-    state.handleNotify,
-    state.handleResetJob
-  );
+  const handleOpenFileRef = useRef<() => void>(() => {});
 
   let handleCancelRef = (_id?: string) => {};
 
+  // useBatchSetup owns the single batchItems store (via useUpscaleQueue) and
+  // useMediaSelection needs to write into it -- but useBatchSetup also needs
+  // media's handleOpenFile for the Cmd+O shortcut. Break the cycle the same
+  // way handleCancelRef does below: batch is constructed first against a
+  // ref that gets pointed at the real handler once media exists.
   const batch = useBatchSetup({
     selectedGpu: settings.selectedGpu,
     selectedModel: catalog.selectedModel,
@@ -35,17 +33,25 @@ export function useStudioContainerSetup() {
     tileSize: settings.tileSize,
     customOutputPath: settings.customOutputPath,
     isMuted: settings.isMuted,
-    fileName: media.fileName,
-    filePath: media.filePath,
-    isVideo: media.isVideo,
     activeJobId: state.activeJobId,
     setHistoryItems: state.setHistoryItems,
-    handleOpenFile: media.handleOpenFile,
+    handleOpenFile: () => handleOpenFileRef.current(),
     handleCancelUpscale: (id?: string) => handleCancelRef(id),
     handleToggleNavTab: state.handleToggleNavTab,
     setActiveNavTab: state.setActiveNavTab,
     onNotify: state.handleNotify,
   });
+
+  const media = useMediaSelection({
+    isMuted: settings.isMuted,
+    selectedModel: catalog.selectedModel,
+    setBatchItems: batch.setBatchItems,
+    onCategorySelect: (cat) => onCategorySelectRef.current(cat),
+    onNotify: state.handleNotify,
+    onResetJob: state.handleResetJob,
+  });
+
+  handleOpenFileRef.current = media.handleOpenFile;
 
   const actions = useStudioActions({
     filePath: media.filePath,
@@ -79,12 +85,25 @@ export function useStudioContainerSetup() {
     setFileName: media.setFileName,
     setUpscaledPath: media.setUpscaledPath,
     setIsVideo: media.setIsVideo,
+    setCurrentFileDims: media.setCurrentFileDims,
+    setBatchItems: batch.setBatchItems,
     setActiveNavTab: state.setActiveNavTab,
     onNotify: state.handleNotify,
   });
 
   onCategorySelectRef.current = actions.handleSelectCategory;
   handleCancelRef = actions.handleCancelUpscale;
+
+  // The main Cancel button / Escape shortcut needs to reach whichever job is
+  // actually running -- a single-file studio job (state.activeJobId) or an
+  // in-flight batch (batch.isBatchRunning). Cancelling a batch stops every
+  // non-terminal item, not just the one currently processing.
+  const handleCancelUpscale = useCallback(() => {
+    if (batch.isBatchRunning) {
+      return batch.cancelBatch();
+    }
+    return actions.handleCancelUpscale();
+  }, [batch.isBatchRunning, batch.cancelBatch, actions.handleCancelUpscale]);
 
   const studioJobState = useStudioJobStateSetup({
     activeJobId: state.activeJobId,
@@ -146,6 +165,8 @@ export function useStudioContainerSetup() {
     ...batch,
     ...telemetry,
     handleStartUpscale,
+    handleCancelUpscale,
+    handleCancelItem: actions.handleCancelUpscale,
     handleSelectModel: actions.handleSelectModel,
     setScale: actions.handleSelectScale,
     handleSelectDestinationFolder: settings.handleSelectDestinationFolder,

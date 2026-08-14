@@ -26,6 +26,34 @@ pub struct Job {
     pub is_video: bool,
 }
 
+/// Restricts a job id to a safe filesystem path component. The id is used to
+/// build a temp directory name (`upscaler_job_{id}`) that later gets
+/// recursively deleted, so it must never be able to contain path separators
+/// or `..` sequences. Anything outside `[A-Za-z0-9_-]` is stripped; if that
+/// leaves nothing usable, a fresh id is generated instead of trusting input.
+pub fn sanitize_job_id(id: &str) -> String {
+    let cleaned: String = id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+        .take(128)
+        .collect();
+
+    if cleaned.is_empty() {
+        generate_job_id()
+    } else {
+        cleaned
+    }
+}
+
+pub fn generate_job_id() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("job_{nanos:x}")
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JobProgress {
     pub job_id: String,
@@ -175,9 +203,25 @@ impl JobQueueService {
                 let job = match next_job {
                     Some(j) => j,
                     None => {
-                        let mut lock = service.lock_processing();
-                        *lock = false;
-                        break;
+                        // Decide "stop processing" and "queue is empty" atomically
+                        // by holding the processing lock while re-checking the
+                        // queue. Without this, a concurrent enqueue() that runs
+                        // between our pop_front() returning None and us setting
+                        // is_processing = false would see is_processing == true,
+                        // skip spawning a new worker, and its job would sit in
+                        // the queue forever with nothing left to drain it.
+                        let mut processing_lock = service.lock_processing();
+                        let q = service.lock_queue();
+                        if q.is_empty() {
+                            *processing_lock = false;
+                            break;
+                        }
+                        // Something was enqueued in the gap; keep this worker
+                        // alive (is_processing stays true) and loop back to
+                        // pop it instead of racing a fresh process_next() call.
+                        drop(q);
+                        drop(processing_lock);
+                        continue;
                     }
                 };
 
@@ -570,6 +614,42 @@ fn run_single_image_job(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_sanitize_job_id_passes_through_safe_ids() {
+        assert_eq!(sanitize_job_id("abc123-XYZ_789"), "abc123-XYZ_789");
+    }
+
+    #[test]
+    fn test_sanitize_job_id_strips_path_traversal() {
+        // The classic escape attempt: strip the traversal components down
+        // to only the characters that are safe in a single path segment.
+        let sanitized = sanitize_job_id("..\\..\\..\\Users\\shaya\\Documents");
+        assert!(!sanitized.contains(".."));
+        assert!(!sanitized.contains('\\'));
+        assert!(!sanitized.contains('/'));
+        assert_eq!(sanitized, "UsersshayaDocuments");
+    }
+
+    #[test]
+    fn test_sanitize_job_id_strips_unix_path_traversal() {
+        let sanitized = sanitize_job_id("../../../etc/passwd");
+        assert!(!sanitized.contains(".."));
+        assert!(!sanitized.contains('/'));
+        assert_eq!(sanitized, "etcpasswd");
+    }
+
+    #[test]
+    fn test_sanitize_job_id_falls_back_when_fully_unsafe() {
+        // An id made entirely of unsafe characters must never resolve to an
+        // empty string (which would collapse the temp dir path to just
+        // "upscaler_job_") -- it must fall back to a freshly generated id.
+        let sanitized = sanitize_job_id("../../../../");
+        assert!(!sanitized.is_empty());
+        assert!(sanitized
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'));
+    }
 
     #[test]
     fn test_normalize_tile_size() {

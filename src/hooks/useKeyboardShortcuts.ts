@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 
 interface KeyboardShortcutsOptions {
   activeJobId: string | null;
-  filePath: string;
   batchItemsCount: number;
   handleOpenFile: () => void;
   handleStartBatchUpscale: () => void;

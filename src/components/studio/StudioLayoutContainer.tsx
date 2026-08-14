@@ -46,6 +46,7 @@ export function StudioLayoutContainer() {
         activeVramGb={setup.activeVramGb}
         tileSize={setup.tileSize}
         handleCancelUpscale={setup.handleCancelUpscale}
+        handleCancelItem={setup.handleCancelItem}
         handleCycleZoom={() =>
           setup.setZoomLevel((prev) => (prev === 1 ? 2 : prev === 2 ? 4 : prev === 4 ? 8 : 1))
         }

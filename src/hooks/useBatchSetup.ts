@@ -11,9 +11,6 @@ interface BatchSetupOptions {
   tileSize: number;
   customOutputPath: string;
   isMuted: boolean;
-  fileName: string | null;
-  filePath: string | null;
-  isVideo: boolean;
   activeJobId: string | null;
   setHistoryItems: React.Dispatch<React.SetStateAction<HistoryItem[]>>;
   handleOpenFile: () => void;
@@ -33,9 +30,6 @@ export function useBatchSetup({
   scale,
   tileSize,
   customOutputPath,
-  fileName,
-  filePath,
-  isVideo,
   activeJobId,
   setHistoryItems,
   handleOpenFile,
@@ -48,22 +42,25 @@ export function useBatchSetup({
     (item: BatchItem, outputPath: string) => {
       const meta = SUPPORTED_MODELS.find((m) => m.id === selectedModel) || SUPPORTED_MODELS[0];
       const newHist = addHistoryItem({
-        fileName: item.fileName || fileName || '',
-        originalPath: item.filePath || filePath || '',
+        fileName: item.fileName || '',
+        originalPath: item.filePath || '',
         upscaledPath: outputPath,
         modelName: meta.name,
         scale,
-        isVideo: item.isVideo ?? isVideo,
+        isVideo: Boolean(item.isVideo),
       });
       setHistoryItems(newHist);
     },
-    [selectedModel, fileName, filePath, scale, isVideo, setHistoryItems]
+    [selectedModel, scale, setHistoryItems]
   );
 
   const {
     batchItems,
     setBatchItems,
+    activeJobId: queueActiveJobId,
+    isBatchRunning,
     startBatch: handleStartBatchUpscale,
+    cancelBatch,
     handleJobProgress: handleQueueJobProgress,
     removeItem: handleRemoveBatchItem,
   } = useUpscaleQueue({
@@ -76,13 +73,18 @@ export function useBatchSetup({
     onItemCompleted,
   });
 
+  // A job can be "active" either as the single-file studio job (activeJobId,
+  // passed in from outside) or as the currently-processing batch item
+  // (queueActiveJobId, owned by this hook) -- combine both so shortcuts work
+  // during a batch run too.
+  const effectiveActiveJobId = activeJobId || queueActiveJobId;
+
   useKeyboardShortcuts({
-    activeJobId,
-    filePath: filePath || '',
+    activeJobId: effectiveActiveJobId,
     batchItemsCount: batchItems.length,
     handleOpenFile,
     handleStartBatchUpscale,
-    handleCancelUpscale: () => handleCancelUpscale(),
+    handleCancelUpscale: () => handleCancelUpscale(effectiveActiveJobId || undefined),
     handleToggleNavTab,
     setActiveNavTab,
   });
@@ -90,7 +92,10 @@ export function useBatchSetup({
   return {
     batchItems,
     setBatchItems,
+    queueActiveJobId,
+    isBatchRunning,
     handleStartBatchUpscale,
+    cancelBatch,
     handleQueueJobProgress,
     handleRemoveBatchItem,
   };

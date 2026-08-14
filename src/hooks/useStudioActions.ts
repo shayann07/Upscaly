@@ -38,6 +38,8 @@ interface StudioActionsOptions {
   setFileName: (name: string) => void;
   setUpscaledPath: (path: string) => void;
   setIsVideo: (isVid: boolean) => void;
+  setCurrentFileDims: (dims: { w: number; h: number } | null) => void;
+  setBatchItems: (items: BatchItem[] | ((prev: BatchItem[]) => BatchItem[])) => void;
   setActiveNavTab: (tab: 'models' | 'history' | 'settings' | 'about' | null) => void;
   onNotify: (
     type: 'success' | 'error' | 'info' | 'warning',
@@ -78,6 +80,8 @@ export function useStudioActions({
   setFileName,
   setUpscaledPath,
   setIsVideo,
+  setCurrentFileDims,
+  setBatchItems,
   setActiveNavTab,
   onNotify,
 }: StudioActionsOptions) {
@@ -267,6 +271,8 @@ export function useStudioActions({
     setFileName('');
     setUpscaledPath('');
     setIsVideo(false);
+    setCurrentFileDims(null);
+    setBatchItems([]);
     setJobStatus('idle');
     setProgressVal(0);
     setStatusMessage('');
@@ -285,6 +291,8 @@ export function useStudioActions({
     setFileName,
     setUpscaledPath,
     setIsVideo,
+    setCurrentFileDims,
+    setBatchItems,
     setJobStatus,
     setProgressVal,
     setStatusMessage,
@@ -310,6 +318,8 @@ export function useStudioActions({
     setFileName('');
     setUpscaledPath('');
     setIsVideo(false);
+    setCurrentFileDims(null);
+    setBatchItems([]);
     setJobStatus('idle');
     setProgressVal(0);
     setStatusMessage('');
@@ -327,6 +337,8 @@ export function useStudioActions({
     setFileName,
     setUpscaledPath,
     setIsVideo,
+    setCurrentFileDims,
+    setBatchItems,
     setJobStatus,
     setProgressVal,
     setStatusMessage,
