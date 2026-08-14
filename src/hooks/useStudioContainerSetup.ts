@@ -19,14 +19,16 @@ export function useStudioContainerSetup() {
     state.setCategory(cat)
   );
   const handleOpenFileRef = useRef<() => void>(() => {});
-
-  let handleCancelRef = (_id?: string) => {};
+  const requestCancelConfirmationRef = useRef<() => void>(() => {});
+  const handleDismissCancelRef = useRef<() => void>(() => {});
 
   // useBatchSetup owns the single batchItems store (via useUpscaleQueue) and
   // useMediaSelection needs to write into it -- but useBatchSetup also needs
-  // media's handleOpenFile for the Cmd+O shortcut. Break the cycle the same
-  // way handleCancelRef does below: batch is constructed first against a
-  // ref that gets pointed at the real handler once media exists.
+  // media's handleOpenFile for the Cmd+O shortcut, and the confirm-cancel
+  // callbacks that live on useStudioActions (which itself needs media's
+  // filePath/fileName). Break the three-way cycle with ref bridges for the
+  // callbacks; confirmCancelOpen itself is read directly since it's now
+  // owned by useStudioState, constructed before any of this.
   const batch = useBatchSetup({
     selectedGpu: settings.selectedGpu,
     selectedModel: catalog.selectedModel,
@@ -35,9 +37,11 @@ export function useStudioContainerSetup() {
     customOutputPath: settings.customOutputPath,
     isMuted: settings.isMuted,
     activeJobId: state.activeJobId,
+    confirmCancelOpen: state.confirmCancelOpen,
+    requestCancelConfirmation: () => requestCancelConfirmationRef.current(),
+    handleDismissCancel: () => handleDismissCancelRef.current(),
     setHistoryItems: state.setHistoryItems,
     handleOpenFile: () => handleOpenFileRef.current(),
-    handleCancelUpscale: (id?: string) => handleCancelRef(id),
     handleToggleNavTab: state.handleToggleNavTab,
     setActiveNavTab: state.setActiveNavTab,
     onNotify: state.handleNotify,
@@ -73,6 +77,8 @@ export function useStudioContainerSetup() {
     installedModels: catalog.installedModels,
     activeJobId: state.activeJobId,
     jobStatus: state.jobStatus,
+    confirmCancelOpen: state.confirmCancelOpen,
+    setConfirmCancelOpen: state.setConfirmCancelOpen,
     setActiveJobId: state.setActiveJobId,
     setJobStatus: state.setJobStatus,
     setProgressVal: state.setProgressVal,
@@ -95,7 +101,8 @@ export function useStudioContainerSetup() {
   });
 
   onCategorySelectRef.current = actions.handleSelectCategory;
-  handleCancelRef = actions.handleCancelUpscale;
+  requestCancelConfirmationRef.current = actions.requestCancelConfirmation;
+  handleDismissCancelRef.current = actions.handleDismissCancel;
 
   // The main Cancel button / Escape shortcut needs to reach whichever job is
   // actually running -- a single-file studio job (state.activeJobId) or an

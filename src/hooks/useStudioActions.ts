@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { playErrorSound } from '../lib/sound';
@@ -25,6 +25,8 @@ interface StudioActionsOptions {
   installedModels: string[];
   activeJobId: string | null;
   jobStatus?: string;
+  confirmCancelOpen: boolean;
+  setConfirmCancelOpen: (open: boolean) => void;
   setActiveJobId: (id: string | null) => void;
   setJobStatus: (status: string) => void;
   setProgressVal: (val: number) => void;
@@ -67,6 +69,8 @@ export function useStudioActions({
   installedModels,
   activeJobId,
   jobStatus,
+  confirmCancelOpen,
+  setConfirmCancelOpen,
   setActiveJobId,
   setJobStatus,
   setProgressVal,
@@ -97,7 +101,6 @@ export function useStudioActions({
   // running can no longer pair the new file's name with the old job's
   // output in history, or flip the UI to show that mismatched result.
   const jobSnapshotsRef = useRef<Map<string, JobInputSnapshot>>(new Map());
-  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
 
   const handleSelectCategory = useCallback(
     (cat: 'photos' | 'anime' | 'video') => {
@@ -263,16 +266,30 @@ export function useStudioActions({
     }
   };
 
-  const handleClearFile = useCallback(() => {
-    const isJobActive = Boolean(
-      activeJobId ||
-      activeJobIdRef.current ||
-      jobStatus === 'processing' ||
-      jobStatus === 'running' ||
-      jobStatus === 'queued'
-    );
+  const isSingleFileJobActive = useCallback(
+    () =>
+      Boolean(
+        activeJobId ||
+        activeJobIdRef.current ||
+        jobStatus === 'processing' ||
+        jobStatus === 'running' ||
+        jobStatus === 'queued'
+      ),
+    [activeJobId, jobStatus]
+  );
 
-    if (isJobActive) {
+  // Opens the same confirm dialog handleClearFile uses when a job is
+  // active, without also clearing the file when it isn't. Lets Escape
+  // route through the same guarded cancel flow as the "X" button instead
+  // of instantly killing a possibly hour-long job.
+  const requestCancelConfirmation = useCallback(() => {
+    if (isSingleFileJobActive()) {
+      setConfirmCancelOpen(true);
+    }
+  }, [isSingleFileJobActive]);
+
+  const handleClearFile = useCallback(() => {
+    if (isSingleFileJobActive()) {
       setConfirmCancelOpen(true);
       return;
     }
@@ -295,8 +312,7 @@ export function useStudioActions({
     setActiveJobId(null);
     onNotify('info', 'Queue Cleared', 'Ready for next input.');
   }, [
-    activeJobId,
-    jobStatus,
+    isSingleFileJobActive,
     setFilePath,
     setFileName,
     setUpscaledPath,
@@ -407,6 +423,7 @@ export function useStudioActions({
     handleClearFile,
     handleConfirmCancelAndClear,
     handleDismissCancel,
+    requestCancelConfirmation,
     handleSelectHistoryItem,
   };
 }
