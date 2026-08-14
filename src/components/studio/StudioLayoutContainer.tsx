@@ -96,7 +96,7 @@ export function StudioLayoutContainer() {
         historyItems={setup.historyItems}
         handleLoadHistoryItem={setup.handleLoadHistoryItem}
         toasts={setup.toasts}
-        removeToast={(id: string) => setup.setToasts((prev) => prev.filter((t) => t.id !== id))}
+        removeToast={setup.dismissToast}
       />
     </div>
   );
