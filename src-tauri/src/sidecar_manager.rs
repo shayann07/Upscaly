@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{path::BaseDirectory, AppHandle, Manager};
 
@@ -178,6 +178,13 @@ pub fn attach_to_job_object(child: &Child) {
 pub fn attach_to_job_object(_child: &Child) {}
 
 static IN_MEMORY_GPU_CACHE: std::sync::Mutex<Option<Vec<GpuDevice>>> = std::sync::Mutex::new(None);
+// A probe that legitimately found no GPUs (iGPU-less/Vulkan-less machine)
+// was never cached at all, so every call -- including the two per video
+// job that need a fresh tile/thread profile -- re-ran the full up-to-5s
+// probe. This is a much shorter TTL than the 24h positive cache so a
+// driver install without restarting the app is still picked up promptly.
+static EMPTY_PROBE_AT: std::sync::Mutex<Option<u64>> = std::sync::Mutex::new(None);
+const EMPTY_PROBE_TTL_SECS: u64 = 60;
 
 /// Discovers Vulkan GPU devices with 24-hour cache lifecycle and instant in-memory lookup.
 pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
@@ -189,16 +196,24 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
         }
     }
 
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    if let Ok(guard) = EMPTY_PROBE_AT.lock() {
+        if let Some(ts) = *guard {
+            if now_secs.saturating_sub(ts) < EMPTY_PROBE_TTL_SECS {
+                return Ok(Vec::new());
+            }
+        }
+    }
+
     let app_dir = app
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
     let cache_path = app_dir.join("gpu_cache.json");
-
-    let now_secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
 
     let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan").ok();
     let current_hash = sidecar_path
@@ -243,6 +258,8 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
         if let Ok(json) = serde_json::to_string_pretty(&envelope) {
             let _ = std::fs::write(&cache_path, json);
         }
+    } else if let Ok(mut guard) = EMPTY_PROBE_AT.lock() {
+        *guard = Some(now_secs);
     }
 
     Ok(gpus)
@@ -269,33 +286,75 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
 
     attach_to_job_object(&child);
 
+    // Drain stdout/stderr on background threads instead of only polling
+    // try_wait() below. A GPU probe verbose enough to exceed the OS pipe
+    // buffer (common with -v on multi-GPU systems) would otherwise block
+    // the child on a full pipe forever; try_wait() kept returning
+    // Ok(None), so the 5s timeout always won, the child got killed, and
+    // wait_with_output() was never reached -- discarding all output and
+    // yielding an empty GPU list every time this ran.
+    let stdout_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+    let stderr_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+
+    let stdout_handle = child.stdout.take().map(|mut stdout| {
+        let buf = Arc::clone(&stdout_buf);
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut s = String::new();
+            let _ = stdout.read_to_string(&mut s);
+            if let Ok(mut guard) = buf.lock() {
+                *guard = s;
+            }
+        })
+    });
+    let stderr_handle = child.stderr.take().map(|mut stderr| {
+        let buf = Arc::clone(&stderr_buf);
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut s = String::new();
+            let _ = stderr.read_to_string(&mut s);
+            if let Ok(mut guard) = buf.lock() {
+                *guard = s;
+            }
+        })
+    });
+
     // Timeout mechanism (5 seconds max for GPU discovery)
     let start_time = std::time::Instant::now();
-    let output_data = loop {
+    let exited = loop {
         match child.try_wait() {
-            Ok(Some(_status)) => {
-                break child.wait_with_output().ok();
-            }
+            Ok(Some(_status)) => break true,
             Ok(None) => {
                 if start_time.elapsed() > std::time::Duration::from_secs(5) {
                     let _ = child.kill();
-                    break None;
+                    let _ = child.wait();
+                    break false;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
             Err(_) => {
                 let _ = child.kill();
-                break None;
+                break false;
             }
         }
     };
 
+    // The child process (and therefore its pipe write ends) has exited or
+    // been killed by this point, so these reads are guaranteed to hit EOF
+    // and return rather than block.
+    if let Some(h) = stdout_handle {
+        let _ = h.join();
+    }
+    if let Some(h) = stderr_handle {
+        let _ = h.join();
+    }
+
     let mut gpus = Vec::new();
     let mut seen_ids = std::collections::HashSet::new();
 
-    if let Some(output_data) = output_data {
-        let stderr_str = String::from_utf8_lossy(&output_data.stderr);
-        let stdout_str = String::from_utf8_lossy(&output_data.stdout);
+    if exited {
+        let stderr_str = stderr_buf.lock().map(|g| g.clone()).unwrap_or_default();
+        let stdout_str = stdout_buf.lock().map(|g| g.clone()).unwrap_or_default();
 
         for line in stderr_str.lines().chain(stdout_str.lines()) {
             if line.starts_with('[') && line.contains("] ") {

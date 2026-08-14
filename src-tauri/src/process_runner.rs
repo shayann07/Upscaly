@@ -1,7 +1,21 @@
 use crate::error::AppError;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::{Arc, Mutex};
+
+/// Maps a signal-terminated exit status to a non-zero sentinel code so
+/// callers never mistake "killed by signal" for "still running". No-op
+/// placeholder on non-Unix targets, where status.code() is always Some.
+#[cfg(unix)]
+fn unix_signal_code(status: &ExitStatus) -> i32 {
+    use std::os::unix::process::ExitStatusExt;
+    status.signal().map_or(-1, |sig| -sig)
+}
+
+#[cfg(not(unix))]
+fn unix_signal_code(_status: &ExitStatus) -> i32 {
+    -1
+}
 
 pub trait ProcessHandle: Send + Sync {
     fn try_wait(&mut self) -> Result<Option<i32>, AppError>;
@@ -37,7 +51,13 @@ pub struct StdProcessHandle {
 impl ProcessHandle for StdProcessHandle {
     fn try_wait(&mut self) -> Result<Option<i32>, AppError> {
         match self.child.try_wait() {
-            Ok(Some(status)) => Ok(status.code()),
+            // On Unix, status.code() is None when the process was killed
+            // by a signal (exactly what kill() below produces) rather than
+            // exiting normally. Returning that straight through as
+            // Ok(None) reads as "still running" to every caller, so a
+            // cancelled/crashed process on Unix spun the polling loop
+            // forever instead of ever reaching a terminal state.
+            Ok(Some(status)) => Ok(Some(status.code().unwrap_or_else(|| unix_signal_code(&status)))),
             Ok(None) => Ok(None),
             Err(e) => Err(AppError::ExecutionError {
                 message: format!("Failed to poll process status: {}", e),

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -75,6 +75,12 @@ pub struct JobQueueService {
     queue: Mutex<VecDeque<Job>>,
     registry: Mutex<HashMap<String, JobControl>>,
     is_processing: Mutex<bool>,
+    // A job that was popped off `queue` but not yet inserted into
+    // `registry` is, for a brief window, in neither -- cancel() would
+    // silently no-op and the job would run to completion while the UI
+    // believes it was cancelled. Recorded here instead, and consumed by
+    // the worker the moment it registers that job id.
+    pending_cancellations: Mutex<HashSet<String>>,
 }
 
 impl JobQueueService {
@@ -84,6 +90,7 @@ impl JobQueueService {
             queue: Mutex::new(VecDeque::new()),
             registry: Mutex::new(HashMap::new()),
             is_processing: Mutex::new(false),
+            pending_cancellations: Mutex::new(HashSet::new()),
         })
     }
 
@@ -101,6 +108,12 @@ impl JobQueueService {
 
     fn lock_processing(&self) -> std::sync::MutexGuard<'_, bool> {
         self.is_processing
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_pending_cancellations(&self) -> std::sync::MutexGuard<'_, HashSet<String>> {
+        self.pending_cancellations
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
@@ -161,6 +174,26 @@ impl JobQueueService {
                     let _ = handle.kill();
                 }
             }
+            return Ok(());
+        }
+        drop(reg);
+
+        // Neither still queued nor registered as running: the worker most
+        // likely popped this job off the queue but hasn't inserted its
+        // JobControl yet (a narrow window between the two locks in
+        // process_next). Record the cancellation so the worker honors it
+        // the instant it registers this job id, instead of silently
+        // running the job to completion while the UI believes it was
+        // already cancelled.
+        let mut pending = self.lock_pending_cancellations();
+        pending.insert(job_id.to_string());
+        // Defensive cap: a cancel() call for an id that never gets
+        // registered (stale/duplicate/typo'd id) would otherwise leak one
+        // entry forever. Job ids are unique per run, so this should only
+        // ever hold a handful of entries in practice.
+        if pending.len() > 64 {
+            pending.clear();
+            pending.insert(job_id.to_string());
         }
 
         Ok(())
@@ -225,7 +258,15 @@ impl JobQueueService {
                     }
                 };
 
-                let cancel_requested = Arc::new(AtomicBool::new(false));
+                // A cancel() call that arrived in the window between this
+                // job leaving the queue (above) and being registered
+                // (below) recorded itself in pending_cancellations instead
+                // of being silently dropped. Consume it now so the
+                // existing cancel_requested check right after registration
+                // catches it, exactly as if cancel() had found this job
+                // already in the registry.
+                let already_cancelled = service.lock_pending_cancellations().remove(&job.id);
+                let cancel_requested = Arc::new(AtomicBool::new(already_cancelled));
                 let process_handle = Arc::new(Mutex::new(None));
 
                 {
