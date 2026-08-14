@@ -3,10 +3,15 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { BatchItem } from '../lib/types';
 import { playDropSound } from '../lib/sound';
 import { getMediaDimensions, getMediaSrc } from '../lib/media';
+import { allowMediaPath } from '../lib/assetScope';
 
 async function buildBatchItem(path: string, model: string): Promise<BatchItem> {
   const name = path.split(/[\\/]/).pop() || 'media_file';
   const isVid = /\.(mp4|mkv|mov|avi)$/i.test(name);
+  // The asset protocol scope is empty by default, so the preview would
+  // fail to load (and dimension-probing would silently fall back to
+  // 1920x1080) unless this directory is granted access first.
+  await allowMediaPath(path);
   const dims = await getMediaDimensions(getMediaSrc(path), isVid);
   return {
     id: Math.random().toString(),
@@ -67,6 +72,7 @@ export function useMediaSelection({
     try {
       const selected = await open({ directory: true, multiple: false });
       if (!selected || typeof selected !== 'string') return;
+      await allowMediaPath(selected);
       playDropSound(isMuted);
       setUpscaledPath('');
       if (onResetJob) onResetJob();

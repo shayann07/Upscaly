@@ -5,6 +5,7 @@ import { playErrorSound } from '../lib/sound';
 import { ModelInfo, BatchItem, HistoryEntry } from '../lib/types';
 import { SUPPORTED_MODELS } from '../lib/types';
 import { joinPath } from '../lib/outputPaths';
+import { allowMediaPath } from '../lib/assetScope';
 
 interface StudioActionsOptions {
   filePath: string | null;
@@ -355,6 +356,12 @@ export function useStudioActions({
   }, []);
 
   const handleSelectHistoryItem = (item: HistoryEntry) => {
+    // History entries can be from a previous app session, so the asset
+    // scope (in-memory, reset on every launch) may not include these
+    // paths yet even though they were allowed when originally opened.
+    allowMediaPath(item.originalPath);
+    allowMediaPath(item.upscaledPath);
+
     if (item.originalPath) {
       setFilePath(item.originalPath);
       setFileName(item.fileName || item.originalPath.split(/[\\/]/).pop() || '');

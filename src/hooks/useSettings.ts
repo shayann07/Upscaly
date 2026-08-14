@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { GpuInfo as GpuDevice } from '../lib/types';
+import { allowMediaPath } from '../lib/assetScope';
 
 export interface BackendSettings {
   default_gpu_id?: number;
@@ -36,6 +37,7 @@ export function useSettings(onGpuReady?: (gpuName: string) => void) {
     try {
       const selected = await open({ directory: true, multiple: false });
       if (selected && typeof selected === 'string') {
+        await allowMediaPath(selected);
         setCustomOutputPath(selected);
       }
     } catch (err) {
@@ -80,10 +82,14 @@ export function useSettings(onGpuReady?: (gpuName: string) => void) {
           if (saved.default_scale !== undefined) setScale(saved.default_scale);
           if (saved.default_tile_size !== undefined) setTileSize(saved.default_tile_size);
           if (saved.output_directory) {
+            allowMediaPath(saved.output_directory);
             setCustomOutputPath(saved.output_directory);
           } else {
             invoke<string>('get_default_output_dir')
-              .then((defaultDir) => setCustomOutputPath(defaultDir))
+              .then((defaultDir) => {
+                allowMediaPath(defaultDir);
+                setCustomOutputPath(defaultDir);
+              })
               .catch(() => {});
           }
         }
