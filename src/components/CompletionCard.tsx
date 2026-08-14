@@ -1,4 +1,6 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { invoke } from '@tauri-apps/api/core';
 
 interface CompletionCardProps {
   outputPath: string;
@@ -10,6 +12,13 @@ interface CompletionCardProps {
   onCycleZoom?: () => void;
   onOpen?: () => void;
   onReset?: () => void;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 export function CompletionCard({
@@ -24,7 +33,20 @@ export function CompletionCard({
   onReset,
 }: CompletionCardProps) {
   const fileName = outputPath.split(/[\\/]/).pop() || '';
-  const outSize = ((outputDims.w * outputDims.h * 3) / 1048576).toFixed(1);
+  const [realSizeStr, setRealSizeStr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!outputPath) return;
+    invoke<number>('get_file_size_bytes', { path: outputPath })
+      .then((bytes) => {
+        if (typeof bytes === 'number' && bytes > 0) {
+          setRealSizeStr(formatBytes(bytes));
+        }
+      })
+      .catch(() => {});
+  }, [outputPath]);
+
+  const fallbackSize = `${((outputDims.w * outputDims.h * 3) / 1048576).toFixed(1)} MB`;
   const handleOpen = onOpen || onReset || (() => {});
 
   const segStyle = (active: boolean) => ({
@@ -66,7 +88,7 @@ export function CompletionCard({
         {fileName}
       </div>
       <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.05em] whitespace-nowrap">
-        {outSize} MB
+        {realSizeStr || fallbackSize}
       </span>
 
       <div className="w-px h-5 bg-[var(--border-default)]" />
