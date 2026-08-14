@@ -1,5 +1,14 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { getRecentHistory, HistoryItem } from '../lib/history';
+
+// How long a toast stays visible before it's automatically removed. Without
+// this, toasts never left the array: only the last 3 ever rendered
+// (ToastContainer.slice(-3)), so once 4+ built up, older ones became both
+// invisible and undismissable, and the dedupe check below (which reads the
+// whole array) would permanently block a future identical notification.
+const TOAST_LIFETIME_MS = 5000;
+
+type Toast = { id: string; type: 'success' | 'error' | 'info' | 'warning'; message: string };
 
 export function useStudioState() {
   const [category, setCategory] = useState<'photos' | 'anime' | 'video'>('photos');
@@ -22,28 +31,37 @@ export function useStudioState() {
 
   const [comparisonViewMode, setComparisonViewMode] = useState<'split' | 'side-by-side'>('split');
   const [zoomLevel, setZoomLevel] = useState<number>(1);
-  const [toasts, setToasts] = useState<
-    Array<{ id: string; type: 'success' | 'error' | 'info' | 'warning'; message: string }>
-  >([]);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  // React batches multiple setState(updater) calls made in the same
+  // synchronous tick and only actually *runs* the queued updater functions
+  // later, during the batched re-render -- so reading a variable that an
+  // updater assigns (for dedupe, or to decide whether to schedule the
+  // auto-dismiss timer) is not reliably up to date right after the
+  // setToasts call that queued it. This plain ref is mutated synchronously
+  // and is always accurate, independent of React's render/commit timing;
+  // `toasts` state is kept as a mirror of it purely to trigger re-renders.
+  const toastsStoreRef = useRef<Toast[]>([]);
+
+  const dismissToast = useCallback((id: string) => {
+    toastsStoreRef.current = toastsStoreRef.current.filter((t) => t.id !== id);
+    setToasts(toastsStoreRef.current);
+  }, []);
 
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>(() => getRecentHistory());
 
   const handleNotify = useCallback(
     (type: 'success' | 'error' | 'info' | 'warning', title: string, message: string) => {
       const formattedMessage = message ? `${title}: ${message}` : title;
-      setToasts((prev) => {
-        if (prev.some((t) => t.message === formattedMessage)) return prev;
-        return [
-          ...prev,
-          {
-            id: `${Date.now()}-${Math.random()}`,
-            type,
-            message: formattedMessage,
-          },
-        ];
-      });
+      if (toastsStoreRef.current.some((t) => t.message === formattedMessage)) return;
+
+      const id = `${Date.now()}-${Math.random()}`;
+      toastsStoreRef.current = [...toastsStoreRef.current, { id, type, message: formattedMessage }];
+      setToasts(toastsStoreRef.current);
+
+      setTimeout(() => dismissToast(id), TOAST_LIFETIME_MS);
     },
-    []
+    [dismissToast]
   );
 
   const handleGpuReady = useCallback(
@@ -90,7 +108,7 @@ export function useStudioState() {
     zoomLevel,
     setZoomLevel,
     toasts,
-    setToasts,
+    dismissToast,
     historyItems,
     setHistoryItems,
     handleNotify,
