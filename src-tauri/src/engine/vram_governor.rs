@@ -24,41 +24,41 @@ pub struct VramProfile {
 #[must_use]
 pub fn estimate_single_tile_memory_mb(tile_size: i32) -> u64 {
     let t = tile_size.clamp(32, 1024) as f64;
-    // Model base weight overhead: ~350 MB
-    // Buffer scaling: (t / 100)^2 * 115 MB
-    let buffer_mb = (t / 100.0).powi(2) * 115.0;
-    (350.0 + buffer_mb).round() as u64
+    // Model base weight overhead: ~400 MB
+    // Buffer scaling: (t / 100)^2 * 130 MB
+    let buffer_mb = (t / 100.0).powi(2) * 130.0;
+    (400.0 + buffer_mb).round() as u64
 }
 
 /// Calculate total projected VRAM usage given tile size and concurrent GPU worker threads.
 #[must_use]
 pub fn estimate_total_vram_mb(tile_size: i32, proc_threads: u32) -> u64 {
-    let base_model_mb = 350u64;
+    let base_model_mb = 400u64;
     let t = tile_size.clamp(32, 1024) as f64;
-    let single_buffer_mb = ((t / 100.0).powi(2) * 115.0).round() as u64;
-    base_model_mb + (single_buffer_mb * u64::from(proc_threads.max(1)))
+    let single_buffer_mb = ((t / 100.0).powi(2) * 130.0).round() as u64;
+    (base_model_mb + single_buffer_mb) * u64::from(proc_threads.max(1))
 }
 
 /// Determine the maximum safe tile size and thread configuration for a given GPU VRAM budget.
 ///
-/// Ensures total VRAM stays strictly below `0.85 * gpu_vram_mb` (and with min 400MB headroom for DWM/OS).
+/// Ensures total VRAM stays strictly below `0.75 * gpu_vram_mb` to leave generous headroom for OS/DWM.
 #[must_use]
 pub fn calculate_safe_execution_profile(
     gpu_vram_mb: u64,
     requested_tile: i32,
     _is_video: bool,
 ) -> ExecutionProfile {
-    // Effective usable VRAM ceiling (reserve 15% or min 400MB for OS/DWM display compositing)
+    // Effective usable VRAM ceiling (reserve 25% or min 500MB for OS/DWM display compositing)
     let safe_ceiling_mb = if gpu_vram_mb <= 1024 {
-        gpu_vram_mb.saturating_sub(150).max(300)
+        gpu_vram_mb.saturating_sub(200).max(300)
     } else if gpu_vram_mb <= 2048 {
-        gpu_vram_mb.saturating_sub(350).max(600)
+        gpu_vram_mb.saturating_sub(450).max(600)
     } else {
-        (gpu_vram_mb as f64 * 0.85).round() as u64
+        (gpu_vram_mb as f64 * 0.75).round() as u64
     };
 
     let target_tile = if requested_tile <= 0 {
-        // AUTO Mode: Pick optimal performance tile according to physical VRAM
+        // AUTO Mode: Pick optimal stable tile according to physical VRAM
         if gpu_vram_mb <= 1024 {
             64
         } else if gpu_vram_mb <= 2048 {
@@ -66,7 +66,7 @@ pub fn calculate_safe_execution_profile(
         } else if gpu_vram_mb <= 4096 {
             256
         } else if gpu_vram_mb <= 6144 {
-            384 // 384px with 2 threads gives ~4.5GB utilization on 6GB GPUs!
+            256 // 256px tile uses ~1.3GB VRAM, rock-solid stable on 6GB laptops!
         } else if gpu_vram_mb <= 8192 {
             384
         } else {
@@ -84,9 +84,9 @@ pub fn calculate_safe_execution_profile(
             continue;
         }
 
-        // Try dual GPU pipelines (proc = 2) first for maximum throughput
+        // Dual GPU pipelines (proc = 2) ONLY allowed for large desktop GPUs >= 10GB (10240MB)
         let dual_thread_vram = estimate_total_vram_mb(tile, 2);
-        if dual_thread_vram <= safe_ceiling_mb && gpu_vram_mb >= 4000 {
+        if dual_thread_vram <= safe_ceiling_mb && gpu_vram_mb >= 10240 {
             return ExecutionProfile {
                 tile_size: tile,
                 thread_arg: "1:2:2".to_string(),
@@ -95,7 +95,7 @@ pub fn calculate_safe_execution_profile(
             };
         }
 
-        // Try single GPU pipeline (proc = 1) for safe execution
+        // Single GPU pipeline (proc = 1) for all GPUs <= 8GB (including 6GB laptops)
         let single_thread_vram = estimate_total_vram_mb(tile, 1);
         if single_thread_vram <= safe_ceiling_mb || tile <= 64 {
             return ExecutionProfile {
@@ -180,12 +180,12 @@ mod tests {
 
     #[test]
     fn test_vram_governor_6gb_gpu_384_tile() {
-        // On a 6GB GPU, selecting 384 tile can run proc = 2 safely (~3.6 - 4.5 GB)
+        // On a 6GB GPU, 384 tile runs proc = 1 for guaranteed stability (~2.3 GB)
         let profile = calculate_safe_execution_profile(6144, 384, true);
         assert_eq!(profile.tile_size, 384);
-        assert_eq!(profile.proc_threads, 2);
-        assert_eq!(profile.thread_arg, "1:2:2");
-        assert!(profile.projected_vram_mb <= 5200);
+        assert_eq!(profile.proc_threads, 1);
+        assert_eq!(profile.thread_arg, "1:1:2");
+        assert!(profile.projected_vram_mb <= 3000);
     }
 
     #[test]
@@ -195,7 +195,7 @@ mod tests {
         assert_eq!(profile.tile_size, 512);
         assert_eq!(profile.proc_threads, 2);
         assert_eq!(profile.thread_arg, "1:2:2");
-        assert!(profile.projected_vram_mb <= 7000);
+        assert!(profile.projected_vram_mb <= 8000);
     }
 
     #[test]
@@ -218,7 +218,7 @@ mod tests {
     #[test]
     fn test_vram_governor_auto_mode() {
         let p6 = calculate_safe_execution_profile(6144, 0, true);
-        assert_eq!(p6.tile_size, 384);
+        assert_eq!(p6.tile_size, 256);
 
         let p2 = calculate_safe_execution_profile(2048, 0, false);
         assert_eq!(p2.tile_size, 128);
