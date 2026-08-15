@@ -121,7 +121,7 @@ export function StudioControlsSection(props: StudioControlsSectionProps) {
         />
       )}
 
-      {jobStatus === 'completed' && upscaledPath && (
+      {jobStatus === 'succeeded' && upscaledPath && (
         <CompletionCard
           outputPath={upscaledPath}
           outputDims={

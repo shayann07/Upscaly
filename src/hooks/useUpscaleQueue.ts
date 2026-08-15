@@ -1,9 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { BatchItem, JobProgress, UpscaleJobHandle } from '../lib/types';
-import { normalizeJobStatus, isValidStateTransition } from '../lib/jobState';
+import { normalizeJobStatus, isValidStateTransition, isTerminalState } from '../lib/jobState';
 
-const TERMINAL_STATUSES = new Set(['done', 'error', 'cancelled']);
 
 export interface UseUpscaleQueueOptions {
   selectedGpu: number;
@@ -49,7 +48,7 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
   // backend's job queue already serializes execution on its own.
   useEffect(() => {
     if (!isBatchRunning || batchItems.length === 0) return;
-    const allTerminal = batchItems.every((item) => TERMINAL_STATUSES.has(item.status));
+    const allTerminal = batchItems.every((item) => isTerminalState(item.status));
     if (allTerminal) {
       setIsBatchRunning(false);
       if (onNotify) {
@@ -70,7 +69,7 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
 
   const cancelBatch = useCallback(async () => {
     const targets = batchItemsRef.current.filter(
-      (item) => item.status === 'processing' || item.status === 'queued'
+      (item) => item.status === 'running' || item.status === 'queued'
     );
     await Promise.all(
       targets.map((item) =>
@@ -87,9 +86,8 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
   }, [onNotify]);
 
   const startBatch = useCallback(async () => {
-    const readyItems = batchItems.filter(
-      (i) => i.status === 'ready' || i.status === 'error' || (i.status as string) === 'idle'
-    );
+    // A previously failed item is retryable, so it counts as ready to run.
+    const readyItems = batchItems.filter((i) => i.status === 'ready' || i.status === 'failed');
 
     if (readyItems.length === 0) {
       if (onNotify) {
@@ -136,7 +134,7 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
       } catch (err) {
         console.error('Failed to start batch item:', err);
         setBatchItems((prev) =>
-          prev.map((b) => (b.id === item.id ? { ...b, status: 'error' } : b))
+          prev.map((b) => (b.id === item.id ? { ...b, status: 'failed' } : b))
         );
       }
     }
@@ -153,17 +151,18 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
       // already existed (jobState.ts) but was previously exercised only
       // by its own tests, never by the real event handler.
       const existing = batchItemsRef.current.find((item) => item.id === job_id);
-      if (
-        existing &&
-        !isValidStateTransition(normalizeJobStatus(existing.status), normalizeJobStatus(status))
-      ) {
+      // Normalize once here, at the event boundary. Everything below -- and
+      // everything reading item.status afterwards -- deals only in canonical
+      // JobState values.
+      const nextState = normalizeJobStatus(status);
+      if (existing && !isValidStateTransition(existing.status, nextState)) {
         return;
       }
 
-      const isDone = status === 'succeeded' || status === 'completed';
-      const isErr = status === 'failed';
-      const isCanc = status === 'cancelled';
-      const isProc = status === 'running' || status === 'processing';
+      const isDone = nextState === 'succeeded';
+      const isErr = nextState === 'failed';
+      const isCanc = nextState === 'cancelled';
+      const isProc = nextState === 'running';
 
       if (isProc) {
         setActiveJobId(job_id);
@@ -178,7 +177,7 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
         const finalOut = output_path || existing.outputPath;
         if (finalOut) {
           onItemCompleted(
-            { ...existing, progress: percentage, status: 'done', outputPath: finalOut },
+            { ...existing, progress: percentage, status: 'succeeded', outputPath: finalOut },
             finalOut
           );
         }
@@ -191,15 +190,7 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
           return {
             ...item,
             progress: percentage,
-            status: isDone
-              ? 'done'
-              : isErr
-                ? 'error'
-                : isCanc
-                  ? 'cancelled'
-                  : isProc
-                    ? 'processing'
-                    : 'queued',
+            status: nextState,
             outputPath: finalOut,
             error: isErr ? error : item.error,
           };

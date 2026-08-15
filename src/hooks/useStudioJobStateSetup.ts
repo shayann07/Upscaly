@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { StudioJobState, JobInputSnapshot } from '../lib/studioJobHandler';
 import { HistoryItem } from '../lib/history';
+import { JobState } from '../lib/jobState';
 
 interface StudioJobStateSetupOptions {
   activeJobId: string | null;
@@ -18,7 +19,7 @@ interface StudioJobStateSetupOptions {
   isMuted: boolean;
   setActiveJobId: (id: string | null) => void;
   setProgressVal: (val: number) => void;
-  setJobStatus: (status: string) => void;
+  setJobStatus: (status: JobState) => void;
   setJobPhase: (phase: string) => void;
   setEtaSeconds: (eta: number) => void;
   setFps: (fps: number) => void;

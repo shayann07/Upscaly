@@ -117,7 +117,7 @@ export function StudioCanvas(props: StudioCanvasProps) {
     setActiveNavTab,
   } = props;
 
-  const isProc = jobStatus === 'processing' || jobStatus === 'queued' || jobStatus === 'running';
+  const isProc = jobStatus === 'running' || jobStatus === 'queued';
   const currentFileName = filePath || (batchItems.length > 0 ? batchItems[0].fileName : null);
 
   // Stable references so BatchQueueRow's React.memo (batch progress ticks
@@ -147,7 +147,7 @@ export function StudioCanvas(props: StudioCanvasProps) {
 
   const handleClearCompletedBatchItems = useCallback(() => {
     setBatchItems((prev) =>
-      prev.filter((b) => b.status !== 'done' && (b.status as string) !== 'completed')
+      prev.filter((b) => b.status !== 'succeeded')
     );
   }, [setBatchItems]);
 
@@ -175,7 +175,7 @@ export function StudioCanvas(props: StudioCanvasProps) {
         outputDims={
           currentFileDims ? { w: currentFileDims.w * scale, h: currentFileDims.h * scale } : null
         }
-        isDone={jobStatus === 'completed'}
+        isDone={jobStatus === 'succeeded'}
         isProcessing={isProc}
         selectedGpu={selectedGpu}
         availableGpus={gpus.map((g) => ({

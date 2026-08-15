@@ -73,7 +73,7 @@ describe('useUpscaleQueue hook', () => {
     });
 
     expect(result!.current.batchItems[0].progress).toBe(50);
-    expect(result!.current.batchItems[0].status).toBe('processing');
+    expect(result!.current.batchItems[0].status).toBe('running');
 
     act(() => {
       result!.current.handleJobProgress({
@@ -84,7 +84,7 @@ describe('useUpscaleQueue hook', () => {
       });
     });
 
-    expect(result!.current.batchItems[0].status).toBe('done');
+    expect(result!.current.batchItems[0].status).toBe('succeeded');
     expect(result!.current.batchItems[0].outputPath).toBe('C:/out/in_upscaled_4x.png');
     expect(onItemCompleted).toHaveBeenCalled();
   });
@@ -140,7 +140,7 @@ describe('useUpscaleQueue hook', () => {
     });
 
     expect(result!.current.activeJobId).toBe('item-1');
-    expect(result!.current.batchItems[0].status).toBe('processing');
+    expect(result!.current.batchItems[0].status).toBe('running');
 
     await act(async () => {
       result!.current.handleJobProgress({
@@ -151,7 +151,7 @@ describe('useUpscaleQueue hook', () => {
       });
     });
 
-    expect(result!.current.batchItems[0].status).toBe('done');
+    expect(result!.current.batchItems[0].status).toBe('succeeded');
   });
 });
 

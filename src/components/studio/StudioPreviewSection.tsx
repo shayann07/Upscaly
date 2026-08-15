@@ -113,7 +113,7 @@ export function StudioPreviewSection({
               }}
             />
 
-            {jobStatus === 'completed' && upscaledPath ? (
+            {jobStatus === 'succeeded' && upscaledPath ? (
               <ComparisonSlider
                 inputPath={inputMedia}
                 outputPath={upscaledPath}

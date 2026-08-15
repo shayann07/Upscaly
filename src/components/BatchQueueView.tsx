@@ -33,16 +33,10 @@ interface BatchQueueViewProps {
 }
 
 function computeBatchStats(items: BatchItem[]) {
-  const doneCount = items.filter(
-    (f) => f.status === 'done' || (f.status as string) === 'completed'
-  ).length;
+  const doneCount = items.filter((f) => f.status === 'succeeded').length;
   const batchPct = items.length
     ? Math.round(
-        items.reduce(
-          (a, f) =>
-            a + (f.status === 'done' || (f.status as string) === 'completed' ? 100 : f.progress),
-          0
-        ) / items.length
+        items.reduce((a, f) => a + (f.status === 'succeeded' ? 100 : f.progress), 0) / items.length
       )
     : 0;
   return { doneCount, batchPct };
