@@ -118,6 +118,7 @@ const selectActiveNavTab = (s: StudioState) => s.activeNavTab;
 const selectComparisonViewMode = (s: StudioState) => s.comparisonViewMode;
 const selectZoomLevel = (s: StudioState) => s.zoomLevel;
 const selectConfirmCancelOpen = (s: StudioState) => s.confirmCancelOpen;
+const selectConfirmSlowRunOpen = (s: StudioState) => s.confirmSlowRunOpen;
 const selectToasts = (s: StudioState) => s.toasts;
 const selectHistoryItems = (s: StudioState) => s.historyItems;
 
@@ -126,5 +127,6 @@ export const useActiveNavTab = () => useSlice(selectActiveNavTab);
 export const useComparisonViewMode = () => useSlice(selectComparisonViewMode);
 export const useZoomLevel = () => useSlice(selectZoomLevel);
 export const useConfirmCancelOpen = () => useSlice(selectConfirmCancelOpen);
+export const useConfirmSlowRunOpen = () => useSlice(selectConfirmSlowRunOpen);
 export const useToasts = () => useSlice(selectToasts, arrayEqual);
 export const useHistoryItems = () => useSlice(selectHistoryItems, arrayEqual);

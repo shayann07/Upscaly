@@ -5,6 +5,7 @@ import { formatIpcError } from '../lib/appError';
 import { allowMediaPath } from '../lib/assetScope';
 import { HistoryEntry, ModelInfo, UpscaleJobHandle } from '../lib/types';
 import { isTerminalState } from '../lib/jobState';
+import { QueueItem } from './queueItem';
 import { getMediaDimensions, getMediaSrc } from '../lib/media';
 import { playDropSound } from '../lib/sound';
 import { StagedFile } from './queueItem';
@@ -151,6 +152,32 @@ function hasActiveJob(): boolean {
  * one path here rather than a single-file one and a batch one: a single
  * file is a queue of one, and the backend serialises execution either way.
  */
+/**
+ * Whether this run would enable TTA on a video.
+ *
+ * TTA runs every tile eight times. On a single image that is seconds; on a
+ * 294-frame clip it is the difference between roughly an hour and roughly
+ * eight, and there is nothing in a progress bar that distinguishes "slow
+ * because you asked for eight passes" from "slow because something is
+ * wrong". So it is confirmed before submitting rather than explained after.
+ */
+function needsSlowRunConfirmation(
+  snapshot: ReturnType<typeof state>,
+  pending: QueueItem[]
+): boolean {
+  return snapshot.preset === 'quality' && pending.some((item) => item.isVideo);
+}
+
+/** Proceeds with a run the user has now explicitly accepted the cost of. */
+export async function confirmSlowRunAndStart(): Promise<void> {
+  studioActions.setConfirmSlowRunOpen(false);
+  await submitPending();
+}
+
+export function dismissSlowRunConfirmation(): void {
+  studioActions.setConfirmSlowRunOpen(false);
+}
+
 export async function startUpscale(): Promise<void> {
   const snapshot = state();
 
@@ -177,6 +204,28 @@ export async function startUpscale(): Promise<void> {
     );
     return;
   }
+
+  if (needsSlowRunConfirmation(snapshot, pending)) {
+    studioActions.setConfirmSlowRunOpen(true);
+    return;
+  }
+
+  await submitPending();
+}
+
+/**
+ * Sends every runnable item to the backend.
+ *
+ * Split out of startUpscale so the TTA-on-video confirmation can sit between
+ * the two: the dialog's confirm button resumes here rather than re-entering
+ * startUpscale, which would ask again.
+ */
+async function submitPending(): Promise<void> {
+  const snapshot = state();
+  const pending = snapshot.items.filter(
+    (item) => item.status === 'ready' || item.status === 'failed'
+  );
+  if (pending.length === 0) return;
 
   studioActions.notify(
     'info',

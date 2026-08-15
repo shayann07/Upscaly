@@ -280,19 +280,30 @@ pub fn run_overlapping_upscale_pipeline(
         true,
     );
 
-    // TTA multiplies GPU work per frame by eight. On a clip of any length
-    // that is the difference between minutes and hours, so it is said out
-    // loud before the first frame rather than discovered from the ETA.
-    if ctx.job.preset.profile().tta {
-        ctx.emit_progress(
-            1.0,
-            "Quality preset: TTA is on, which runs each frame 8 times. This will take far longer than Balanced.",
-        );
-    }
+    // TTA multiplies GPU work per frame by eight -- on a clip of any length,
+    // the difference between minutes and hours.
+    //
+    // This used to be announced with a one-off emit_progress before the
+    // first frame. That was useless: the poll loop below rewrites the phase
+    // text every 300ms and the job store coalesces on a 150ms window, so the
+    // message was on screen for a fraction of a second, if it rendered at
+    // all. A user on Quality saw a job that was simply, inexplicably slow.
+    //
+    // It is part of the phase text for the whole run instead, so the reason
+    // is visible at any moment someone looks at the overlay.
+    let tta_label = if ctx.job.preset.profile().tta {
+        " · TTA 8x"
+    } else {
+        ""
+    };
 
     let mut total_discovered_frames = 0usize;
     let mut batch_index = 0usize;
     let mut history_window: VecDeque<(Instant, usize)> = VecDeque::with_capacity(32);
+    // Wall clock for the cumulative fallback below, which is the only
+    // estimator that works when a single frame takes longer than the
+    // sliding window is wide.
+    let upscale_started_at = Instant::now();
     #[allow(unused_assignments)]
     let mut total_completed = 0usize;
     // Authoritative frames-out count as of the last batch boundary. The poll
@@ -544,32 +555,20 @@ pub fn run_overlapping_upscale_pipeline(
             };
             let current_progress = 8.0 + (upscale_ratio * 84.0); // 8% to 92%
 
-            let (eta_sec, current_fps) =
-                if total_completed >= warmup_frames_required && history_window.len() >= 3 {
-                    let &(first_time, first_completed) =
-                        history_window.front().expect("history_window is non-empty");
-                    let time_delta = now.duration_since(first_time).as_secs_f64();
-                    let frame_delta = total_completed.saturating_sub(first_completed);
-
-                    if time_delta > 0.5 && frame_delta > 0 {
-                        let fps = frame_delta as f64 / time_delta;
-                        let remaining = total_expected.saturating_sub(total_completed);
-                        let eta = if fps > 0.01 {
-                            (remaining as f64 / fps).ceil() as u64
-                        } else {
-                            0
-                        };
-                        (Some(eta), Some((fps * 10.0).round() / 10.0))
-                    } else {
-                        (None, None)
-                    }
-                } else {
-                    (None, None)
-                };
+            let (eta_sec, current_fps) = estimate_eta(
+                &history_window,
+                now,
+                upscale_started_at,
+                total_completed,
+                total_expected,
+                warmup_frames_required,
+            );
 
             ctx.emit_progress_with_meta(
                 current_progress.min(92.0),
-                &format!("Upscaling Video Frames ({total_completed} / {total_expected})"),
+                &format!(
+                    "Upscaling Video Frames ({total_completed} / {total_expected}){tta_label}"
+                ),
                 eta_sec,
                 current_fps,
             );
@@ -679,6 +678,83 @@ pub fn run_overlapping_upscale_pipeline(
     }
 
     Ok(final_completed)
+}
+
+/// Frames-per-second and seconds-remaining for the upscale phase.
+///
+/// Two estimators, in preference order.
+///
+/// The sliding window is responsive and is used whenever it spans at least
+/// one completed frame. It cannot always: entries older than 20s are
+/// discarded, so when a single frame takes longer than that -- 4K sources,
+/// large scale factors, and TTA in particular, which runs every frame eight
+/// times -- the window never contains a frame transition, `frame_delta` is
+/// permanently zero, and the ETA read "Calculating..." for the entire length
+/// of the job. That is exactly the run where an estimate is worth most.
+///
+/// So the fallback is a cumulative average over the whole phase. Less
+/// responsive to a changing rate, but it only needs one completed frame and
+/// it cannot stall.
+// The cast below is guarded by an explicit `eta >= 0.0 && eta < u64::MAX`
+// range check, which clippy cannot see through.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+fn estimate_eta(
+    history_window: &VecDeque<(Instant, usize)>,
+    now: Instant,
+    started_at: Instant,
+    total_completed: usize,
+    total_expected: usize,
+    warmup_frames_required: usize,
+) -> (Option<u64>, Option<f64>) {
+    let remaining = total_expected.saturating_sub(total_completed);
+    let finish = |fps: f64| {
+        if fps <= 0.0 {
+            return (None, None);
+        }
+        let eta = (remaining as f64 / fps).ceil();
+        // Guard the cast: a pathologically slow first frame can project an
+        // ETA past u64, and `as` would wrap it into a small, confident-
+        // looking lie rather than a large number.
+        let eta = if eta.is_finite() && eta >= 0.0 && eta < u64::MAX as f64 {
+            eta as u64
+        } else {
+            return (None, None);
+        };
+        // Precision scaled to magnitude. Rounding to one decimal is fine at
+        // 12 fps and destroys the value entirely at 0.01 -- which is the
+        // rate a TTA video run actually sits at, so the readout showed
+        // "0.0 FPS" for a job that was progressing perfectly well.
+        let rounded = if fps >= 1.0 {
+            (fps * 10.0).round() / 10.0
+        } else {
+            (fps * 1000.0).round() / 1000.0
+        };
+        (Some(eta), Some(rounded))
+    };
+
+    if total_completed >= warmup_frames_required && history_window.len() >= 3 {
+        if let Some(&(first_time, first_completed)) = history_window.front() {
+            let time_delta = now.duration_since(first_time).as_secs_f64();
+            let frame_delta = total_completed.saturating_sub(first_completed);
+            if time_delta > 0.5 && frame_delta > 0 {
+                return finish(frame_delta as f64 / time_delta);
+            }
+        }
+    }
+
+    // One finished frame is enough to say something honest.
+    if total_completed >= 1 {
+        let elapsed = now.duration_since(started_at).as_secs_f64();
+        if elapsed > 0.5 {
+            return finish(total_completed as f64 / elapsed);
+        }
+    }
+
+    (None, None)
 }
 
 /// Bytes a PNG frame of photographic content tends to occupy per pixel.
@@ -1292,6 +1368,76 @@ duration=9.833333
         let meta = parse_ffprobe_metadata("\n[STREAM]\nnot a pair\n=\nwidth=640\nheight=480\n");
         assert_eq!(meta.width, Some(640));
         assert_eq!(meta.height, Some(480));
+    }
+
+    #[test]
+    // Synthetic timestamps in the past; the clock cannot run backwards
+    // mid-test, so the subtractions cannot underflow here.
+    // Durations here are deliberately written in seconds: they are
+    // compared against per-second rates in the assertions, and a
+    // minutes constructor would obscure that arithmetic.
+    #[allow(clippy::unchecked_time_subtraction, clippy::duration_suboptimal_units)]
+    fn test_eta_still_resolves_when_a_frame_takes_longer_than_the_window() {
+        // The bug this pins: the sliding window discards entries older than
+        // 20s, so when one frame takes longer than that -- TTA runs every
+        // tile eight times, which on a 1080p clip at 4x is well over a
+        // minute a frame -- no window ever spans a frame transition,
+        // frame_delta stays 0, and the ETA read "Calculating..." for the
+        // entire job. Exactly the run where an estimate matters most.
+        let started = Instant::now() - Duration::from_secs(300);
+        let now = Instant::now();
+        // A window full of samples that all saw the same frame count.
+        let window: VecDeque<(Instant, usize)> =
+            (0..8).map(|i| (now - Duration::from_secs(i), 3)).collect();
+
+        let (eta, fps) = estimate_eta(&window, now, started, 3, 294, 5);
+
+        // 3 frames in 300s -> 0.01 fps, 291 remaining -> ~29100s.
+        assert!(
+            eta.is_some(),
+            "ETA must resolve from the cumulative average"
+        );
+        assert!(fps.is_some_and(|f| f > 0.0), "fps must be reported too");
+        let eta = eta.expect("eta");
+        assert!((28000..31000).contains(&eta), "implausible eta: {eta}");
+    }
+
+    #[test]
+    // Synthetic timestamps in the past; the clock cannot run backwards
+    // mid-test, so the subtractions cannot underflow here.
+    // Durations here are deliberately written in seconds: they are
+    // compared against per-second rates in the assertions, and a
+    // minutes constructor would obscure that arithmetic.
+    #[allow(clippy::unchecked_time_subtraction, clippy::duration_suboptimal_units)]
+    fn test_eta_prefers_the_sliding_window_when_it_spans_a_frame() {
+        // The responsive estimator still wins when it has something to say,
+        // so a run that speeds up or slows down is tracked rather than
+        // averaged flat over its whole history.
+        let started = Instant::now() - Duration::from_secs(1_000);
+        let now = Instant::now();
+        let window: VecDeque<(Instant, usize)> = VecDeque::from(vec![
+            (now - Duration::from_secs(10), 100),
+            (now, 110),
+            (now, 110),
+        ]);
+
+        let (eta, fps) = estimate_eta(&window, now, started, 110, 210, 5);
+
+        // Window: 10 frames in 10s = 1 fps, 100 remaining -> ~100s.
+        // Cumulative would be 110/1000 = 0.11 fps -> ~909s, so the two are
+        // easy to tell apart.
+        assert_eq!(fps, Some(1.0));
+        assert!(eta.is_some_and(|e| (95..=105).contains(&e)), "{eta:?}");
+    }
+
+    #[test]
+    fn test_eta_reports_nothing_before_the_first_frame_lands() {
+        // No completed frame means no basis for a number, and inventing one
+        // is worse than showing none.
+        let now = Instant::now();
+        let (eta, fps) = estimate_eta(&VecDeque::new(), now, now, 0, 294, 5);
+        assert_eq!(eta, None);
+        assert_eq!(fps, None);
     }
 
     #[test]

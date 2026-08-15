@@ -48,7 +48,7 @@ const handleSetSide = () => studioActions.setComparisonViewMode('side-by-side');
  * probed -- in which case the row shows no rate rather than one derived
  * from an assumed 1920x1080.
  */
-function formatRate(
+export function formatRate(
   fps: number | null,
   w: number | null,
   h: number | null,
@@ -56,7 +56,14 @@ function formatRate(
   progress: number,
   startedAtMs: number | null
 ): string {
-  if (fps != null && fps > 0) return `${fps.toFixed(1)} FPS`;
+  if (fps != null && fps > 0) {
+    // Below one frame per second, "0.0 FPS" is what a 1-decimal format
+    // produces, and it reads as a stalled job rather than a slow one. A TTA
+    // video run genuinely sits around 0.01 fps; seconds-per-frame is the
+    // unit that carries information there.
+    if (fps < 1) return `${(1 / fps).toFixed(0)} s/frame`;
+    return `${fps.toFixed(1)} FPS`;
+  }
   if (w == null || h == null || scale == null || startedAtMs == null || progress < 5) return '';
 
   const elapsedSec = (Date.now() - startedAtMs) / 1000;

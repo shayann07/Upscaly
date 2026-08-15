@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatTile } from '../studio/StudioControlsSection';
+import { formatRate, formatTile } from '../studio/StudioControlsSection';
 
 describe('formatTile', () => {
   it('reports the clamped tile, not the one that was asked for', () => {
@@ -26,5 +26,24 @@ describe('formatTile', () => {
     // the only honest option, and it must not claim a clamp it cannot know.
     expect(formatTile(512, null)).toBe('512px');
     expect(formatTile(0, null)).toBe('AUTO');
+  });
+});
+
+describe('formatRate', () => {
+  it('reports seconds-per-frame below 1 FPS instead of rounding to zero', () => {
+    // A TTA video run sits near 0.01 fps. One-decimal FPS formatting turns
+    // that into "0.0 FPS", which reads as a stalled job rather than a slow
+    // one -- the exact confusion this replaces.
+    expect(formatRate(0.0125, null, null, null, 50, null)).toBe('80 s/frame');
+    expect(formatRate(0.5, null, null, null, 50, null)).toBe('2 s/frame');
+  });
+
+  it('keeps FPS for rates where FPS is the natural unit', () => {
+    expect(formatRate(12.34, null, null, null, 50, null)).toBe('12.3 FPS');
+    expect(formatRate(1, null, null, null, 50, null)).toBe('1.0 FPS');
+  });
+
+  it('says nothing when there is no measured rate', () => {
+    expect(formatRate(null, null, null, null, 0, null)).toBe('');
   });
 });
