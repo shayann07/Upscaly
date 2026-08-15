@@ -8,11 +8,6 @@ pub async fn list_gpus(app_handle: tauri::AppHandle) -> Result<Vec<GpuDevice>, S
 }
 
 #[tauri::command]
-pub async fn get_gpus(app_handle: tauri::AppHandle) -> Result<Vec<GpuDevice>, String> {
-    get_gpu_list(&app_handle)
-}
-
-#[tauri::command]
 pub async fn get_vram_profile(
     app_handle: tauri::AppHandle,
     gpu_id: i32,

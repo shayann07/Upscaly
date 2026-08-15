@@ -21,7 +21,9 @@ pub fn parse_ncnn_param_cached(path: &Path) -> Result<ModelMetadata, String> {
         .unwrap_or(SystemTime::UNIX_EPOCH);
 
     {
-        let cache = get_param_cache().lock().unwrap_or_else(|p| p.into_inner());
+        let cache = get_param_cache()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some((cached_mtime, meta)) = cache.get(path) {
             if *cached_mtime == mtime {
                 return Ok(meta.clone());
@@ -31,7 +33,9 @@ pub fn parse_ncnn_param_cached(path: &Path) -> Result<ModelMetadata, String> {
 
     let meta = parse_ncnn_param(path)?;
     {
-        let mut cache = get_param_cache().lock().unwrap_or_else(|p| p.into_inner());
+        let mut cache = get_param_cache()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         cache.insert(path.to_path_buf(), (mtime, meta.clone()));
     }
     Ok(meta)
@@ -91,7 +95,8 @@ impl ModelStore {
                 &entry.id,
                 requested_scale_i32,
                 Some(models_dir),
-            ) as u32;
+            )
+            .cast_unsigned();
 
             catalog.push(EngineModelItem {
                 id: entry.id,
@@ -120,7 +125,7 @@ impl ModelStore {
                     if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                         if !seen_ids.contains(stem) {
                             seen_ids.insert(stem.to_string());
-                            let bin_path = models_dir.join(format!("{}.bin", stem));
+                            let bin_path = models_dir.join(format!("{stem}.bin"));
 
                             let metadata_res = parse_ncnn_param_cached(&path);
                             let is_corrupt = metadata_res.is_err() || !bin_path.exists();
@@ -128,7 +133,8 @@ impl ModelStore {
                                 stem,
                                 4,
                                 Some(models_dir),
-                            ) as u32;
+                            )
+                            .cast_unsigned();
 
                             let cat = if stem.contains("anime") {
                                 "anime".to_string()
@@ -184,7 +190,7 @@ impl ModelStore {
         }
 
         let bin_meta = fs::metadata(bin_path);
-        if bin_meta.map(|m| m.len() == 0).unwrap_or(true) {
+        if bin_meta.map_or(true, |m| m.len() == 0) {
             return ModelStatus::Corrupt;
         }
 

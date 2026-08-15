@@ -36,7 +36,7 @@ impl Serialize for AppError {
             AppError::SidecarNotFound { path } => {
                 state.serialize_field("code", "SIDECAR_NOT_FOUND")?;
                 state.serialize_field("message", &self.to_string())?;
-                state.serialize_field("suggestion", &format!("Verify binary path: {}", path))?;
+                state.serialize_field("suggestion", &format!("Verify binary path: {path}"))?;
             }
             AppError::GpuError { message } => {
                 state.serialize_field("code", "GPU_ERROR")?;
@@ -51,10 +51,7 @@ impl Serialize for AppError {
                 state.serialize_field("message", &self.to_string())?;
                 state.serialize_field(
                     "suggestion",
-                    &format!(
-                        "Free up at least {}MB of space on target drive",
-                        required_mb
-                    ),
+                    &format!("Free up at least {required_mb}MB of space on target drive"),
                 )?;
             }
             AppError::InvalidFileFormat { reason } => {

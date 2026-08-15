@@ -3,8 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { playErrorSound } from '../lib/sound';
 import { ModelInfo, BatchItem, HistoryEntry } from '../lib/types';
-import { SUPPORTED_MODELS } from '../lib/types';
-import { joinPath } from '../lib/outputPaths';
+import { resolveUpscaleOutputPath } from '../lib/outputPaths';
 import { allowMediaPath } from '../lib/assetScope';
 import { JobInputSnapshot } from '../lib/studioJobHandler';
 
@@ -200,18 +199,13 @@ export function useStudioActions({
       setFps?.(undefined);
       setRateStr?.('');
 
-      const ext = isVideo ? '.mp4' : '.png';
-      const baseName = fileName.replace(/\.[^/.]+$/, '');
-      const outputFilename = `${baseName}_upscaled_${scale}x${ext}`;
-
-      let outPath = '';
-      if (customOutputPath) {
-        outPath = joinPath(customOutputPath, outputFilename);
-      } else {
-        const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
-        const parentDir = lastSlash >= 0 ? filePath.substring(0, lastSlash) : '';
-        outPath = joinPath(parentDir, outputFilename);
-      }
+      const outPath = resolveUpscaleOutputPath(
+        filePath,
+        fileName,
+        isVideo,
+        scale,
+        customOutputPath
+      );
       pendingOutputPath.current = outPath;
 
       const jobId = await invoke<string>('run_upscale', {
@@ -399,7 +393,12 @@ export function useStudioActions({
     if (item.scale) {
       setScale(item.scale);
     }
-    const matchingModel = SUPPORTED_MODELS.find(
+    // Match against the live (backend-sourced) catalog, not the static
+    // fallback list -- history entries record display names, and matching
+    // against a catalog that can disagree with the one actually in use
+    // (e.g. a user-imported custom model) silently failed to restore the
+    // model selection.
+    const matchingModel = supportedModels.find(
       (m) => item.modelName && m.name.toLowerCase() === item.modelName.toLowerCase()
     );
     if (matchingModel) {

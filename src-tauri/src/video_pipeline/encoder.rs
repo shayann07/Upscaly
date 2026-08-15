@@ -49,10 +49,9 @@ impl EncoderStrategy {
     /// Candidate order for this run: last time's winner (if any) moved to
     /// the front, followed by the rest of `all()` in their usual order.
     fn candidates() -> Vec<EncoderStrategy> {
-        let cached = LAST_SUCCESSFUL_ENCODER
+        let cached = *LAST_SUCCESSFUL_ENCODER
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         let mut ordered = Vec::with_capacity(Self::all().len());
         if let Some(first) = cached {

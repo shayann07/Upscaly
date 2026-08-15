@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { BatchItem, JobProgress } from '../lib/types';
-import { joinPath } from '../lib/outputPaths';
+import { resolveUpscaleOutputPath } from '../lib/outputPaths';
 import { normalizeJobStatus, isValidStateTransition } from '../lib/jobState';
 
 const TERMINAL_STATUSES = new Set(['done', 'error', 'cancelled']);
@@ -21,19 +21,13 @@ export interface UseUpscaleQueueOptions {
 }
 
 function resolveOutputPath(item: BatchItem, scale: number, customOutputPath: string): string {
-  const isVid = Boolean(item.isVideo);
-  const ext = isVid ? '.mp4' : '.png';
-  const fileName = item.fileName || 'media';
-  const baseName = fileName.replace(/\.[^/.]+$/, '');
-  const outputFilename = `${baseName}_upscaled_${scale}x${ext}`;
-
-  if (customOutputPath) {
-    return joinPath(customOutputPath, outputFilename);
-  }
-  const filePath = item.filePath || '';
-  const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
-  const parentDir = lastSlash >= 0 ? filePath.substring(0, lastSlash) : '';
-  return joinPath(parentDir, outputFilename);
+  return resolveUpscaleOutputPath(
+    item.filePath || '',
+    item.fileName || 'media',
+    Boolean(item.isVideo),
+    scale,
+    customOutputPath
+  );
 }
 
 export function useUpscaleQueue(options: UseUpscaleQueueOptions) {

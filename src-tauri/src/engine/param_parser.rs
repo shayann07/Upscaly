@@ -17,9 +17,8 @@ pub fn parse_ncnn_param(path: &Path) -> Result<ModelMetadata, String> {
     let reader = BufReader::new(file);
     let mut lines = reader.lines();
 
-    let header_line = match lines.next() {
-        Some(Ok(line)) => line,
-        _ => return Err("Param file is empty or corrupted".to_string()),
+    let Some(Ok(header_line)) = lines.next() else {
+        return Err("Param file is empty or corrupted".to_string());
     };
 
     let (layer_count, blob_count) = read_header(&header_line)?;
@@ -29,10 +28,7 @@ pub fn parse_ncnn_param(path: &Path) -> Result<ModelMetadata, String> {
     let mut parsed_layer_lines = 0;
 
     for line_res in lines {
-        let line = match line_res {
-            Ok(l) => l,
-            Err(_) => break,
-        };
+        let Ok(line) = line_res else { break };
 
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -116,6 +112,9 @@ fn parse_layer_line(line: &str, input_channels: &mut u32, calculated_scale: &mut
             for (k, v) in &params {
                 if (1..=2).contains(k) {
                     if let Ok(scale_val) = v.parse::<f32>() {
+                        // Param-file scale factors are small positive integers (2-8);
+                        // truncation/sign-loss from the f32 source can't occur in range.
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                         let scale_int = scale_val as u32;
                         if (2..=8).contains(&scale_int) && scale_int > layer_scale {
                             layer_scale = scale_int;

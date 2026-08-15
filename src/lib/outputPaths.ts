@@ -3,59 +3,21 @@ export function joinPath(dir: string, filename: string): string {
   return `${cleanDir}\\${filename}`;
 }
 
-export function buildDefaultOutputPath(
-  inputPath: string,
-  scale: number = 4,
-  customOutputDir?: string
+export function resolveUpscaleOutputPath(
+  filePath: string,
+  fileName: string,
+  isVideo: boolean,
+  scale: number,
+  customOutputPath: string
 ): string {
-  if (!inputPath) return '';
+  const ext = isVideo ? '.mp4' : '.png';
+  const baseName = (fileName || 'media').replace(/\.[^/.]+$/, '');
+  const outputFilename = `${baseName}_upscaled_${scale}x${ext}`;
 
-  const cleanPath = inputPath.replace(/\\/g, '/');
-  const lastSlashIndex = cleanPath.lastIndexOf('/');
-  const dir = lastSlashIndex >= 0 ? cleanPath.substring(0, lastSlashIndex) : '';
-  const fileWithExt = lastSlashIndex >= 0 ? cleanPath.substring(lastSlashIndex + 1) : cleanPath;
-
-  const dotIndex = fileWithExt.lastIndexOf('.');
-  let fileName = fileWithExt;
-  let ext = '';
-
-  if (dotIndex > 0) {
-    fileName = fileWithExt.substring(0, dotIndex);
-    ext = fileWithExt.substring(dotIndex);
+  if (customOutputPath) {
+    return joinPath(customOutputPath, outputFilename);
   }
-
-  const outputDirName = customOutputDir ? customOutputDir.replace(/\\/g, '/') : dir;
-  const newFileName = `${fileName}_${scale}x${ext}`;
-
-  if (!outputDirName) {
-    return newFileName;
-  }
-
-  return `${outputDirName}/${newFileName}`;
-}
-
-export class JobOutputPathRegistry {
-  private pathMap: Map<string, string> = new Map();
-
-  setOutputPath(jobId: string, path: string): void {
-    if (jobId && path) {
-      this.pathMap.set(jobId, path);
-    }
-  }
-
-  getOutputPath(jobId: string): string | undefined {
-    return this.pathMap.get(jobId);
-  }
-
-  hasOutputPath(jobId: string): boolean {
-    return this.pathMap.has(jobId);
-  }
-
-  clearJob(jobId: string): void {
-    this.pathMap.delete(jobId);
-  }
-
-  clearAll(): void {
-    this.pathMap.clear();
-  }
+  const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+  const parentDir = lastSlash >= 0 ? filePath.substring(0, lastSlash) : '';
+  return joinPath(parentDir, outputFilename);
 }

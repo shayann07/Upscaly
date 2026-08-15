@@ -1,12 +1,13 @@
 import { useCallback } from 'react';
 import { useUpscaleQueue } from './useUpscaleQueue';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
-import { SUPPORTED_MODELS, BatchItem } from '../lib/types';
+import { BatchItem, ModelInfo } from '../lib/types';
 import { addHistoryItem, HistoryItem } from '../lib/history';
 
 interface BatchSetupOptions {
   selectedGpu: number;
   selectedModel: string;
+  supportedModels: ModelInfo[];
   scale: number;
   tileSize: number;
   customOutputPath: string;
@@ -29,6 +30,7 @@ interface BatchSetupOptions {
 export function useBatchSetup({
   selectedGpu,
   selectedModel,
+  supportedModels,
   scale,
   tileSize,
   customOutputPath,
@@ -44,7 +46,7 @@ export function useBatchSetup({
 }: BatchSetupOptions) {
   const onItemCompleted = useCallback(
     (item: BatchItem, outputPath: string) => {
-      const meta = SUPPORTED_MODELS.find((m) => m.id === selectedModel) || SUPPORTED_MODELS[0];
+      const meta = supportedModels.find((m) => m.id === selectedModel) || supportedModels[0];
       const newHist = addHistoryItem({
         fileName: item.fileName || '',
         originalPath: item.filePath || '',
@@ -55,7 +57,7 @@ export function useBatchSetup({
       });
       setHistoryItems(newHist);
     },
-    [selectedModel, scale, setHistoryItems]
+    [selectedModel, supportedModels, scale, setHistoryItems]
   );
 
   const {

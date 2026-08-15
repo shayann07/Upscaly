@@ -12,7 +12,7 @@ fn get_reserved_paths() -> &'static Mutex<HashSet<String>> {
 fn safe_lock_reserved() -> std::sync::MutexGuard<'static, HashSet<String>> {
     get_reserved_paths()
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Reserves a unique output path prior to job enqueueing, avoiding filename collisions.
@@ -35,7 +35,7 @@ pub fn reserve_output_path(raw_path: &str, scale: u32) -> String {
     let target_scale = if scale == 0 { 4 } else { scale };
 
     while Path::new(&candidate).exists() || reserved.contains(&candidate) {
-        let new_name = format!("{}_{}x ({}).{}", stem, target_scale, counter, ext);
+        let new_name = format!("{stem}_{target_scale}x ({counter}).{ext}");
         candidate = parent.join(new_name).to_string_lossy().to_string();
         counter += 1;
     }

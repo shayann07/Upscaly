@@ -41,18 +41,15 @@ pub fn load_settings(app: &AppHandle) -> AppSettings {
     let path = get_settings_path(app);
     if path.exists() {
         if let Ok(content) = fs::read_to_string(&path) {
-            match serde_json::from_str::<AppSettings>(&content) {
-                Ok(settings) => return settings,
-                Err(_) => {
-                    // Preserve the unreadable file instead of silently
-                    // discarding the user's saved preferences (GPU choice,
-                    // output directory, mute state) -- the next save would
-                    // otherwise overwrite it with fresh defaults with no
-                    // trace of what was there before.
-                    let backup_path = path.with_extension("json.corrupt");
-                    let _ = fs::rename(&path, &backup_path);
-                }
+            if let Ok(settings) = serde_json::from_str::<AppSettings>(&content) {
+                return settings;
             }
+            // Preserve the unreadable file instead of silently discarding
+            // the user's saved preferences (GPU choice, output directory,
+            // mute state) -- the next save would otherwise overwrite it
+            // with fresh defaults with no trace of what was there before.
+            let backup_path = path.with_extension("json.corrupt");
+            let _ = fs::rename(&path, &backup_path);
         }
     }
     AppSettings::default()
@@ -81,19 +78,21 @@ mod tests {
         assert_eq!(defaults.default_gpu_id, 0);
         assert_eq!(defaults.default_scale, 4);
         assert_eq!(defaults.default_tile_size, 0);
-        assert_eq!(defaults.sound_muted, false);
+        assert!(!defaults.sound_muted);
     }
 
     #[test]
     fn test_app_settings_json_roundtrip() {
-        let mut settings = AppSettings::default();
-        settings.sound_muted = true;
-        settings.default_scale = 2;
+        let settings = AppSettings {
+            sound_muted: true,
+            default_scale: 2,
+            ..AppSettings::default()
+        };
 
         let json = serde_json::to_string(&settings).unwrap();
         let parsed: AppSettings = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(parsed.sound_muted, true);
+        assert!(parsed.sound_muted);
         assert_eq!(parsed.default_scale, 2);
     }
 }

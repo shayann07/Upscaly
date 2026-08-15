@@ -7,13 +7,13 @@ use std::sync::{Arc, Mutex};
 /// callers never mistake "killed by signal" for "still running". No-op
 /// placeholder on non-Unix targets, where status.code() is always Some.
 #[cfg(unix)]
-fn unix_signal_code(status: &ExitStatus) -> i32 {
+fn unix_signal_code(status: ExitStatus) -> i32 {
     use std::os::unix::process::ExitStatusExt;
     status.signal().map_or(-1, |sig| -sig)
 }
 
 #[cfg(not(unix))]
-fn unix_signal_code(_status: &ExitStatus) -> i32 {
+fn unix_signal_code(_status: ExitStatus) -> i32 {
     -1
 }
 
@@ -48,8 +48,14 @@ pub trait ProcessRunner: Send + Sync {
     fn spawn(&self, program: &Path, args: &[String]) -> Result<Box<dyn ProcessHandle>, AppError>;
 }
 
-/// Standard OS process runner wrapping std::process::Command and Child
+/// Standard OS process runner wrapping `std::process::Command` and `Child`
 pub struct StdProcessRunner;
+
+impl Default for StdProcessRunner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl StdProcessRunner {
     pub fn new() -> Self {
@@ -72,17 +78,17 @@ impl ProcessHandle for StdProcessHandle {
             // Ok(None) reads as "still running" to every caller, so a
             // cancelled/crashed process on Unix spun the polling loop
             // forever instead of ever reaching a terminal state.
-            Ok(Some(status)) => Ok(Some(status.code().unwrap_or_else(|| unix_signal_code(&status)))),
+            Ok(Some(status)) => Ok(Some(status.code().unwrap_or_else(|| unix_signal_code(status)))),
             Ok(None) => Ok(None),
             Err(e) => Err(AppError::ExecutionError {
-                message: format!("Failed to poll process status: {}", e),
+                message: format!("Failed to poll process status: {e}"),
             }),
         }
     }
 
     fn kill(&mut self) -> Result<(), AppError> {
         self.child.kill().map_err(|e| AppError::ExecutionError {
-            message: format!("Failed to kill process: {}", e),
+            message: format!("Failed to kill process: {e}"),
         })
     }
 
@@ -113,7 +119,7 @@ impl ProcessRunner for StdProcessRunner {
         suppress_console_window(&mut cmd);
 
         let mut child = cmd.spawn().map_err(|e| AppError::ExecutionError {
-            message: format!("Failed to spawn process '{}': {}", program.display(), e),
+            message: format!("Failed to spawn process '{}': {e}", program.display()),
         })?;
 
         // Guarantee child process dies when the parent application exits

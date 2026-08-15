@@ -24,7 +24,6 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"
 sha2 = "0.10"
-ed25519-dalek = "2"
 hex = "0.4"
 thiserror = "1.0"
 tracing = "0.1"
@@ -37,7 +36,6 @@ windows-sys = { version = "0.52", features = [
     "Win32_System_LibraryLoader",
     "Win32_Security",
 ] }
-image = "0.25"
 
 
 [lints.rust]

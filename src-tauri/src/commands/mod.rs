@@ -1,4 +1,3 @@
-pub mod diagnostics;
 pub mod files;
 pub mod gpu;
 pub mod models;
