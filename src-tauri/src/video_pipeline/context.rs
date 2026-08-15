@@ -26,7 +26,6 @@ pub struct VideoJobContext<'a> {
     pub active_handles: Arc<Mutex<Vec<Box<dyn ProcessHandle>>>>,
     pub job_temp_dir: PathBuf,
     pub staging_dir: PathBuf,
-    pub frames_in_dir: PathBuf,
     pub frames_out_dir: PathBuf,
 }
 
@@ -57,14 +56,11 @@ impl<'a> VideoJobContext<'a> {
         let guard = TempFolderGuard(job_temp_dir.clone());
 
         let staging_dir = job_temp_dir.join("staging");
-        let frames_in_dir = job_temp_dir.join("frames_in");
         let frames_out_dir = job_temp_dir.join("frames_out");
 
         let _ = fs::remove_dir_all(&job_temp_dir);
         fs::create_dir_all(&staging_dir)
             .map_err(|e| format!("Failed to create staging frames folder: {e}"))?;
-        fs::create_dir_all(&frames_in_dir)
-            .map_err(|e| format!("Failed to create input frames folder: {e}"))?;
         fs::create_dir_all(&frames_out_dir)
             .map_err(|e| format!("Failed to create output frames folder: {e}"))?;
 
@@ -87,7 +83,6 @@ impl<'a> VideoJobContext<'a> {
             active_handles,
             job_temp_dir,
             staging_dir,
-            frames_in_dir,
             frames_out_dir,
         };
 
