@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { BatchItem, JobProgress } from '../lib/types';
-import { resolveUpscaleOutputPath } from '../lib/outputPaths';
+import { BatchItem, JobProgress, UpscaleJobHandle } from '../lib/types';
 import { normalizeJobStatus, isValidStateTransition } from '../lib/jobState';
 
 const TERMINAL_STATUSES = new Set(['done', 'error', 'cancelled']);
@@ -18,16 +17,6 @@ export interface UseUpscaleQueueOptions {
     message: string
   ) => void;
   onItemCompleted?: (item: BatchItem, outputPath: string) => void;
-}
-
-function resolveOutputPath(item: BatchItem, scale: number, customOutputPath: string): string {
-  return resolveUpscaleOutputPath(
-    item.filePath || '',
-    item.fileName || 'media',
-    Boolean(item.isVideo),
-    scale,
-    customOutputPath
-  );
 }
 
 export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
@@ -121,20 +110,25 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
           prev.map((b) => (b.id === item.id ? { ...b, status: 'queued', progress: 0 } : b))
         );
 
-        const outPath = resolveOutputPath(item, scale, customOutputPath);
-
-        const jobId = await invoke<string>('run_upscale', {
-          request: {
-            job_id: item.id,
-            input_path: item.filePath,
-            output_path: outPath,
-            model_id: selectedModel,
-            gpu_id: selectedGpu,
-            scale,
-            tile_size: tileSize,
-            is_video: Boolean(item.isVideo),
-          },
-        });
+        // Backend names and reserves the output, then reports it back. This
+        // matters more for a batch than for a single job: several queued
+        // items can resolve to the same name, and only the backend's
+        // reservation can hand each a distinct one.
+        const { job_id: jobId, output_path: outPath } = await invoke<UpscaleJobHandle>(
+          'run_upscale',
+          {
+            request: {
+              job_id: item.id,
+              input_path: item.filePath,
+              output_dir: customOutputPath || null,
+              model_id: selectedModel,
+              gpu_id: selectedGpu,
+              scale,
+              tile_size: tileSize,
+              is_video: Boolean(item.isVideo),
+            },
+          }
+        );
 
         setBatchItems((prev) =>
           prev.map((b) => (b.id === item.id ? { ...b, id: jobId, outputPath: outPath } : b))

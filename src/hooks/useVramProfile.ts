@@ -51,9 +51,14 @@ export function useVramProfile(gpuId: number = 0, tileSize: number = 0) {
   return {
     profile,
     isLoading,
-    totalVramGb: profile ? profile.total_vram_mb / 1024 : 6.0,
-    usedVramGb: profile ? profile.used_vram_mb / 1024 : 3.5,
-    autoTileSize: profile ? profile.auto_tile_size : 256,
+    // Null rather than invented figures while the backend has not answered.
+    // These previously defaulted to 6.0/3.5 GB, which rendered as a precise
+    // VRAM readout that was simply made up -- indistinguishable from a real
+    // measurement, and wrong on every machine that wasn't a 6GB card.
+    // Callers render a loading state for null instead.
+    totalVramGb: profile ? profile.total_vram_mb / 1024 : null,
+    usedVramGb: profile ? profile.used_vram_mb / 1024 : null,
+    autoTileSize: profile ? profile.auto_tile_size : null,
     isOverflowing: profile ? profile.is_overflowing : false,
     statusMessage: profile ? profile.status_message : 'Calculating VRAM profile...',
   };

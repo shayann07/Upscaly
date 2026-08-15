@@ -6,9 +6,11 @@ interface DeviceSelectorSectionProps {
   onSelectGpu: (id: number) => void;
   accentColor: string;
   isOverflowing: boolean;
-  usedVramGb: number;
-  totalVramGb: number;
-  vramPct: number;
+  // null while the backend has not reported a profile yet -- rendered as an
+  // explicit unknown rather than an invented figure.
+  usedVramGb: number | null;
+  totalVramGb: number | null;
+  vramPct: number | null;
   EASE: string;
 }
 
@@ -61,16 +63,18 @@ export function DeviceSelectorSection({
           </span>
           <span>
             <span style={{ color: isOverflowing ? '#E88A80' : '#DDD8D2' }}>
-              {usedVramGb.toFixed(1)} GB
+              {usedVramGb === null ? '—' : `${usedVramGb.toFixed(1)} GB`}
             </span>
-            <span className="text-[var(--text-dim)]"> / {totalVramGb.toFixed(1)} GB</span>
+            <span className="text-[var(--text-dim)]">
+              {totalVramGb === null ? ' / —' : ` / ${totalVramGb.toFixed(1)} GB`}
+            </span>
           </span>
         </div>
         <div className="h-1 rounded-sm bg-[#1B1917] overflow-hidden shadow-[inset_0_0_0_1px_var(--border-default)]">
           <div
             className="h-full transition-all duration-300"
             style={{
-              width: `${vramPct}%`,
+              width: `${vramPct ?? 0}%`,
               background: isOverflowing ? '#E88A80' : accentColor,
               transition: `width .3s ${EASE}, background .3s ${EASE}`,
             }}

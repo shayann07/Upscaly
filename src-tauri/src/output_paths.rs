@@ -15,8 +15,49 @@ fn safe_lock_reserved() -> std::sync::MutexGuard<'static, HashSet<String>> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// Reserves a unique output path prior to job enqueueing, avoiding filename collisions.
-pub fn reserve_output_path(raw_path: &str, scale: u32) -> String {
+/// Builds the output path for a job.
+///
+/// The single definition of how an upscale is named. The frontend used to
+/// compute this itself and pass the result in, which meant two naming schemes
+/// that disagreed on collision: the frontend produced
+/// `foo_upscaled_4x.png`, then the reservation below appended its own scale
+/// suffix to that whole stem, yielding `foo_upscaled_4x_4x (1).png`.
+///
+/// `output_dir` is the user's chosen destination; when absent or empty the
+/// output lands alongside its input.
+#[must_use]
+pub fn build_output_path(
+    input_path: &str,
+    is_video: bool,
+    scale: u32,
+    output_dir: Option<&str>,
+) -> String {
+    let input = Path::new(input_path);
+    let stem = input
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("media");
+    let ext = if is_video { "mp4" } else { "png" };
+    let target_scale = if scale == 0 { 4 } else { scale };
+
+    let dir = output_dir
+        .filter(|d| !d.trim().is_empty())
+        .map(PathBuf::from)
+        .or_else(|| input.parent().map(Path::to_path_buf))
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    dir.join(format!("{stem}_upscaled_{target_scale}x.{ext}"))
+        .to_string_lossy()
+        .to_string()
+}
+
+/// Reserves a unique output path prior to job enqueueing, avoiding filename
+/// collisions with files on disk and with other in-flight jobs.
+///
+/// Disambiguates with a plain ` (n)` counter. The scale is already part of the
+/// name from [`build_output_path`], so re-encoding it here is what produced
+/// the doubled `_4x_4x` suffix.
+pub fn reserve_output_path(raw_path: &str) -> String {
     let mut reserved = safe_lock_reserved();
     let original = PathBuf::from(raw_path);
     let parent = original.parent().unwrap_or_else(|| Path::new("."));
@@ -32,10 +73,8 @@ pub fn reserve_output_path(raw_path: &str, scale: u32) -> String {
     let mut candidate = original.to_string_lossy().to_string();
     let mut counter = 1;
 
-    let target_scale = if scale == 0 { 4 } else { scale };
-
     while Path::new(&candidate).exists() || reserved.contains(&candidate) {
-        let new_name = format!("{stem}_{target_scale}x ({counter}).{ext}");
+        let new_name = format!("{stem} ({counter}).{ext}");
         candidate = parent.join(new_name).to_string_lossy().to_string();
         counter += 1;
     }
@@ -55,16 +94,52 @@ mod tests {
 
     #[test]
     fn test_output_path_reservation_uniqueness() {
-        let path1 = reserve_output_path("test_image.png", 4);
-        let path2 = reserve_output_path("test_image.png", 4);
-        let path3 = reserve_output_path("test_image.png", 2);
+        let path1 = reserve_output_path("test_image.png");
+        let path2 = reserve_output_path("test_image.png");
 
         assert_ne!(path1, path2);
-        assert!(path2.contains("_4x (1)"));
-        assert!(path3.contains("_2x (1)") || path3.contains("_2x"));
+        assert!(path2.contains("test_image (1)"));
 
         release_output_path(&path1);
         release_output_path(&path2);
-        release_output_path(&path3);
+    }
+
+    #[test]
+    fn test_reservation_does_not_double_up_the_scale_suffix() {
+        // build_output_path already puts the scale in the name. The counter
+        // must only add " (n)" -- the old code re-appended the scale to the
+        // whole stem, producing foo_upscaled_4x_4x (1).png.
+        let first = reserve_output_path("clip_upscaled_4x.mp4");
+        let second = reserve_output_path("clip_upscaled_4x.mp4");
+
+        assert_eq!(second.matches("_4x").count(), 1);
+        assert!(second.contains("clip_upscaled_4x (1).mp4"));
+
+        release_output_path(&first);
+        release_output_path(&second);
+    }
+
+    #[test]
+    fn test_build_output_path_names_and_places_the_output() {
+        let alongside = build_output_path("C:\\media\\clip.mkv", true, 2, None);
+        assert!(alongside.ends_with("clip_upscaled_2x.mp4"));
+        assert!(alongside.starts_with("C:\\media"));
+
+        // Images normalize to png regardless of source container.
+        let image = build_output_path("C:\\media\\shot.jpeg", false, 4, None);
+        assert!(image.ends_with("shot_upscaled_4x.png"));
+
+        // A chosen destination wins over the input's directory.
+        let custom = build_output_path("C:\\media\\clip.mkv", true, 3, Some("D:\\out"));
+        assert!(custom.starts_with("D:\\out"));
+        assert!(custom.ends_with("clip_upscaled_3x.mp4"));
+
+        // Blank is treated as "not chosen", not as a relative directory.
+        let blank = build_output_path("C:\\media\\clip.mkv", true, 4, Some("   "));
+        assert!(blank.starts_with("C:\\media"));
+
+        // AUTO scale (0) records as the 4x default it actually runs at.
+        let auto = build_output_path("C:\\media\\clip.mkv", true, 0, None);
+        assert!(auto.ends_with("clip_upscaled_4x.mp4"));
     }
 }

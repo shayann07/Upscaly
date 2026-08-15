@@ -17,12 +17,24 @@ use sidecar_manager::kill_all_processes;
 pub struct UpscaleRequest {
     pub job_id: Option<String>,
     pub input_path: String,
-    pub output_path: String,
+    /// Where the user wants results written. `None`/empty means "alongside
+    /// the input". The *file name* is not the caller's concern -- the backend
+    /// owns naming and collision handling (see `output_paths`), and returns
+    /// the path it settled on.
+    pub output_dir: Option<String>,
     pub model_id: String,
     pub gpu_id: i32,
     pub scale: i32,
     pub tile_size: i32,
     pub is_video: bool,
+}
+
+/// What `run_upscale` hands back: the job to track, and the path its output
+/// is reserved at.
+#[derive(Debug, serde::Serialize)]
+pub struct UpscaleJobHandle {
+    pub job_id: String,
+    pub output_path: String,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
