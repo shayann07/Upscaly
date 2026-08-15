@@ -231,10 +231,20 @@ impl GitHubReleaseProvider {
         vec![
             // --- Community photographic models -------------------------
             //
-            // All four are the same RRDBNet architecture as
-            // realesrgan-x4plus (identical 33,424,520-byte weights file,
-            // identical inference cost) trained on different data, so
-            // they are drop-in and share its 1.0 speed figure.
+            // All four run at the same cost as realesrgan-x4plus, so they
+            // share its 1.0 speed figure and the VRAM governor's estimate --
+            // which keys off tile size and scale, not the model -- transfers
+            // to them unchanged.
+            //
+            // Worth stating precisely, because three of the four have a
+            // byte-identical .param and Remacri does not: it declares 1370
+            // layers to the others' 999. The extra entries are activations
+            // and residual adds written out as explicit ReLU/BinaryOp layers
+            // where the others fuse them into Eltwise. The convolution graph
+            // underneath is the same in all five -- 351 convolutions, 64 max
+            // channels, 2 Interp upsample stages -- so the tensor shapes,
+            // and therefore the peak working set, match. Layer count is not
+            // memory; tensor shape is.
             //
             // URLs are pinned to a commit, never to `main`. A hash pinned
             // against a moving branch verifies nothing: the file could
