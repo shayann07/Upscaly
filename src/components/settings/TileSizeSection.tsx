@@ -3,8 +3,9 @@ interface TileSizeSectionProps {
   handleTileSize: (size: number) => void;
   handleAutoTuneClick: () => void;
   isOverflowing: boolean;
-  usedVramGb: number;
-  totalVramGb: number;
+  // null until the backend reports a profile; see useVramProfile.
+  usedVramGb: number | null;
+  totalVramGb: number | null;
   statusMessage?: string;
   accentColor: string;
 }
@@ -66,9 +67,11 @@ export function TileSizeSection({
         style={{ color: isOverflowing ? '#E88A80' : 'var(--text-muted)' }}
       >
         {statusMessage ||
-          (isOverflowing
-            ? `Projected VRAM usage (${usedVramGb.toFixed(1)} GB) exceeds GPU memory (${totalVramGb.toFixed(1)} GB). Consider selecting 256px or 128px.`
-            : `Selected tile size: ${tileSize}px. Projected VRAM usage: ${usedVramGb.toFixed(1)} GB.`)}
+          (usedVramGb === null || totalVramGb === null
+            ? `Selected tile size: ${tileSize}px.`
+            : isOverflowing
+              ? `Projected VRAM usage (${usedVramGb.toFixed(1)} GB) exceeds GPU memory (${totalVramGb.toFixed(1)} GB). Consider selecting 256px or 128px.`
+              : `Selected tile size: ${tileSize}px. Projected VRAM usage: ${usedVramGb.toFixed(1)} GB.`)}
       </div>
     </div>
   );

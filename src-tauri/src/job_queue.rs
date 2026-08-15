@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::job_state::JobState;
 use crate::model_manager::get_models_dir;
-use crate::output_paths::{release_output_path, reserve_output_path};
+use crate::output_paths::release_output_path;
 use crate::process_runner::{ProcessHandle, ProcessRunner, StdProcessRunner};
 use crate::sidecar_manager::resolve_sidecar_path;
 use crate::video_pipeline::run_video_job;
@@ -118,23 +118,26 @@ impl JobQueueService {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    pub fn enqueue(&self, app: AppHandle, mut job: Job) {
-        job.output_path = reserve_output_path(&job.output_path, job.scale.cast_unsigned());
-
+    /// Queues an already-named job. The output path is reserved by the
+    /// command layer before it gets here, so that the caller can be told
+    /// where its result will land.
+    pub fn enqueue(&self, app: AppHandle, job: Job) {
+        let job_id = job.id.clone();
+        let output_path = job.output_path.clone();
         {
             let mut q = self.lock_queue();
-            q.push_back(job.clone());
+            q.push_back(job);
         }
 
         self.emit_progress(
             &app,
-            &job.id,
+            &job_id,
             0.0,
             JobState::Queued,
             Some("Queued in GPU worker pool"),
             None,
             None,
-            Some(&job.output_path),
+            Some(&output_path),
         );
         self.process_next(app);
     }

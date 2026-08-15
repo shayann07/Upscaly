@@ -70,9 +70,16 @@ export function AdvancedSettings({
     tileSize
   );
 
-  const vramPct = Math.min(100, Math.round((usedVramGb / Math.max(0.1, totalVramGb)) * 100));
+  // null until the backend reports real numbers -- the meter renders an
+  // indeterminate state rather than a plausible-looking invented reading.
+  const vramPct =
+    usedVramGb === null || totalVramGb === null
+      ? null
+      : Math.min(100, Math.round((usedVramGb / Math.max(0.1, totalVramGb)) * 100));
 
   const handleAutoTuneClick = () => {
+    // Nothing to tune against until the profile has arrived.
+    if (autoTileSize === null || totalVramGb === null) return;
     handleTileSize(autoTileSize);
     if (onAutoTune) {
       onAutoTune(

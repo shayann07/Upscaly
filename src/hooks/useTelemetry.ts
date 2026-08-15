@@ -25,7 +25,13 @@ export function useTelemetry({ selectedGpu, tileSize }: TelemetryOptions) {
   const { usedVramGb, isOverflowing } = useVramProfile(selectedGpu, tileSize);
 
   const isSystemRam = selectedGpu === SYSTEM_RAM_GPU_ID;
-  const activeVramGb = isSystemRam ? 'SYSTEM RAM' : `${usedVramGb.toFixed(1)} GB`;
+  // Show a placeholder while the profile is in flight rather than a
+  // confident-looking number the backend has not actually reported.
+  const activeVramGb = isSystemRam
+    ? 'SYSTEM RAM'
+    : usedVramGb === null
+      ? '—'
+      : `${usedVramGb.toFixed(1)} GB`;
   const isVramOverflowing = !isSystemRam && isOverflowing;
 
   return { activeVramGb, isVramOverflowing };

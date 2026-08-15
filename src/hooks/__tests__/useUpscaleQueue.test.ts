@@ -3,9 +3,15 @@ import { renderHook, act } from '@testing-library/react';
 import { useUpscaleQueue } from '../useUpscaleQueue';
 
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn((cmd: string, args: { request?: { job_id?: string } }) => {
+  // run_upscale returns the job id together with the output path the backend
+  // reserved -- the frontend no longer derives that path itself.
+  invoke: vi.fn((cmd: string, args: { request?: { job_id?: string; input_path?: string } }) => {
     if (cmd === 'run_upscale') {
-      return Promise.resolve(args?.request?.job_id || 'mock-job-id');
+      const jobId = args?.request?.job_id || 'mock-job-id';
+      return Promise.resolve({
+        job_id: jobId,
+        output_path: `C:/out/${jobId}_upscaled_4x.png`,
+      });
     }
     return Promise.resolve(null);
   }),

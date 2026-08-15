@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { playErrorSound } from '../lib/sound';
 import { ModelInfo, BatchItem, HistoryEntry } from '../lib/types';
-import { resolveUpscaleOutputPath } from '../lib/outputPaths';
+import { UpscaleJobHandle } from '../lib/types';
 import { allowMediaPath } from '../lib/assetScope';
 import { JobInputSnapshot } from '../lib/studioJobHandler';
 
@@ -199,27 +199,26 @@ export function useStudioActions({
       setFps?.(undefined);
       setRateStr?.('');
 
-      const outPath = resolveUpscaleOutputPath(
-        filePath,
-        fileName,
-        isVideo,
-        scale,
-        customOutputPath
+      // The backend names and reserves the output, then tells us where it
+      // landed -- it is the only thing that can guarantee two jobs don't
+      // claim the same file, so guessing the path here could only ever
+      // disagree with reality.
+      const { job_id: jobId, output_path: outPath } = await invoke<UpscaleJobHandle>(
+        'run_upscale',
+        {
+          request: {
+            job_id: clientJobId,
+            input_path: filePath,
+            output_dir: customOutputPath || null,
+            model_id: selectedModel,
+            gpu_id: selectedGpu,
+            scale,
+            tile_size: tileSize,
+            is_video: isVideo,
+          },
+        }
       );
       pendingOutputPath.current = outPath;
-
-      const jobId = await invoke<string>('run_upscale', {
-        request: {
-          job_id: clientJobId,
-          input_path: filePath,
-          output_path: outPath,
-          model_id: selectedModel,
-          gpu_id: selectedGpu,
-          scale,
-          tile_size: tileSize,
-          is_video: isVideo,
-        },
-      });
 
       setJobStatus('processing');
       onNotify('info', 'Upscaling Started', `Job ID: ${jobId.slice(0, 8)}...`);

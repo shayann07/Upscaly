@@ -50,6 +50,16 @@ export interface Toast {
 }
 
 /**
+ * What `run_upscale` returns. The backend owns output naming and collision
+ * handling, so the path it reserved is reported back rather than guessed
+ * here -- see `output_paths.rs`.
+ */
+export interface UpscaleJobHandle {
+  job_id: string;
+  output_path: string;
+}
+
+/**
  * How many toasts can be on screen at once. Shared by the toast store
  * (useStudioState) and the renderer (ToastContainer) so the two can never
  * disagree: when the store was allowed to grow past what renders, an
