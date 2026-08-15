@@ -122,7 +122,22 @@ impl GitHubReleaseProvider {
         }
     }
 
-    /// The upstream Real-ESRGAN release models.
+    /// The upstream Real-ESRGAN models.
+    ///
+    /// Hashes here match the copies bundled in `src-tauri/models`
+    /// byte-for-byte, and always did. The URLs did not: they pointed at
+    /// `.../releases/download/v0.2.5.0/<name>.param`, and that release
+    /// ships only `.pth` weights and per-platform zips -- no loose ncnn
+    /// files. All ten returned a 9-byte "Not Found" body, so every
+    /// stock model's Download button was broken. It went unnoticed
+    /// because these five are bundled and copied in at startup, so the
+    /// download path is never exercised for them in normal use.
+    ///
+    /// Repointed at commit-pinned mirrors that were verified to serve
+    /// identical bytes -- `upscayl-standard-4x` is `realesrgan-x4plus`
+    /// and `digital-art-4x` is `realesrgan-x4plus-anime`, both confirmed
+    /// by hashing rather than by their names. The hashes below are
+    /// therefore unchanged.
     #[allow(clippy::unreadable_literal)]
     fn stock_models() -> Vec<RegistryModelEntry> {
         vec![
@@ -135,10 +150,10 @@ impl GitHubReleaseProvider {
                     scale: Some(4),
                     size: Some("67.0 MB".to_string()),
                     speed: Some(1.0),
-                    param_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-x4plus.param".to_string(),
+                    param_url: "https://raw.githubusercontent.com/upscayl/upscayl/a00d55fee90e0f9435d5eaa86e76700df8199af8/resources/models/upscayl-standard-4x.param".to_string(),
                     param_sha256: Some("35330ececcea33b6c397a72548e788d5d53becee4734c50b7fada36e89f10a86".to_string()),
                     param_size: Some(116029),
-                    bin_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-x4plus.bin".to_string(),
+                    bin_url: "https://raw.githubusercontent.com/upscayl/upscayl/a00d55fee90e0f9435d5eaa86e76700df8199af8/resources/models/upscayl-standard-4x.bin".to_string(),
                     bin_sha256: Some("713ee713b0353afaa27976f0563a64a5043bd70b9bd8936c2e26e25ebcdbcddf".to_string()),
                     bin_size: Some(33424520),
                 },
@@ -151,10 +166,10 @@ impl GitHubReleaseProvider {
                     scale: Some(4),
                     size: Some("17.9 MB".to_string()),
                     speed: Some(1.5),
-                    param_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-x4plus-anime.param".to_string(),
+                    param_url: "https://raw.githubusercontent.com/upscayl/upscayl/a00d55fee90e0f9435d5eaa86e76700df8199af8/resources/models/digital-art-4x.param".to_string(),
                     param_sha256: Some("2b8fb6e0ae4d2d85704ca08c119a2f5ea40add4f2ecd512eb7f4cd44b6127ed4".to_string()),
                     param_size: Some(30290),
-                    bin_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-x4plus-anime.bin".to_string(),
+                    bin_url: "https://raw.githubusercontent.com/upscayl/upscayl/a00d55fee90e0f9435d5eaa86e76700df8199af8/resources/models/digital-art-4x.bin".to_string(),
                     bin_sha256: Some("fe01c269cfd10cdef8e018ab66ebe750cf79c7af4d1f9c16c737e1295229bacc".to_string()),
                     bin_size: Some(8943500),
                 },
@@ -167,10 +182,10 @@ impl GitHubReleaseProvider {
                     scale: Some(2),
                     size: Some("2.4 MB".to_string()),
                     speed: Some(3.3),
-                    param_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3-x2.param".to_string(),
+                    param_url: "https://raw.githubusercontent.com/upscayl/custom-models/4b6d2cfa59c7442af115dfc6e50fd8d7d40b96ef/models/realesr-animevideov3-x2.param".to_string(),
                     param_sha256: Some("b88ff4f00ebf019a7fdac17fdd45a7fd3665d37509efc5baf2e4da2e24420a04".to_string()),
                     param_size: Some(3173),
-                    bin_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3-x2.bin".to_string(),
+                    bin_url: "https://raw.githubusercontent.com/upscayl/custom-models/4b6d2cfa59c7442af115dfc6e50fd8d7d40b96ef/models/realesr-animevideov3-x2.bin".to_string(),
                     bin_sha256: Some("548a36f9c3f4ab8da56cd3b13badf23968bee207b396dad14d04b830e5f2ab2d".to_string()),
                     bin_size: Some(1247368),
                 },
@@ -183,10 +198,10 @@ impl GitHubReleaseProvider {
                     scale: Some(3),
                     size: Some("2.4 MB".to_string()),
                     speed: Some(2.4),
-                    param_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3-x3.param".to_string(),
+                    param_url: "https://raw.githubusercontent.com/upscayl/custom-models/4b6d2cfa59c7442af115dfc6e50fd8d7d40b96ef/models/realesr-animevideov3-x3.param".to_string(),
                     param_sha256: Some("d1a5755008791d09b57e3425fc9dd0bd26b00fdf79c606210bc0e693f8230881".to_string()),
                     param_size: Some(3173),
-                    bin_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3-x3.bin".to_string(),
+                    bin_url: "https://raw.githubusercontent.com/upscayl/custom-models/4b6d2cfa59c7442af115dfc6e50fd8d7d40b96ef/models/realesr-animevideov3-x3.bin".to_string(),
                     bin_sha256: Some("548a36f9c3f4ab8da56cd3b13badf23968bee207b396dad14d04b830e5f2ab2d".to_string()),
                     bin_size: Some(1247368),
                 },
@@ -199,10 +214,10 @@ impl GitHubReleaseProvider {
                     scale: Some(4),
                     size: Some("2.4 MB".to_string()),
                     speed: Some(1.8),
-                    param_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3-x4.param".to_string(),
+                    param_url: "https://raw.githubusercontent.com/upscayl/custom-models/4b6d2cfa59c7442af115dfc6e50fd8d7d40b96ef/models/realesr-animevideov3-x4.param".to_string(),
                     param_sha256: Some("850a248e7c14c27e5bd8cf7265113a9441036a7db63963bb8aa5169d788a435e".to_string()),
                     param_size: Some(3077),
-                    bin_url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3-x4.bin".to_string(),
+                    bin_url: "https://raw.githubusercontent.com/upscayl/custom-models/4b6d2cfa59c7442af115dfc6e50fd8d7d40b96ef/models/realesr-animevideov3-x4.bin".to_string(),
                     bin_sha256: Some("548a36f9c3f4ab8da56cd3b13badf23968bee207b396dad14d04b830e5f2ab2d".to_string()),
                     bin_size: Some(1247368),
                 },
@@ -342,6 +357,41 @@ mod tests {
                 assert!(url.starts_with("https://"), "{} is not https: {url}", m.id);
             }
         }
+    }
+
+    #[test]
+    fn test_declared_hashes_match_the_models_actually_shipped() {
+        // For every model bundled in src-tauri/models, the bytes on disk
+        // must hash to what the catalog claims. This is the half of the
+        // contract that can be checked without a network: if a bundled file
+        // is ever updated without updating its entry, the app would ship one
+        // model and advertise the hash of another, and re-downloading it
+        // would fail with an integrity error that looked like tampering.
+        //
+        // It does not check that the URLs still serve those bytes. That
+        // needs a live request, and this suite deliberately makes none --
+        // but note the URLs are pinned to immutable commits precisely so
+        // that what they serve cannot drift.
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("models");
+        let mut checked = 0;
+        for m in GitHubReleaseProvider::default_registry().models {
+            for (ext, declared) in [("param", &m.param_sha256), ("bin", &m.bin_sha256)] {
+                let path = dir.join(format!("{}.{ext}", m.id));
+                if !path.is_file() {
+                    continue; // not bundled; downloaded on demand
+                }
+                let actual = crate::model_manager::calculate_sha256(&path)
+                    .unwrap_or_else(|e| panic!("hashing {}: {e}", path.display()));
+                assert_eq!(
+                    Some(&actual),
+                    declared.as_ref(),
+                    "{}.{ext} on disk does not match the catalog",
+                    m.id
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 0, "no bundled models found to verify");
     }
 
     #[test]
