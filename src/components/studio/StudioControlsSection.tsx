@@ -1,80 +1,103 @@
+import { memo, useMemo } from 'react';
 import { ProgressOverlay } from '../ProgressOverlay';
 import { CompletionCard } from '../CompletionCard';
 import { SettingsPanel } from '../SettingsPanel';
-import { ModelInfo } from '../../lib/types';
+import {
+  useActiveVramGb,
+  useCategory,
+  useComparisonViewMode,
+  useInstalledModels,
+  useIsMuted,
+  useIsProcessing,
+  useItemCount,
+  useProgressItem,
+  useScale,
+  useSelectedItem,
+  useSelectedModel,
+  useSupportedModels,
+  useTileSize,
+  useUpscaledPath,
+  useZoomLevel,
+} from '../../store/selectors';
+import { studioActions } from '../../store/studioStore';
+import {
+  cancelAll,
+  clearFile,
+  selectCategory,
+  selectModel,
+  selectScale,
+  showInExplorer,
+  startUpscale,
+} from '../../store/studioCommands';
 
-interface StudioControlsSectionProps {
-  isProc: boolean;
-  progressVal: number;
-  statusMessage: string;
-  jobPhase: string;
-  etaSeconds?: number;
-  fps?: number;
-  rateStr: string;
-  activeVramGb: string;
-  tileSize: number;
-  handleCancelUpscale: () => void;
-  jobStatus: string;
-  upscaledPath: string | null;
-  currentFileDims: { w: number; h: number } | null;
-  scale: number;
-  comparisonViewMode: 'split' | 'side-by-side';
-  zoomLevel: number;
-  setComparisonViewMode: (mode: 'split' | 'side-by-side') => void;
-  handleCycleZoom: () => void;
-  handleShowInExplorerNative: (path: string) => void;
-  handleClearFile: () => void;
-  supportedModels: ModelInfo[];
-  category: 'photos' | 'anime' | 'video';
-  handleSelectCategory: (cat: 'photos' | 'anime' | 'video') => void;
-  installedModels: string[];
-  selectedModel: string;
-  handleSelectModel: (id: string) => void;
-  setScale: (s: number) => void;
-  filePath: string | null;
-  batchItemsCount: number;
-  handleStartUpscale: () => void;
-  isMuted: boolean;
-  handleToggleMute: () => void;
-  setActiveNavTab: (tab: 'models' | 'history' | 'settings' | 'about' | null) => void;
+// Module-scope handlers: stable for the life of the app, so the panels below
+// are not handed a fresh closure on every progress tick.
+const handleStartUpscale = () => void startUpscale();
+const handleCancel = () => void cancelAll();
+const handleOpenCatalog = () => studioActions.setActiveNavTab('models');
+const handleSetSplit = () => studioActions.setComparisonViewMode('split');
+const handleSetSide = () => studioActions.setComparisonViewMode('side-by-side');
+
+/**
+ * Derives the throughput figure the overlay shows.
+ *
+ * Only reports what was actually measured. The backend supplies FPS for
+ * video; for images it supplies none, and there is nothing to compute a
+ * megapixel rate from unless the source dimensions were successfully
+ * probed -- in which case the row shows no rate rather than one derived
+ * from an assumed 1920x1080.
+ */
+function formatRate(
+  fps: number | null,
+  w: number | null,
+  h: number | null,
+  scale: number | null,
+  progress: number,
+  startedAtMs: number | null
+): string {
+  if (fps != null && fps > 0) return `${fps.toFixed(1)} FPS`;
+  if (w == null || h == null || scale == null || startedAtMs == null || progress < 5) return '';
+
+  const elapsedSec = (Date.now() - startedAtMs) / 1000;
+  if (elapsedSec < 0.3) return '';
+  const totalMp = (w * h * scale) / 1_000_000;
+  const mps = (totalMp * (progress / 100)) / elapsedSec;
+  return mps > 0 ? `${mps.toFixed(1)} MP/s` : '';
 }
 
-export function StudioControlsSection(props: StudioControlsSectionProps) {
-  const {
-    isProc,
-    progressVal,
-    statusMessage,
-    jobPhase,
-    etaSeconds,
-    fps,
-    rateStr,
-    activeVramGb,
-    tileSize,
-    handleCancelUpscale,
-    jobStatus,
-    upscaledPath,
-    currentFileDims,
-    scale,
-    comparisonViewMode,
-    zoomLevel,
-    setComparisonViewMode,
-    handleCycleZoom,
-    handleShowInExplorerNative,
-    handleClearFile,
-    supportedModels,
-    category,
-    handleSelectCategory,
-    installedModels,
-    selectedModel,
-    handleSelectModel,
-    setScale,
-    filePath,
-    batchItemsCount,
-    handleStartUpscale,
-    isMuted,
-    handleToggleMute,
-    setActiveNavTab,
-  } = props;
+export const StudioControlsSection = memo(function StudioControlsSection() {
+  const selected = useSelectedItem();
+  const progressItem = useProgressItem();
+  const isProc = useIsProcessing();
+  const itemCount = useItemCount();
+  const upscaledPath = useUpscaledPath();
+
+  const scale = useScale();
+  const tileSize = useTileSize();
+  const isMuted = useIsMuted();
+
+  const supportedModels = useSupportedModels();
+  const installedModels = useInstalledModels();
+  const selectedModel = useSelectedModel();
+  const category = useCategory();
+
+  const comparisonViewMode = useComparisonViewMode();
+  const zoomLevel = useZoomLevel();
+
+  const activeVramGb = useActiveVramGb();
+
+  const outputDims = useMemo(
+    () =>
+      selected?.w != null && selected.h != null
+        ? { w: selected.w * scale, h: selected.h * scale }
+        : undefined,
+    [selected?.w, selected?.h, scale]
+  );
+
+  const handleOpenOutput = useMemo(
+    () => () => void showInExplorer(upscaledPath ?? ''),
+    [upscaledPath]
+  );
 
   return (
     <>
@@ -90,54 +113,57 @@ export function StudioControlsSection(props: StudioControlsSectionProps) {
         <SettingsPanel
           supportedModels={supportedModels}
           category={category}
-          onSelectCategory={handleSelectCategory}
+          onSelectCategory={selectCategory}
           installedModels={installedModels}
           selectedModel={selectedModel}
-          onSelectModel={handleSelectModel}
+          onSelectModel={selectModel}
           scale={scale}
-          onSelectScale={setScale}
+          onSelectScale={selectScale}
           isProcessing={isProc}
-          hasFiles={Boolean(filePath || batchItemsCount > 0)}
-          isBatchMode={batchItemsCount > 1}
+          hasFiles={itemCount > 0}
+          isBatchMode={itemCount > 1}
           onRun={handleStartUpscale}
-          onCancel={() => handleCancelUpscale()}
+          onCancel={handleCancel}
           isMuted={isMuted}
-          onToggleMute={handleToggleMute}
-          onOpenCatalog={() => setActiveNavTab('models')}
+          onToggleMute={studioActions.toggleMute}
+          onOpenCatalog={handleOpenCatalog}
         />
       </div>
 
-      {isProc && (
+      {isProc && progressItem && (
         <ProgressOverlay
-          percentage={progressVal}
-          statusText={statusMessage}
-          phase={jobPhase || 'UPSCALE 4X'}
-          etaSeconds={etaSeconds}
-          fps={fps}
-          rate={rateStr}
+          percentage={progressItem.progress}
+          statusText={progressItem.phase ?? undefined}
+          phase={progressItem.status === 'queued' ? 'QUEUED' : 'UPSCALING'}
+          etaSeconds={progressItem.etaSeconds ?? undefined}
+          fps={progressItem.fps ?? undefined}
+          rate={formatRate(
+            progressItem.fps,
+            progressItem.w,
+            progressItem.h,
+            progressItem.scale ?? scale,
+            progressItem.progress,
+            progressItem.startedAtMs
+          )}
           vram={activeVramGb}
           tileCount={tileSize === 0 ? 'AUTO' : `${tileSize}px`}
-          onCancel={() => handleCancelUpscale()}
+          onCancel={handleCancel}
         />
       )}
 
-      {jobStatus === 'succeeded' && upscaledPath && (
+      {upscaledPath && (
         <CompletionCard
           outputPath={upscaledPath}
-          outputDims={
-            currentFileDims
-              ? { w: currentFileDims.w * scale, h: currentFileDims.h * scale }
-              : undefined
-          }
+          outputDims={outputDims}
           compareMode={comparisonViewMode === 'split' ? 'split' : 'side'}
           zoom={zoomLevel}
-          onSetSplit={() => setComparisonViewMode('split')}
-          onSetSide={() => setComparisonViewMode('side-by-side')}
-          onCycleZoom={handleCycleZoom}
-          onOpen={() => handleShowInExplorerNative(upscaledPath)}
-          onReset={handleClearFile}
+          onSetSplit={handleSetSplit}
+          onSetSide={handleSetSide}
+          onCycleZoom={studioActions.cycleZoom}
+          onOpen={handleOpenOutput}
+          onReset={clearFile}
         />
       )}
     </>
   );
-}
+});

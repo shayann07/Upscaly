@@ -1,102 +1,106 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { invoke } from '@tauri-apps/api/core';
 import { useStudioContainerSetup } from '../useStudioContainerSetup';
-import type { BatchItem } from '../../lib/types';
 import { jobSnapshot } from '../../test/jobSnapshot';
+import { resetStudioStore, studioActions, studioStore } from '../../store/studioStore';
+
+const listeners: Record<string, (event: { payload: unknown }) => void> = {};
 
 vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
+  listen: vi.fn((eventName: string, callback: (event: { payload: unknown }) => void) => {
+    listeners[eventName] = callback;
+    return Promise.resolve(() => {});
+  }),
 }));
 
 vi.mock('@tauri-apps/api/webview', () => ({
   getCurrentWebview: () => ({ onDragDropEvent: vi.fn().mockResolvedValue(() => {}) }),
 }));
 
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn().mockResolvedValue([]),
+  convertFileSrc: (path: string) => `asset://${path}`,
+}));
+
+const mockInvoke = vi.mocked(invoke);
+const state = () => studioStore.getState();
+
 /**
  * The composition root had no test at all, which is precisely why the batch
- * bug survived: two hooks each owned a `batchItems` store, and the six-object
- * spread at the end of this hook silently resolved the collision in favour of
- * the empty one. Every symptom was in the wiring, not in either hook.
+ * bug survived: two hooks each owned a `batchItems` store, and a six-object
+ * spread silently resolved the collision in favour of the empty one.
  *
- * These assertions are about that wiring -- ownership and identity of the
- * merged surface -- rather than any individual hook's behaviour.
+ * There is no merged surface left to test -- state lives in the store. What
+ * this covers instead is the wiring that replaced it: that mounting the app
+ * reads the backend's snapshot, and that the delta stream reaches the queue.
  */
-describe('useStudioContainerSetup composition root', () => {
+describe('studio container wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetStudioStore();
+    for (const key of Object.keys(listeners)) delete listeners[key];
+    mockInvoke.mockResolvedValue([]);
   });
 
-  it('exposes a single batchItems store that writes are visible through', async () => {
-    const { result } = renderHook(() => useStudioContainerSetup());
-    await waitFor(() => expect(result.current.batchItems).toEqual([]));
-
-    const item: BatchItem = {
-      id: 'item-1',
-      filePath: 'C:/a.png',
-      fileName: 'a.png',
-      progress: 0,
-      status: 'ready',
-    };
-
-    act(() => {
-      result.current.setBatchItems([item]);
+  it('reads the backend job snapshot on mount instead of waiting for an event', async () => {
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === 'get_jobs_snapshot') {
+        return Promise.resolve([
+          jobSnapshot({ job_id: 'already-running', status: 'running', percentage: 40 }),
+        ]);
+      }
+      return Promise.resolve([]);
     });
 
-    // If the spread order ever reintroduces a second store, the setter and
-    // the getter end up on different objects and this reads back empty.
-    expect(result.current.batchItems).toHaveLength(1);
-    expect(result.current.batchItems[0].id).toBe('item-1');
+    renderHook(() => useStudioContainerSetup());
+
+    // A job started before this webview existed (or before its listener
+    // attached) used to be invisible until its next tick, and permanently
+    // invisible if it had none left.
+    await waitFor(() => expect(state().items).toHaveLength(1));
+    expect(state().items[0].id).toBe('already-running');
+    expect(state().items[0].progress).toBe(40);
   });
 
-  it('routes a progress event for a queued item through to the merged state', async () => {
-    const { result } = renderHook(() => useStudioContainerSetup());
-    await waitFor(() => expect(result.current.batchItems).toEqual([]));
+  it('routes a coalesced delta through to the queue', async () => {
+    renderHook(() => useStudioContainerSetup());
+    await waitFor(() => expect(listeners['jobs-delta']).toBeDefined());
 
     act(() => {
-      result.current.setBatchItems([
-        {
-          id: 'job-1',
-          filePath: 'C:/a.png',
-          fileName: 'a.png',
-          progress: 0,
-          status: 'queued',
-        },
-      ]);
-    });
-
-    act(() => {
-      result.current.handleQueueJobProgress(
-        jobSnapshot({ job_id: 'job-1', percentage: 50, status: 'running' })
+      studioActions.addFiles(
+        [
+          {
+            id: 'job-1',
+            filePath: 'C:/a.png',
+            fileName: 'a.png',
+            isVideo: false,
+            w: null,
+            h: null,
+          },
+        ],
+        true
       );
     });
 
-    expect(result.current.batchItems[0].status).toBe('running');
-    expect(result.current.batchItems[0].progress).toBe(50);
-  });
+    act(() => {
+      listeners['jobs-delta']({
+        payload: {
+          jobs: [jobSnapshot({ job_id: 'job-1', status: 'running', percentage: 50 })],
+        },
+      });
+    });
 
-  it('surfaces exactly one definition of each colliding key', async () => {
-    const { result } = renderHook(() => useStudioContainerSetup());
-    await waitFor(() => expect(result.current.batchItems).toEqual([]));
-
-    // These are the identifiers most at risk of being defined by more than
-    // one of the spread hooks. Asserting they are all callable/defined is a
-    // cheap guard against a future hook quietly shadowing one with undefined.
-    expect(typeof result.current.setBatchItems).toBe('function');
-    expect(typeof result.current.handleStartUpscale).toBe('function');
-    expect(typeof result.current.handleCancelUpscale).toBe('function');
-    expect(typeof result.current.handleQueueJobProgress).toBe('function');
-    expect(typeof result.current.setScale).toBe('function');
-    expect(typeof result.current.handleSelectModel).toBe('function');
-    expect(typeof result.current.handleLoadHistoryItem).toBe('function');
-    expect(Array.isArray(result.current.batchItems)).toBe(true);
+    expect(state().items[0].status).toBe('running');
+    expect(state().items[0].progress).toBe(50);
   });
 
   it('starts in a clean, idle state', async () => {
     const { result } = renderHook(() => useStudioContainerSetup());
-    await waitFor(() => expect(result.current.batchItems).toEqual([]));
+    await waitFor(() => expect(result.current.isDragOver).toBe(false));
 
-    expect(result.current.jobStatus).toBe('ready');
-    expect(result.current.activeJobId).toBeNull();
-    expect(result.current.isBatchRunning).toBe(false);
+    expect(state().items).toEqual([]);
+    expect(state().selectedId).toBeNull();
+    expect(state().confirmCancelOpen).toBe(false);
   });
 });

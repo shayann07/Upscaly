@@ -1,38 +1,33 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { BatchItem } from '../lib/types';
+import { useState, useCallback, useEffect, useRef, memo } from 'react';
+import { QueueItem } from '../store/queueItem';
 import { BatchQueueHeader } from './batch/BatchQueueHeader';
 import { BatchQueueRow } from './batch/BatchQueueRow';
 import { BatchQueueFooter } from './batch/BatchQueueFooter';
-
-export type { BatchItem };
 
 // Module-level (not re-created per render) so an omitted onSelect/onReorder
 // prop doesn't hand BatchQueueRow a fresh function identity on every
 // render, which would defeat its React.memo just as surely as an inline
 // `() => {}` default would.
 const NOOP_SELECT = (_id: string) => {};
-const NOOP_REORDER = (_items: BatchItem[]) => {};
+const NOOP_REORDER = (_items: QueueItem[]) => {};
+const NOOP = () => {};
 
 interface BatchQueueViewProps {
-  items: BatchItem[];
+  items: QueueItem[];
   currentIndex?: number;
   selectedId?: string | undefined;
   accentColor?: string;
   onSelect?: (id: string) => void;
-  onReorder?: (items: BatchItem[]) => void;
+  onReorder?: (items: QueueItem[]) => void;
   onAddFiles?: () => void;
   onClear?: () => void;
   selectedScale?: number;
   currentFileDims?: { w: number; h: number } | null;
   onRemoveItem?: (id: string) => void;
-  onClearCompleted?: () => void;
-  onAddMoreFiles?: () => void;
-  onOpenFileNative?: (path: string) => void;
-  onShowInExplorerNative?: (path: string) => void;
   onCancelItem?: (id: string) => void;
 }
 
-function computeBatchStats(items: BatchItem[]) {
+function computeBatchStats(items: QueueItem[]) {
   const doneCount = items.filter((f) => f.status === 'succeeded').length;
   const batchPct = items.length
     ? Math.round(
@@ -43,22 +38,25 @@ function computeBatchStats(items: BatchItem[]) {
 }
 
 function computeEstimateData(
-  items: BatchItem[],
+  items: QueueItem[],
   selectedId: string | undefined,
   currentIndex: number,
   currentFileDims: { w: number; h: number } | null | undefined,
   selectedScale: number
 ) {
   const item = items.find((i) => i.id === selectedId) || items[currentIndex] || items[0];
-  const curW = item ? item.w || 0 : currentFileDims?.w || 0;
-  const curH = item ? item.h || 0 : currentFileDims?.h || 0;
+  // Dimensions are null until the probe resolves (and stay null if it
+  // fails). The estimate is simply not shown in that case rather than being
+  // computed from a stand-in figure.
+  const curW = item?.w ?? currentFileDims?.w ?? 0;
+  const curH = item?.h ?? currentFileDims?.h ?? 0;
   const outW = curW * selectedScale;
   const outH = curH * selectedScale;
   const estMb = ((outW * outH * 3) / 1048576).toFixed(1);
   return { curW, curH, outW, outH, estMb };
 }
 
-export function BatchQueueView(props: BatchQueueViewProps) {
+function BatchQueueViewImpl(props: BatchQueueViewProps) {
   const {
     items,
     currentIndex = 0,
@@ -66,13 +64,11 @@ export function BatchQueueView(props: BatchQueueViewProps) {
     accentColor = 'var(--accent)',
     onSelect = NOOP_SELECT,
     onReorder = NOOP_REORDER,
-    onAddFiles,
-    onClear,
+    onAddFiles = NOOP,
+    onClear = NOOP,
     selectedScale = 4,
     currentFileDims,
     onRemoveItem,
-    onClearCompleted,
-    onAddMoreFiles,
     onCancelItem,
   } = props;
 
@@ -94,6 +90,9 @@ export function BatchQueueView(props: BatchQueueViewProps) {
     dragFromRef.current = dragFrom;
   }, [dragFrom]);
 
+  const handleMouseEnter = useCallback(() => setIsHovered(true), []);
+  const handleMouseLeave = useCallback(() => setIsHovered(false), []);
+
   const handleDragStart = useCallback((idx: number, e: React.DragEvent) => {
     setDragFrom(idx);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
@@ -113,7 +112,7 @@ export function BatchQueueView(props: BatchQueueViewProps) {
 
   const handleDragEnd = useCallback(() => setDragFrom(null), []);
 
-  if (!items || items.length === 0) {
+  if (items.length === 0) {
     return null;
   }
 
@@ -131,8 +130,8 @@ export function BatchQueueView(props: BatchQueueViewProps) {
 
   return (
     <div
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       className="absolute left-3 top-14 z-[36] flex flex-col overflow-hidden"
       style={{
         maxHeight: 'calc(100% - 148px)',
@@ -190,11 +189,13 @@ export function BatchQueueView(props: BatchQueueViewProps) {
         outW={outW}
         outH={outH}
         estMb={estMb}
-        onAdd={onAddFiles || onAddMoreFiles || (() => {})}
-        onClearAll={onClear || onClearCompleted || (() => {})}
+        onAdd={onAddFiles}
+        onClearAll={onClear}
       />
     </div>
   );
 }
+
+export const BatchQueueView = memo(BatchQueueViewImpl);
 
 export default BatchQueueView;

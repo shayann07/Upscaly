@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { motion } from 'framer-motion';
 
 interface ProgressOverlayProps {
@@ -14,7 +15,7 @@ interface ProgressOverlayProps {
   etaSeconds?: number;
 }
 
-export function ProgressOverlay({
+function ProgressOverlayImpl({
   phase = 'PREPARING',
   eta,
   rate,
@@ -117,5 +118,7 @@ export function ProgressOverlay({
     </motion.div>
   );
 }
+
+export const ProgressOverlay = memo(ProgressOverlayImpl);
 
 export default ProgressOverlay;

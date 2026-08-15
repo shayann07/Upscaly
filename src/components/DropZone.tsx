@@ -1,3 +1,4 @@
+import { memo } from 'react';
 interface DropZoneProps {
   isDragOver: boolean;
   onAddFiles?: () => void;
@@ -9,7 +10,7 @@ interface DropZoneProps {
   setIsDragOver?: (over: boolean) => void;
 }
 
-export function DropZone({
+function DropZoneImpl({
   isDragOver,
   onAddFiles,
   onAddBatch,
@@ -89,5 +90,7 @@ export function DropZone({
     </div>
   );
 }
+
+export const DropZone = memo(DropZoneImpl);
 
 export default DropZone;

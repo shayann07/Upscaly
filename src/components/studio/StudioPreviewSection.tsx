@@ -1,42 +1,39 @@
+import { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DropZone } from '../DropZone';
 import { ComparisonSlider } from '../ComparisonSlider';
 import { StudioGridOverlay } from './StudioGridOverlay';
-import { BatchItem } from '../../lib/types';
 import { getMediaSrc } from '../../lib/media';
+import {
+  useComparisonViewMode,
+  useIsProcessing,
+  useProgressItem,
+  useSelectedItem,
+  useUpscaledPath,
+  useZoomLevel,
+} from '../../store/selectors';
+import { studioActions } from '../../store/studioStore';
+import { openFiles, openFolder } from '../../store/studioCommands';
 
 interface StudioPreviewSectionProps {
-  filePath: string | null;
-  batchItems: BatchItem[];
-  upscaledPath: string | null;
-  jobStatus: string;
-  comparisonViewMode: 'split' | 'side-by-side';
-  zoomLevel: number;
-  setZoomLevel: React.Dispatch<React.SetStateAction<number>>;
-  handleOpenFile: () => void;
-  handleOpenFolder?: () => void;
-  isDragOver?: boolean;
-  isProc: boolean;
-  progressVal: number;
+  isDragOver: boolean;
 }
 
-export function StudioPreviewSection({
-  filePath,
-  batchItems,
-  upscaledPath,
-  jobStatus,
-  comparisonViewMode,
-  zoomLevel,
-  setZoomLevel,
-  handleOpenFile,
-  handleOpenFolder,
-  isDragOver = false,
-  isProc,
-  progressVal,
+const handleOpenFile = () => void openFiles();
+const handleOpenFolder = () => void openFolder();
+
+export const StudioPreviewSection = memo(function StudioPreviewSection({
+  isDragOver,
 }: StudioPreviewSectionProps) {
-  const inputMedia =
-    filePath || (batchItems.length > 0 ? batchItems[0].filePath || batchItems[0].path : undefined);
-  const isVideo = inputMedia ? /\.(mp4|mkv|mov|avi|webm)$/i.test(inputMedia) : false;
+  const selected = useSelectedItem();
+  const progressItem = useProgressItem();
+  const upscaledPath = useUpscaledPath();
+  const comparisonViewMode = useComparisonViewMode();
+  const zoomLevel = useZoomLevel();
+  const isProc = useIsProcessing();
+
+  const inputMedia = selected?.filePath;
+  const progressVal = progressItem?.progress ?? 0;
 
   return (
     <div
@@ -51,7 +48,7 @@ export function StudioPreviewSection({
       }}
     >
       <AnimatePresence mode="wait">
-        {!filePath && batchItems.length === 0 ? (
+        {!inputMedia ? (
           <motion.div
             key="empty-stage"
             initial={{ opacity: 0, scale: 0.96 }}
@@ -78,13 +75,13 @@ export function StudioPreviewSection({
             <DropZone
               isDragOver={isDragOver}
               onAddFiles={handleOpenFile}
-              onAddBatch={handleOpenFolder || handleOpenFile}
+              onAddBatch={handleOpenFolder}
               onBrowseClick={handleOpenFile}
             />
           </motion.div>
         ) : (
           <motion.div
-            key={filePath || 'active-stage'}
+            key={inputMedia}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -113,17 +110,17 @@ export function StudioPreviewSection({
               }}
             />
 
-            {jobStatus === 'succeeded' && upscaledPath ? (
+            {upscaledPath ? (
               <ComparisonSlider
                 inputPath={inputMedia}
                 outputPath={upscaledPath}
                 viewMode={comparisonViewMode}
                 zoom={zoomLevel}
-                onZoomChange={setZoomLevel}
+                onZoomChange={studioActions.setZoomLevel}
               />
             ) : (
               <>
-                {inputMedia && isVideo ? (
+                {selected.isVideo ? (
                   <video
                     src={getMediaSrc(inputMedia)}
                     autoPlay
@@ -140,7 +137,7 @@ export function StudioPreviewSection({
                       transition: 'filter .2s ease',
                     }}
                   />
-                ) : inputMedia ? (
+                ) : (
                   <div
                     style={{
                       position: 'absolute',
@@ -153,7 +150,7 @@ export function StudioPreviewSection({
                       transition: 'filter .2s ease',
                     }}
                   />
-                ) : null}
+                )}
 
                 {isProc && <StudioGridOverlay progressVal={progressVal} />}
               </>
@@ -163,4 +160,4 @@ export function StudioPreviewSection({
       </AnimatePresence>
     </div>
   );
-}
+});

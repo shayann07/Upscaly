@@ -1,182 +1,69 @@
-import { useRef, useCallback } from 'react';
-import { useSettings } from './useSettings';
-import { useModelCatalog } from './useModelCatalog';
-import { useMediaSelection } from './useMediaSelection';
-import { useStudioActions } from './useStudioActions';
-import { useTelemetry } from './useTelemetry';
-import { useStudioState } from './useStudioState';
-import { useStudioEvents } from './useStudioEvents';
-import { useBatchSetup } from './useBatchSetup';
-import { useStudioJobStateSetup } from './useStudioJobStateSetup';
+import { useCallback } from 'react';
+import { useJobSync } from './useJobSync';
+import { useSettingsSync } from './useSettingsSync';
+import { useTelemetrySync } from './useTelemetry';
 import { useDragDrop } from './useDragDrop';
+import { useKeyboardShortcuts } from './useKeyboardShortcuts';
+import { studioActions } from '../store/studioStore';
+import { useConfirmCancelOpen, useHasActiveJob, useItemCount } from '../store/selectors';
+import {
+  dismissCancelConfirmation,
+  ingestPaths,
+  openFiles,
+  requestCancelConfirmation,
+  startUpscale,
+} from '../store/studioCommands';
 
+/**
+ * Mounts the app's background wiring.
+ *
+ * This used to be the composition root: it constructed six hooks and merged
+ * them into one ~70-identifier object with six object spreads, whose
+ * ordering silently resolved collisions -- which is how two `batchItems`
+ * stores coexisted with the empty one winning, making batch mode
+ * unreachable. It also needed four mutable ref bridges, because three of
+ * those hooks each required a callback that lived on one of the others and
+ * they could not all be constructed first.
+ *
+ * There is nothing left to merge. State lives in the store, actions are
+ * module-scope functions, and components read the slices they need. What
+ * remains here is the handful of effects that have to be attached to a
+ * mounted component: the job/settings sync, drag-and-drop, and keyboard
+ * shortcuts.
+ */
 export function useStudioContainerSetup() {
-  const state = useStudioState();
-  const settings = useSettings(state.handleGpuReady);
-  const catalog = useModelCatalog(state.handleNotify);
+  useJobSync();
+  useSettingsSync();
+  useTelemetrySync();
 
-  const onCategorySelectRef = useRef<(cat: 'photos' | 'anime' | 'video') => void>((cat) =>
-    state.setCategory(cat)
-  );
-  const handleOpenFileRef = useRef<() => void>(() => {});
-  const requestCancelConfirmationRef = useRef<() => void>(() => {});
-  const handleDismissCancelRef = useRef<() => void>(() => {});
+  const { isDragOver } = useDragDrop(handleFilesDropped, studioActions.notify);
 
-  // useBatchSetup owns the single batchItems store (via useUpscaleQueue) and
-  // useMediaSelection needs to write into it -- but useBatchSetup also needs
-  // media's handleOpenFile for the Cmd+O shortcut, and the confirm-cancel
-  // callbacks that live on useStudioActions (which itself needs media's
-  // filePath/fileName). Break the three-way cycle with ref bridges for the
-  // callbacks; confirmCancelOpen itself is read directly since it's now
-  // owned by useStudioState, constructed before any of this.
-  const batch = useBatchSetup({
-    selectedGpu: settings.selectedGpu,
-    selectedModel: catalog.selectedModel,
-    scale: settings.scale,
-    tileSize: settings.tileSize,
-    customOutputPath: settings.customOutputPath,
-    isMuted: settings.isMuted,
-    activeJobId: state.activeJobId,
-    confirmCancelOpen: state.confirmCancelOpen,
-    requestCancelConfirmation: () => requestCancelConfirmationRef.current(),
-    handleDismissCancel: () => handleDismissCancelRef.current(),
-    setHistoryItems: state.setHistoryItems,
-    handleOpenFile: () => handleOpenFileRef.current(),
-    handleToggleNavTab: state.handleToggleNavTab,
-    setActiveNavTab: state.setActiveNavTab,
-    onNotify: state.handleNotify,
-  });
+  const hasActiveJob = useHasActiveJob();
+  const confirmCancelOpen = useConfirmCancelOpen();
+  const itemCount = useItemCount();
 
-  const media = useMediaSelection({
-    isMuted: settings.isMuted,
-    selectedModel: catalog.selectedModel,
-    setBatchItems: batch.setBatchItems,
-    onCategorySelect: (cat) => onCategorySelectRef.current(cat),
-    onNotify: state.handleNotify,
-    onResetJob: state.handleResetJob,
-  });
+  const handleStartUpscale = useCallback(() => {
+    void startUpscale();
+  }, []);
+  const handleOpenFile = useCallback(() => {
+    void openFiles();
+  }, []);
 
-  handleOpenFileRef.current = media.handleOpenFile;
-
-  const { isDragOver } = useDragDrop(media.handleFilesDropped, state.handleNotify);
-
-  const actions = useStudioActions({
-    filePath: media.filePath,
-    fileName: media.fileName,
-    isVideo: media.isVideo,
-    scale: settings.scale,
-    selectedModel: catalog.selectedModel,
-    selectedGpu: settings.selectedGpu,
-    gpus: settings.gpus,
-    tileSize: settings.tileSize,
-    customOutputPath: settings.customOutputPath,
-    isMuted: settings.isMuted,
-    batchItems: batch.batchItems,
-    handleStartBatchUpscale: batch.handleStartBatchUpscale,
-    supportedModels: catalog.supportedModels,
-    installedModels: catalog.installedModels,
-    activeJobId: state.activeJobId,
-    jobStatus: state.jobStatus,
-    confirmCancelOpen: state.confirmCancelOpen,
-    setConfirmCancelOpen: state.setConfirmCancelOpen,
-    setActiveJobId: state.setActiveJobId,
-    setJobStatus: state.setJobStatus,
-    setProgressVal: state.setProgressVal,
-    setStatusMessage: state.setStatusMessage,
-    setJobPhase: state.setJobPhase,
-    setEtaSeconds: state.setEtaSeconds,
-    setFps: state.setFps,
-    setRateStr: state.setRateStr,
-    setCategory: state.setCategory,
-    setSelectedModel: catalog.setSelectedModel,
-    setScale: settings.setScale,
-    setFilePath: media.setFilePath,
-    setFileName: media.setFileName,
-    setUpscaledPath: media.setUpscaledPath,
-    setIsVideo: media.setIsVideo,
-    setCurrentFileDims: media.setCurrentFileDims,
-    setBatchItems: batch.setBatchItems,
-    setActiveNavTab: state.setActiveNavTab,
-    onNotify: state.handleNotify,
-  });
-
-  onCategorySelectRef.current = actions.handleSelectCategory;
-  requestCancelConfirmationRef.current = actions.requestCancelConfirmation;
-  handleDismissCancelRef.current = actions.handleDismissCancel;
-
-  // The main Cancel button / Escape shortcut needs to reach whichever job is
-  // actually running -- a single-file studio job (state.activeJobId) or an
-  // in-flight batch (batch.isBatchRunning). Cancelling a batch stops every
-  // non-terminal item, not just the one currently processing.
-  const handleCancelUpscale = useCallback(() => {
-    if (batch.isBatchRunning) {
-      return batch.cancelBatch();
-    }
-    return actions.handleCancelUpscale();
-  }, [batch.isBatchRunning, batch.cancelBatch, actions.handleCancelUpscale]);
-
-  const studioJobState = useStudioJobStateSetup({
-    activeJobId: state.activeJobId,
-    activeJobIdRef: actions.activeJobIdRef,
-    jobSnapshotsRef: actions.jobSnapshotsRef,
-    pendingOutputPath: actions.pendingOutputPath,
-    jobStartTimeRef: actions.jobStartTimeRef,
-    currentFileDims: media.currentFileDims,
-    upscaledPath: media.upscaledPath,
-    selectedModel: catalog.selectedModel,
-    fileName: media.fileName,
-    filePath: media.filePath,
-    scale: settings.scale,
-    isVideo: media.isVideo,
-    isMuted: settings.isMuted,
-    setActiveJobId: state.setActiveJobId,
-    setProgressVal: state.setProgressVal,
-    setJobStatus: state.setJobStatus,
-    setJobPhase: state.setJobPhase,
-    setEtaSeconds: state.setEtaSeconds,
-    setFps: state.setFps,
-    setRateStr: state.setRateStr,
-    setStatusMessage: state.setStatusMessage,
-    setUpscaledPath: media.setUpscaledPath,
-    setHistoryItems: state.setHistoryItems,
-    refreshInstalledModels: catalog.refreshInstalledModels,
-    onNotify: state.handleNotify,
-  });
-
-  useStudioEvents({
-    handleQueueJobProgress: batch.handleQueueJobProgress,
-    studioJobState,
-    setDownloadingModelId: catalog.setDownloadingModelId,
-    setDownloadProgress: catalog.setDownloadProgress,
-    refreshInstalledModels: catalog.refreshInstalledModels,
-  });
-
-  const telemetry = useTelemetry({
-    gpus: settings.gpus,
-    selectedGpu: settings.selectedGpu,
-    jobStatus: state.jobStatus,
-    tileSize: settings.tileSize,
-  });
-
-  // More than one queued item means this is a batch run, not a single-file one.
-  const handleStartUpscale = () =>
-    batch.batchItems.length > 1 ? batch.handleStartBatchUpscale() : actions.handleStartUpscale();
-
-  return {
-    ...state,
-    ...settings,
-    ...catalog,
-    ...media,
-    ...actions,
-    ...batch,
-    ...telemetry,
+  useKeyboardShortcuts({
+    hasActiveJob,
+    confirmCancelOpen,
+    itemCount,
+    handleOpenFile,
     handleStartUpscale,
-    handleCancelUpscale,
-    handleCancelItem: actions.handleCancelUpscale,
-    isDragOver,
-    handleSelectModel: actions.handleSelectModel,
-    setScale: actions.handleSelectScale,
-    handleSelectDestinationFolder: settings.handleSelectDestinationFolder,
-    handleLoadHistoryItem: actions.handleSelectHistoryItem,
-  };
+    requestCancelConfirmation,
+    dismissCancelConfirmation,
+    toggleNavTab: studioActions.toggleNavTab,
+    setActiveNavTab: studioActions.setActiveNavTab,
+  });
+
+  return { isDragOver };
+}
+
+function handleFilesDropped(paths: string[]) {
+  void ingestPaths(paths);
 }

@@ -1,32 +1,25 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { NavTab } from '../store/studioStore';
 
 interface KeyboardShortcutsOptions {
-  activeJobId: string | null;
-  isBatchActive: boolean;
+  hasActiveJob: boolean;
   confirmCancelOpen: boolean;
-  batchItemsCount: number;
+  itemCount: number;
   handleOpenFile: () => void;
-  handleStartBatchUpscale: () => void;
-  handleCancelUpscale: () => void;
+  handleStartUpscale: () => void;
   requestCancelConfirmation: () => void;
-  handleDismissCancel: () => void;
-  handleToggleNavTab: (tab: 'models' | 'history' | 'settings' | 'about') => void;
-  setActiveNavTab: (tab: 'models' | 'history' | 'settings' | 'about' | null) => void;
+  dismissCancelConfirmation: () => void;
+  toggleNavTab: (tab: NavTab) => void;
+  setActiveNavTab: (tab: NavTab | null) => void;
 }
 
-export function useKeyboardShortcuts({
-  activeJobId,
-  isBatchActive,
-  confirmCancelOpen,
-  batchItemsCount,
-  handleOpenFile,
-  handleStartBatchUpscale,
-  handleCancelUpscale,
-  requestCancelConfirmation,
-  handleDismissCancel,
-  handleToggleNavTab,
-  setActiveNavTab,
-}: KeyboardShortcutsOptions) {
+export function useKeyboardShortcuts(options: KeyboardShortcutsOptions) {
+  // The listener is attached once and reads the latest options through a
+  // ref, rather than being torn down and re-attached every time a queue
+  // item's progress changes the values it closes over.
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement;
@@ -37,6 +30,18 @@ export function useKeyboardShortcuts({
           (activeEl as HTMLElement).isContentEditable);
 
       if (isInput) return;
+
+      const {
+        hasActiveJob,
+        confirmCancelOpen,
+        itemCount,
+        handleOpenFile,
+        handleStartUpscale,
+        requestCancelConfirmation,
+        dismissCancelConfirmation,
+        toggleNavTab,
+        setActiveNavTab,
+      } = optionsRef.current;
 
       const key = e.key.toLowerCase();
       const isCmd = e.metaKey || e.ctrlKey;
@@ -49,7 +54,7 @@ export function useKeyboardShortcuts({
 
       if (isCmd && e.key === 'Enter') {
         e.preventDefault();
-        if (batchItemsCount > 0) handleStartBatchUpscale();
+        if (itemCount > 0) handleStartUpscale();
         return;
       }
 
@@ -58,15 +63,12 @@ export function useKeyboardShortcuts({
           // Close the topmost overlay first -- previously Escape fell
           // through to the cancel/nav-close branch below even while the
           // confirm dialog was open, instead of dismissing the dialog.
-          handleDismissCancel();
-        } else if (isBatchActive) {
-          // No confirm dialog exists for batch cancellation yet, so this
-          // matches the batch Cancel button's own (also ungated) behavior.
-          handleCancelUpscale();
-        } else if (activeJobId) {
+          dismissCancelConfirmation();
+        } else if (hasActiveJob) {
           // Route through the same confirm dialog the "X" button uses,
           // instead of instantly killing a possibly hour-long job on an
-          // accidental keypress.
+          // accidental keypress. This now covers batch runs too, which
+          // previously took an ungated branch straight to cancellation.
           requestCancelConfirmation();
         } else {
           setActiveNavTab(null);
@@ -76,29 +78,17 @@ export function useKeyboardShortcuts({
 
       if (isCmd && key === 's') {
         e.preventDefault();
-        handleToggleNavTab('settings');
+        toggleNavTab('settings');
         return;
       }
 
       if (isCmd && key === 'h') {
         e.preventDefault();
-        handleToggleNavTab('history');
+        toggleNavTab('history');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    activeJobId,
-    isBatchActive,
-    confirmCancelOpen,
-    batchItemsCount,
-    handleOpenFile,
-    handleStartBatchUpscale,
-    handleCancelUpscale,
-    requestCancelConfirmation,
-    handleDismissCancel,
-    handleToggleNavTab,
-    setActiveNavTab,
-  ]);
+  }, []);
 }

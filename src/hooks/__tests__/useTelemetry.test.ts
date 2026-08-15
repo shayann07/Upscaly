@@ -1,14 +1,22 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { useTelemetry } from '../useTelemetry';
 import * as core from '@tauri-apps/api/core';
+import { useTelemetrySync } from '../useTelemetry';
+import { resetStudioStore, studioActions, studioStore } from '../../store/studioStore';
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }));
 
-describe('useTelemetry hook', () => {
-  it('reflects the real backend VRAM profile instead of a fabricated estimate', async () => {
+const state = () => studioStore.getState();
+
+beforeEach(() => {
+  resetStudioStore();
+  vi.mocked(core.invoke).mockReset();
+});
+
+describe('useTelemetrySync', () => {
+  it('mirrors the real backend VRAM profile instead of a fabricated estimate', async () => {
     vi.mocked(core.invoke).mockResolvedValueOnce({
       total_vram_mb: 6144,
       used_vram_mb: 3500,
@@ -19,14 +27,13 @@ describe('useTelemetry hook', () => {
       is_overflowing: false,
       status_message: 'Selected 512px tile.',
     });
+    studioActions.setTileSize(512);
 
-    const { result } = renderHook(() =>
-      useTelemetry({ gpus: [], selectedGpu: 0, jobStatus: 'idle', tileSize: 512 })
-    );
+    renderHook(() => useTelemetrySync());
 
     await waitFor(() => {
-      expect(result.current.activeVramGb).toBe('3.4 GB');
-      expect(result.current.isVramOverflowing).toBe(false);
+      expect(state().activeVramGb).toBe('3.4 GB');
+      expect(state().isVramOverflowing).toBe(false);
     });
   });
 
@@ -41,22 +48,28 @@ describe('useTelemetry hook', () => {
       is_overflowing: true,
       status_message: 'Over budget.',
     });
+    studioActions.setTileSize(999);
 
-    const { result } = renderHook(() =>
-      useTelemetry({ gpus: [], selectedGpu: 0, jobStatus: 'processing', tileSize: 999 })
-    );
+    renderHook(() => useTelemetrySync());
 
-    await waitFor(() => {
-      expect(result.current.isVramOverflowing).toBe(true);
-    });
+    await waitFor(() => expect(state().isVramOverflowing).toBe(true));
   });
 
-  it('reports SYSTEM RAM for the CPU-fallback pseudo-GPU without querying VRAM', () => {
-    const { result } = renderHook(() =>
-      useTelemetry({ gpus: [], selectedGpu: -1, jobStatus: 'idle', tileSize: 0 })
-    );
+  it('reports SYSTEM RAM for the CPU-fallback pseudo-GPU without querying VRAM', async () => {
+    studioActions.setSelectedGpu(-1);
 
-    expect(result.current.activeVramGb).toBe('SYSTEM RAM');
-    expect(result.current.isVramOverflowing).toBe(false);
+    renderHook(() => useTelemetrySync());
+
+    await waitFor(() => expect(state().activeVramGb).toBe('SYSTEM RAM'));
+    expect(state().isVramOverflowing).toBe(false);
+    expect(core.invoke).not.toHaveBeenCalled();
+  });
+
+  it('shows a placeholder rather than a number the backend has not reported', () => {
+    vi.mocked(core.invoke).mockReturnValue(new Promise(() => {}));
+
+    renderHook(() => useTelemetrySync());
+
+    expect(state().activeVramGb).toBe('—');
   });
 });

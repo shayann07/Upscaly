@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { GpuInfo } from '../lib/types';
 import { WindowControls } from './titlebar/WindowControls';
 import { TitlebarNav } from './titlebar/TitlebarNav';
@@ -43,7 +44,7 @@ function getTitlebarHandlers(p: TitlebarProps) {
   };
 }
 
-export function Titlebar(props: TitlebarProps) {
+function TitlebarImpl(props: TitlebarProps) {
   const {
     hasFiles = false,
     currentFile = null,
@@ -103,5 +104,7 @@ export function Titlebar(props: TitlebarProps) {
     </header>
   );
 }
+
+export const Titlebar = memo(TitlebarImpl);
 
 export default Titlebar;
