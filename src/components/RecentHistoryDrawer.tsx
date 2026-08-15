@@ -1,9 +1,11 @@
-import { HistoryEntry } from '../lib/types';
+import { HistoryEntry, ModelInfo } from '../lib/types';
 import { getMediaSrc } from '../lib/media';
 import { usePanelA11y } from '../hooks/usePanelA11y';
 
 interface RecentHistoryDrawerProps {
   history: HistoryEntry[];
+  /** Live catalog, used to turn a stored model id into a readable name. */
+  supportedModels?: ModelInfo[];
   onClose: () => void;
   onRestore?: (entry: HistoryEntry) => void;
   isOpen?: boolean;
@@ -14,6 +16,7 @@ interface RecentHistoryDrawerProps {
 
 export function RecentHistoryDrawer({
   history = [],
+  supportedModels = [],
   onClose,
   onRestore,
   isOpen = true,
@@ -21,6 +24,16 @@ export function RecentHistoryDrawer({
 }: RecentHistoryDrawerProps) {
   // Above the early return: hook order must not depend on isOpen.
   const panelRef = usePanelA11y<HTMLDivElement>(isOpen);
+
+  // Entries store the model id; the readable name comes from the live
+  // catalog so a renamed model reads correctly in history too. Older entries
+  // predate the id and carry only a name, so fall back to that.
+  const resolveModelLabel = (entry: HistoryEntry): string => {
+    const fromCatalog = entry.modelId
+      ? supportedModels.find((m) => m.id === entry.modelId)?.name
+      : undefined;
+    return fromCatalog || entry.modelName || entry.modelId || entry.model || 'RealESRGAN';
+  };
 
   if (isOpen === false) return null;
 
@@ -98,8 +111,7 @@ export function RecentHistoryDrawer({
                     {h.fileName || h.name || 'Upscaled Media'}
                   </div>
                   <div className="font-['Martian_Mono',monospace] text-[8.5px] text-[var(--text-dim)] tracking-[0.04em]">
-                    {h.meta ||
-                      `${(h.modelName || h.model || 'RealESRGAN').toUpperCase()} · ${h.scale || 4}×`}
+                    {h.meta || `${resolveModelLabel(h).toUpperCase()} · ${h.scale || 4}×`}
                   </div>
                 </div>
                 <div className="font-['Martian_Mono',monospace] text-[8px] text-[#4A453F] flex-none">

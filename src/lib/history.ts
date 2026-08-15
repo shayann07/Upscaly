@@ -3,7 +3,16 @@ export interface HistoryItem {
   fileName: string;
   originalPath: string;
   upscaledPath: string;
-  modelName: string;
+  /**
+   * Stable model identifier, e.g. `realesrgan-x4plus`. Display names are
+   * resolved from the live catalog at render time rather than frozen here:
+   * entries used to store the display name, which meant restoring one had to
+   * match catalogs by name and silently failed whenever the stored string
+   * disagreed with the current catalog's wording.
+   */
+  modelId: string;
+  /** Display name from older entries, kept only so they still render. */
+  modelName?: string;
   scale: number;
   isVideo: boolean;
   timestamp: number;

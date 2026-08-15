@@ -1,13 +1,12 @@
 import { useCallback } from 'react';
 import { useUpscaleQueue } from './useUpscaleQueue';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
-import { BatchItem, ModelInfo } from '../lib/types';
+import { BatchItem } from '../lib/types';
 import { addHistoryItem, HistoryItem } from '../lib/history';
 
 interface BatchSetupOptions {
   selectedGpu: number;
   selectedModel: string;
-  supportedModels: ModelInfo[];
   scale: number;
   tileSize: number;
   customOutputPath: string;
@@ -30,7 +29,6 @@ interface BatchSetupOptions {
 export function useBatchSetup({
   selectedGpu,
   selectedModel,
-  supportedModels,
   scale,
   tileSize,
   customOutputPath,
@@ -46,18 +44,19 @@ export function useBatchSetup({
 }: BatchSetupOptions) {
   const onItemCompleted = useCallback(
     (item: BatchItem, outputPath: string) => {
-      const meta = supportedModels.find((m) => m.id === selectedModel) || supportedModels[0];
+      // Model id, not display name -- see HistoryItem.modelId. This is also
+      // why the catalog is no longer needed here at all.
       const newHist = addHistoryItem({
         fileName: item.fileName || '',
         originalPath: item.filePath || '',
         upscaledPath: outputPath,
-        modelName: meta.name,
+        modelId: selectedModel,
         scale,
         isVideo: Boolean(item.isVideo),
       });
       setHistoryItems(newHist);
     },
-    [selectedModel, supportedModels, scale, setHistoryItems]
+    [selectedModel, scale, setHistoryItems]
   );
 
   const {
