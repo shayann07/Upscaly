@@ -19,6 +19,15 @@ use crate::video_pipeline::encoder::{reassemble_streaming, reassemble_with_encod
 pub struct VideoMetadata {
     pub fps_string: String,
     pub total_frames_estimate: Option<usize>,
+    /// Source frame dimensions, when ffprobe reported them.
+    ///
+    /// Only used to size the disk pre-flight check. That check became
+    /// resolution-dependent the moment intermediate frames went from JPEG to
+    /// PNG: a fixed per-frame byte figure is roughly right for a q:v2 JPEG at
+    /// any size, and roughly meaningless for a PNG, where a 4K frame costs
+    /// four times what a 1080p one does.
+    pub width: Option<u32>,
+    pub height: Option<u32>,
 }
 
 /// Staged-frame count at which the extractor is paused. ffmpeg decodes far
@@ -105,7 +114,7 @@ pub fn spawn_background_extraction(
     ffmpeg_binary: &str,
     fps_string: &str,
 ) -> Result<ExtractionControl, AppError> {
-    let input_frame_pattern = ctx.staging_dir.join("frame_%08d.jpg");
+    let input_frame_pattern = ctx.staging_dir.join("frame_%08d.png");
     let extract_args = vec![
         "-y".to_string(),
         "-threads".to_string(),
@@ -124,15 +133,25 @@ pub fn spawn_background_extraction(
         "cfr".to_string(),
         "-r".to_string(),
         fps_string.to_string(),
-        "-q:v".to_string(),
-        "2".to_string(),
-        // Pin full chroma resolution on the intermediate JPEG instead of
-        // letting ffmpeg fall back to default 4:2:0 -- more color detail
-        // for the upscaler to work with. (The previous "-pix_fmt rgb24"
-        // was a no-op here: mjpeg doesn't support rgb24, so ffmpeg was
-        // silently substituting its own default anyway.)
+        // Lossless intermediates. These frames were previously mjpeg at
+        // -q:v 2, which is visually good but still lossy -- and the loss
+        // landed in the worst possible place, on the *input* to the model.
+        // Every JPEG artifact in a source frame is something the upscaler
+        // then faithfully reconstructs at 4x, so the compression damage
+        // ends up magnified sixteen-fold in area in the final video. Images
+        // never went through this path; video did, which is why the quality
+        // gap between the two was real rather than imagined.
+        //
+        // The cost is disk, not time: PNG frames are far larger, which is
+        // what check_available_disk_space now has to account for.
         "-pix_fmt".to_string(),
-        "yuvj444p".to_string(),
+        "rgb24".to_string(),
+        "-compression_level".to_string(),
+        // PNG is lossless at every level; this only trades encoder CPU
+        // against file size. Low, because ffmpeg is racing the GPU here and
+        // these files are deleted within minutes -- spending CPU to shrink
+        // a temp file would slow extraction for no lasting benefit.
+        "1".to_string(),
         input_frame_pattern.to_string_lossy().to_string(),
     ];
 
@@ -395,8 +414,12 @@ pub fn run_overlapping_upscale_pipeline(
             effective_scale.to_string(),
             "-t".to_string(),
             exec_profile.tile_size.to_string(),
+            // The upscaled frames stay lossless too. Re-encoding them to
+            // JPEG here would have thrown away part of what the model just
+            // produced, immediately before handing them to the final video
+            // encoder to be compressed properly once.
             "-f".to_string(),
-            "jpg".to_string(),
+            "png".to_string(),
             "-j".to_string(),
             crate::engine::preset::apply_io_threads(&exec_profile.thread_arg, ctx.job.preset),
             "-v".to_string(),
@@ -659,6 +682,48 @@ pub fn run_overlapping_upscale_pipeline(
     Ok(final_completed)
 }
 
+/// Bytes a PNG frame of photographic content tends to occupy per pixel.
+///
+/// Raw RGB is 3.0; PNG's filtering and deflate typically reach roughly half
+/// that on camera footage, and rather better than that on flat or synthetic
+/// content. 1.5 is deliberately the pessimistic end of that range: the only
+/// consequence of over-estimating is a warning the user can act on, while
+/// under-estimating means the disk fills up an hour into a job.
+const PNG_BYTES_PER_PIXEL: u64 = 3;
+const PNG_BYTES_PER_PIXEL_DIVISOR: u64 = 2;
+
+/// Peak intermediate disk a video job will occupy.
+///
+/// Not simply `frames * (source + output)`. The two sides behave
+/// differently and conflating them badly overstated the requirement:
+///
+/// - Upscaled frames accumulate in `frames_out_dir` until reassembly, so
+///   every one of them is resident at peak.
+/// - Source frames do not. The extractor is suspended once staging reaches
+///   `EXTRACTION_HIGH_WATER` and consumed batches are deleted, so the staged
+///   side is bounded by that watermark plus the batch in flight, however
+///   long the video is.
+#[must_use]
+fn estimate_frame_disk_bytes(width: u32, height: u32, scale: u64, total_frames: usize) -> u64 {
+    let source_pixels = u64::from(width).saturating_mul(u64::from(height));
+    let png_bytes = |pixels: u64| {
+        pixels
+            .saturating_mul(PNG_BYTES_PER_PIXEL)
+            .saturating_div(PNG_BYTES_PER_PIXEL_DIVISOR)
+    };
+
+    let source_frame_bytes = png_bytes(source_pixels);
+    let output_frame_bytes = png_bytes(source_pixels.saturating_mul(scale).saturating_mul(scale));
+
+    let total = total_frames as u64;
+    // The +600 is the largest batch that can be staged past the watermark.
+    let staged_at_peak = total.min(EXTRACTION_HIGH_WATER as u64 + 600);
+
+    total
+        .saturating_mul(output_frame_bytes)
+        .saturating_add(staged_at_peak.saturating_mul(source_frame_bytes))
+}
+
 /// Pre-flight disk-space check: a long video can require tens of GB of
 /// intermediate source + upscaled frames. Fail fast with a clear error
 /// instead of letting the disk fill up mid-job, which previously produced a
@@ -674,23 +739,20 @@ fn check_available_disk_space(
     meta: &VideoMetadata,
     effective_scale: i32,
 ) -> Result<(), AppError> {
-    // Conservative per-frame estimate for a q:v2 JPEG source frame; the
-    // upscaled output frame is estimated to grow with the scaled pixel
-    // area (scale^2), which is intentionally generous since JPEG tends to
-    // compress larger images more efficiently per pixel, not less.
-    const SOURCE_FRAME_BYTES: u64 = 300_000;
-
     let Some(total_frames) = meta.total_frames_estimate else {
         // Unknown duration/frame count -- nothing reliable to estimate
         // against, so don't block the job over a guess.
         return Ok(());
     };
+    let (Some(width), Some(height)) = (meta.width, meta.height) else {
+        // Same reasoning: without the source resolution a PNG estimate
+        // would be a guess, and refusing a job over a guess is worse than
+        // not checking.
+        return Ok(());
+    };
 
-    let scale = effective_scale.max(1) as u64;
-    let scale_area = scale * scale;
-    let output_frame_bytes = SOURCE_FRAME_BYTES.saturating_mul(scale_area);
-    let required_bytes =
-        (total_frames as u64).saturating_mul(SOURCE_FRAME_BYTES.saturating_add(output_frame_bytes));
+    let scale = u64::from(effective_scale.max(1).cast_unsigned());
+    let required_bytes = estimate_frame_disk_bytes(width, height, scale, total_frames);
 
     match crate::model_manager::get_available_disk_space(&ctx.job_temp_dir) {
         Ok(available_bytes) if available_bytes < required_bytes => {
@@ -912,11 +974,18 @@ pub fn probe_video_metadata(app: &AppHandle, video_path: &str) -> Result<VideoMe
         "-select_streams",
         "v:0",
         "-show_entries",
-        "stream=r_frame_rate,avg_frame_rate,nb_frames,duration",
+        "stream=width,height,r_frame_rate,avg_frame_rate,nb_frames,duration",
         "-show_entries",
         "format=duration",
+        // Keys retained (the previous `:nokey=1` dropped them). The old
+        // parser identified each value by shape -- "contains a slash" meant
+        // fps, "parses as usize" meant frame count -- which worked only
+        // because no two requested fields shared a shape. Adding width and
+        // height breaks that immediately: both are bare integers and would
+        // have been read as the frame count. Parsing by key is what makes
+        // the field list safe to extend at all.
         "-of",
-        "default=noprint_wrappers=1:nokey=1",
+        "default=noprint_wrappers=1",
         video_path,
     ])
     .stdout(Stdio::piped())
@@ -1001,40 +1070,76 @@ pub fn probe_video_metadata(app: &AppHandle, video_path: &str) -> Result<VideoMe
     }
 
     if !succeeded {
-        return Ok(VideoMetadata {
-            fps_string: "30/1".to_string(),
-            total_frames_estimate: None,
-        });
+        return Ok(VideoMetadata::fallback());
     }
 
     let stdout = stdout_buf.lock().map(|g| g.clone()).unwrap_or_default();
-    let lines: Vec<&str> = stdout
-        .lines()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .collect();
+    Ok(parse_ffprobe_metadata(&stdout))
+}
 
-    let mut fps_str = "30/1".to_string();
+impl VideoMetadata {
+    /// What a failed or unreadable probe yields: a plausible frame rate and
+    /// nothing else claimed. Every consumer treats `None` as "don't know"
+    /// rather than substituting a figure of its own.
+    fn fallback() -> Self {
+        Self {
+            fps_string: "30/1".to_string(),
+            total_frames_estimate: None,
+            width: None,
+            height: None,
+        }
+    }
+}
+
+/// Parses `ffprobe -of default=noprint_wrappers=1` output into metadata.
+///
+/// Split out from the process plumbing so the parsing can be tested against
+/// real ffprobe output without spawning anything.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn parse_ffprobe_metadata(stdout: &str) -> VideoMetadata {
+    let mut fps_string = "30/1".to_string();
     let mut total_frames_estimate = None;
+    let mut width = None;
+    let mut height = None;
     let mut duration_sec: Option<f64> = None;
     let mut parsed_fps: Option<f64> = None;
 
-    for line in lines {
-        if line.contains('/') {
-            if let Some(fps_val) = parse_fps_fraction(line) {
-                if (1.0..=240.0).contains(&fps_val) {
-                    fps_str = line.to_string();
-                    parsed_fps = Some(fps_val);
+    for line in stdout.lines() {
+        let Some((key, value)) = line.trim().split_once('=') else {
+            continue;
+        };
+        let value = value.trim();
+        // ffprobe writes "N/A" for fields a container does not carry.
+        if value.is_empty() || value == "N/A" {
+            continue;
+        }
+
+        match key.trim() {
+            "width" => width = value.parse::<u32>().ok().filter(|w| *w > 0),
+            "height" => height = value.parse::<u32>().ok().filter(|h| *h > 0),
+            // r_frame_rate and avg_frame_rate both arrive; either is
+            // acceptable, and the last plausible one wins as before.
+            "r_frame_rate" | "avg_frame_rate" => {
+                if let Some(fps) = parse_fps_fraction(value) {
+                    if (1.0..=240.0).contains(&fps) {
+                        fps_string = value.to_string();
+                        parsed_fps = Some(fps);
+                    }
                 }
             }
-        } else if let Ok(frames) = line.parse::<usize>() {
-            if frames > 0 {
-                total_frames_estimate = Some(frames);
+            "nb_frames" => {
+                if let Ok(frames) = value.parse::<usize>() {
+                    if frames > 0 {
+                        total_frames_estimate = Some(frames);
+                    }
+                }
             }
-        } else if let Ok(dur) = line.parse::<f64>() {
-            if dur > 0.0 && duration_sec.is_none() {
-                duration_sec = Some(dur);
+            // Both the stream and the format carry one; the first usable
+            // value is kept, matching the previous behaviour.
+            "duration" if duration_sec.is_none() => {
+                duration_sec = value.parse::<f64>().ok().filter(|d| *d > 0.0);
             }
+            _ => {}
         }
     }
 
@@ -1047,10 +1152,12 @@ pub fn probe_video_metadata(app: &AppHandle, video_path: &str) -> Result<VideoMe
         }
     }
 
-    Ok(VideoMetadata {
-        fps_string: fps_str,
+    VideoMetadata {
+        fps_string,
         total_frames_estimate,
-    })
+        width,
+        height,
+    }
 }
 
 fn parse_fps_fraction(s: &str) -> Option<f64> {
@@ -1122,6 +1229,109 @@ pub fn resolve_ffprobe_binary(app: &AppHandle) -> Result<String, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Real `ffprobe -of default=noprint_wrappers=1` output for a 1080p clip.
+    const PROBE_1080P: &str = "\
+width=1920
+height=1080
+r_frame_rate=30/1
+avg_frame_rate=30/1
+nb_frames=294
+duration=9.800000
+duration=9.833333
+";
+
+    #[test]
+    fn test_parses_keyed_ffprobe_output() {
+        let meta = parse_ffprobe_metadata(PROBE_1080P);
+        assert_eq!(meta.width, Some(1920));
+        assert_eq!(meta.height, Some(1080));
+        assert_eq!(meta.fps_string, "30/1");
+        assert_eq!(meta.total_frames_estimate, Some(294));
+    }
+
+    #[test]
+    fn test_dimensions_are_never_mistaken_for_a_frame_count() {
+        // The reason the output format changed at all. Under the previous
+        // nokey parser every bare integer was read as nb_frames, so a
+        // 1920x1080 clip would have reported 1080 frames -- and the disk
+        // check sized against it would have been short by a factor of
+        // hundreds on any real video.
+        let meta = parse_ffprobe_metadata("width=1920\nheight=1080\nnb_frames=294\n");
+        assert_eq!(meta.total_frames_estimate, Some(294));
+    }
+
+    #[test]
+    fn test_frame_count_falls_back_to_duration_times_fps() {
+        // Containers that carry no nb_frames (many MKV/WebM files).
+        let meta = parse_ffprobe_metadata(
+            "width=1280\nheight=720\nr_frame_rate=25/1\nnb_frames=N/A\nduration=10.0\n",
+        );
+        assert_eq!(meta.total_frames_estimate, Some(250));
+    }
+
+    #[test]
+    fn test_unreported_fields_stay_none_rather_than_guessed() {
+        let meta = parse_ffprobe_metadata("width=N/A\nheight=\nnb_frames=0\n");
+        assert_eq!(meta.width, None);
+        assert_eq!(meta.height, None);
+        assert_eq!(meta.total_frames_estimate, None);
+        // A frame rate is always needed downstream, so this one field does
+        // carry a default -- and it is the same one the failure path uses.
+        assert_eq!(meta.fps_string, "30/1");
+    }
+
+    #[test]
+    fn test_implausible_frame_rates_are_rejected() {
+        // 0/0 is what ffprobe reports for streams with no usable rate.
+        let meta = parse_ffprobe_metadata("r_frame_rate=0/0\navg_frame_rate=1000/1\n");
+        assert_eq!(meta.fps_string, "30/1");
+    }
+
+    #[test]
+    fn test_garbage_lines_are_skipped_without_panicking() {
+        let meta = parse_ffprobe_metadata("\n[STREAM]\nnot a pair\n=\nwidth=640\nheight=480\n");
+        assert_eq!(meta.width, Some(640));
+        assert_eq!(meta.height, Some(480));
+    }
+
+    #[test]
+    fn test_disk_estimate_scales_with_the_output_area() {
+        // 4x is sixteen times the pixels of 1x, and the upscaled frames are
+        // the side that accumulates, so the estimate must track that.
+        // Not the full 16x: the staged side is the same at both factors, so
+        // it dilutes the ratio. 8x is the floor that holds once that fixed
+        // component is accounted for.
+        let at_1x = estimate_frame_disk_bytes(1920, 1080, 1, 300);
+        let at_4x = estimate_frame_disk_bytes(1920, 1080, 4, 300);
+        assert!(at_4x > at_1x * 8, "{at_1x} -> {at_4x}");
+    }
+
+    #[test]
+    fn test_staged_frames_are_bounded_by_the_extraction_watermark() {
+        // The extractor is suspended at EXTRACTION_HIGH_WATER and consumed
+        // batches are deleted, so the source side does not grow without
+        // bound. Counting it as `frames * source_bytes` overstated a long
+        // video's requirement and would refuse jobs that fit comfortably.
+        let short = estimate_frame_disk_bytes(1920, 1080, 4, 100);
+        let long = estimate_frame_disk_bytes(1920, 1080, 4, 100_000);
+
+        let output_only = |frames: u64| frames * (1920 * 1080 * 16 * 3 / 2);
+        // The long video's total is dominated by output frames alone; the
+        // staged side has stopped growing.
+        let staged_share = long - output_only(100_000);
+        assert!(staged_share < output_only(2600 / 4), "{staged_share}");
+        assert!(short > 0);
+    }
+
+    #[test]
+    fn test_disk_estimate_does_not_overflow_on_absurd_input() {
+        // 8K, 4x, and more frames than any real file: saturating arithmetic
+        // must yield a huge number rather than wrapping to a small one that
+        // would silently pass the check.
+        let huge = estimate_frame_disk_bytes(7680, 4320, 4, usize::MAX);
+        assert_eq!(huge, u64::MAX);
+    }
 
     fn extraction_control() -> ExtractionControl {
         ExtractionControl {
