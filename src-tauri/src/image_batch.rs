@@ -18,6 +18,12 @@
 //! observation rather than inference: a member succeeded if its output file
 //! was actually produced, regardless of what the shared process's exit code
 //! claimed about the batch as a whole.
+//!
+//! Nor do members share a fate in time. Each is handed to its reserved
+//! output path and marked finished the moment its own image is done, rather
+//! than waiting for the slowest member of the group. That is what keeps a
+//! late "cancel everything" from discarding results the user already has:
+//! cancellation can only stop work that has not happened yet.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -45,13 +51,11 @@ use crate::video_pipeline::context::TempFolderGuard;
 /// and a group of 8 already reaches 92% of it, 16 reaches 96%. Going from 16
 /// to 32 buys ~2%.
 ///
-/// What that 2% costs is the other half of the trade. Members are finalised
-/// only when the shared run ends, so a member whose output was produced
-/// early still reads as running, is still cancellable, and has its output
-/// discarded if the whole group is then cancelled. The bigger the group, the
-/// more finished-but-unfinalised work a single "cancel all" can throw away.
-/// 32 is the outer bound of that exposure; delivering members as their
-/// outputs appear would remove it, and is the obvious next move here.
+/// Group size no longer costs the user anything if they change their mind:
+/// members are delivered and finalised the moment their own image is
+/// finished, so cancelling the group only ever stops work that had not been
+/// done yet. 32 is simply where the remaining gain stops being worth the
+/// extra staging on disk.
 pub const MAX_BATCH_SIZE: usize = 32;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(120);
@@ -190,8 +194,45 @@ fn prepare_dirs(app: &AppHandle, group_id: &str) -> Result<(BatchDirs, TempFolde
 /// front of it and restarts for each one.
 fn produced_count(output_dir: &Path, member_count: usize) -> usize {
     (0..member_count)
-        .take_while(|i| output_dir.join(format!("{}.png", member_stem(*i))).exists())
+        .take_while(|i| is_complete_png(&output_dir.join(format!("{}.png", member_stem(*i)))))
         .count()
+}
+
+/// Whether a PNG on disk has been written all the way through.
+///
+/// "The file exists" is not "the file is finished": the engine's save threads
+/// create the file and then fill it, so a member handed over on existence
+/// alone could be a truncated image delivered to the user and marked
+/// succeeded. Every PNG ends with a fixed 12-byte `IEND` chunk, written only
+/// once the image is complete, so the last twelve bytes answer the question
+/// exactly -- no guessing from file sizes settling, and no dependence on how
+/// many save threads the profile happens to use. Outputs are always PNG here
+/// because the batch forces `-f png`.
+fn is_complete_png(path: &Path) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+
+    const IEND: [u8; 12] = [
+        0x00, 0x00, 0x00, 0x00, b'I', b'E', b'N', b'D', 0xAE, 0x42, 0x60, 0x82,
+    ];
+    const IEND_LEN: i64 = 12;
+
+    let Ok(mut file) = fs::File::open(path) else {
+        return false;
+    };
+    if file.seek(SeekFrom::End(-IEND_LEN)).is_err() {
+        return false;
+    }
+    let mut tail = [0u8; IEND.len()];
+    file.read_exact(&mut tail).is_ok() && tail == IEND
+}
+
+/// Which members can be handed over now: everything below the completed
+/// frontier that has not already been delivered, and that the user has not
+/// cancelled.
+fn newly_deliverable(produced: usize, delivered: &[bool], cancelled: &[bool]) -> Vec<usize> {
+    (0..produced)
+        .filter(|&i| !delivered[i] && !cancelled[i])
+        .collect()
 }
 
 /// The percentage to report for each member, given how far the run has got.
@@ -331,6 +372,12 @@ fn run_image_batch_inner(
     // file list once at startup, so removing a file it still intends to open
     // would fail the whole batch to save one image's worth of GPU time.
     let mut announced_cancel = vec![false; members.len()];
+    // Members handed over to their reserved output path mid-run. Once a
+    // member is delivered it is finished and out of reach of a later
+    // cancellation -- work that is already done cannot be undone, and
+    // discarding it would be the batch throwing away results the user had
+    // already paid for.
+    let mut delivered = vec![false; members.len()];
     let mut stderr_log = String::new();
 
     loop {
@@ -343,7 +390,16 @@ fn run_image_batch_inner(
                     let _ = child.kill();
                 }
             }
-            return Ok(members.iter().map(|_| Err(AppError::Cancelled)).collect());
+            return Ok(delivered
+                .iter()
+                .map(|&done| {
+                    if done {
+                        Ok(())
+                    } else {
+                        Err(AppError::Cancelled)
+                    }
+                })
+                .collect());
         }
 
         let current_pct = {
@@ -370,10 +426,40 @@ fn run_image_batch_inner(
         };
 
         let produced = produced_count(&dirs.output, members.len());
+
+        // Hand over everything that has finished, rather than holding the
+        // whole group hostage to its slowest member. Each row reaches its
+        // terminal state (and writes its history entry) the moment its own
+        // image is done.
+        let cancelled: Vec<bool> = members
+            .iter()
+            .map(|m| m.cancel_requested.load(Ordering::SeqCst))
+            .collect();
+        for index in newly_deliverable(produced, &delivered, &cancelled) {
+            let member = &members[index];
+            let source = dirs.output.join(format!("{}.png", member_stem(index)));
+            match deliver_output(&source, &member.job.output_path) {
+                Ok(()) => {
+                    delivered[index] = true;
+                    store.transition(app, &member.job.id, JobState::Succeeded, Some("Complete"));
+                }
+                Err(err) => {
+                    // Leave it undelivered; the end-of-run pass reports it
+                    // against whatever the shared process had to say.
+                    eprintln!("batch delivery failed for {}: {err}", member.job.id);
+                }
+            }
+        }
+
         let percentages = member_percentages(members.len(), produced, current_pct);
 
         for (index, member) in members.iter().enumerate() {
-            if member.cancel_requested.load(Ordering::SeqCst) {
+            // A delivered member is finished; it has nothing left to report,
+            // and a cancellation arriving now cannot take it back.
+            if delivered[index] {
+                continue;
+            }
+            if cancelled[index] {
                 if !announced_cancel[index] {
                     announced_cancel[index] = true;
                     store.transition(
@@ -406,7 +492,12 @@ fn run_image_batch_inner(
         thread::sleep(POLL_INTERVAL);
     }
 
-    Ok(collect_outcomes(members, &dirs.output, &stderr_log))
+    Ok(collect_outcomes(
+        members,
+        &dirs.output,
+        &stderr_log,
+        &delivered,
+    ))
 }
 
 /// Decides each member's fate from what is actually on disk.
@@ -414,22 +505,33 @@ fn collect_outcomes(
     members: &[BatchMember],
     output_dir: &Path,
     stderr_log: &str,
+    delivered: &[bool],
 ) -> Vec<Result<(), AppError>> {
     members
         .iter()
         .enumerate()
         .map(|(index, member)| {
+            // Already handed over during the run. Its result is on disk at
+            // the reserved path and its row is terminal; nothing here gets
+            // to reconsider that.
+            if delivered[index] {
+                return Ok(());
+            }
+
             let produced = output_dir.join(format!("{}.png", member_stem(index)));
 
             if member.cancel_requested.load(Ordering::SeqCst) {
-                // The engine may well have produced this one before the
-                // cancel landed. Discard it: a cancelled job must not leave
-                // an output behind.
+                // The engine may have produced this one between the cancel
+                // landing and the process stopping. It was never delivered,
+                // so discard it: a cancelled job leaves no output behind.
                 let _ = fs::remove_file(&produced);
                 return Err(AppError::Cancelled);
             }
 
-            if !produced.exists() {
+            if !is_complete_png(&produced) {
+                // Either nothing was written, or the process died partway
+                // through writing it. A half-written image is not a result.
+                let _ = fs::remove_file(&produced);
                 return Err(AppError::exec(format!(
                     "No output was produced for this image by the shared batch process. {stderr_log}"
                 )));
@@ -570,20 +672,78 @@ mod tests {
         assert!(pcts[0] < 100.0);
     }
 
+    const IEND_BYTES: [u8; 12] = [
+        0x00, 0x00, 0x00, 0x00, b'I', b'E', b'N', b'D', 0xAE, 0x42, 0x60, 0x82,
+    ];
+
+    /// A file that looks like a finished PNG to `is_complete_png`.
+    fn write_complete_png(path: &Path) {
+        let mut bytes = b"\x89PNG\r\n\x1a\n....pixels....".to_vec();
+        bytes.extend_from_slice(&IEND_BYTES);
+        fs::write(path, bytes).unwrap();
+    }
+
+    /// A file the engine has created but not finished writing.
+    fn write_partial_png(path: &Path) {
+        fs::write(path, b"\x89PNG\r\n\x1a\n....half the pixels....").unwrap();
+    }
+
     #[test]
-    fn test_produced_count_stops_at_the_first_gap() {
+    fn test_completeness_is_decided_by_the_png_end_marker() {
+        let dir = std::env::temp_dir().join("upscaly_png_complete");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        write_complete_png(&dir.join("done.png"));
+        write_partial_png(&dir.join("half.png"));
+        fs::write(dir.join("empty.png"), b"").unwrap();
+
+        assert!(is_complete_png(&dir.join("done.png")));
+        // Existing and non-empty, but still being written. Delivering this
+        // would hand the user a truncated image marked as succeeded.
+        assert!(!is_complete_png(&dir.join("half.png")));
+        assert!(!is_complete_png(&dir.join("empty.png")));
+        assert!(!is_complete_png(&dir.join("missing.png")));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_produced_count_stops_at_the_first_gap_or_unfinished_file() {
         let dir = std::env::temp_dir().join("upscaly_produced_count");
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
 
-        fs::write(dir.join("0000.png"), b"x").unwrap();
-        fs::write(dir.join("0001.png"), b"x").unwrap();
+        write_complete_png(&dir.join("0000.png"));
+        write_complete_png(&dir.join("0001.png"));
         // A gap, then a later file: the frontier is contiguous, so this
         // must not be counted as three done.
-        fs::write(dir.join("0003.png"), b"x").unwrap();
+        write_complete_png(&dir.join("0003.png"));
 
         assert_eq!(produced_count(&dir, 4), 2);
+
+        // Filling the gap with a file that is still being written must not
+        // advance the frontier either -- save threads can finish out of
+        // order, so a later file existing says nothing about this one.
+        write_partial_png(&dir.join("0002.png"));
+        assert_eq!(produced_count(&dir, 4), 2);
+
+        write_complete_png(&dir.join("0002.png"));
+        assert_eq!(produced_count(&dir, 4), 4);
+
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_newly_deliverable_skips_delivered_and_cancelled_members() {
+        // Frontier at 4: members 0..3 are finished. 0 is already handed
+        // over, 2 was cancelled, 4 has not finished yet.
+        let delivered = [true, false, false, false, false];
+        let cancelled = [false, false, true, false, false];
+
+        assert_eq!(newly_deliverable(4, &delivered, &cancelled), vec![1, 3]);
+        // Nothing finished yet means nothing to hand over.
+        assert!(newly_deliverable(0, &delivered, &cancelled).is_empty());
     }
 
     #[test]
@@ -591,18 +751,68 @@ mod tests {
         let dir = std::env::temp_dir().join("upscaly_batch_outcomes");
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("0000.png"), b"produced anyway").unwrap();
+        write_complete_png(&dir.join("0000.png"));
 
         let members = vec![BatchMember {
             job: image_job("a"),
             cancel_requested: Arc::new(AtomicBool::new(true)),
         }];
 
-        let outcomes = collect_outcomes(&members, &dir, "");
+        let outcomes = collect_outcomes(&members, &dir, "", &[false]);
         assert!(outcomes[0].as_ref().is_err_and(AppError::is_cancellation));
         // The engine can finish an image between the cancel landing and the
-        // process stopping; that result must not survive.
+        // process stopping. That one was never handed over, so it goes.
         assert!(!dir.join("0000.png").exists());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_a_delivered_member_survives_a_later_cancellation() {
+        let dir = std::env::temp_dir().join("upscaly_batch_delivered");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        // Delivered mid-run: its output already sits at the reserved path,
+        // and nothing is left in the batch directory.
+        let members = vec![BatchMember {
+            job: image_job("a"),
+            cancel_requested: Arc::new(AtomicBool::new(true)),
+        }];
+
+        let outcomes = collect_outcomes(&members, &dir, "", &[true]);
+
+        // Cancelling after the fact cannot undo work that is already done
+        // and already in the user's hands.
+        assert!(outcomes[0].is_ok());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_a_half_written_output_is_a_failure_not_a_result() {
+        let dir = std::env::temp_dir().join("upscaly_batch_truncated");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let out = dir.join("delivered.png");
+        let _ = fs::remove_file(&out);
+        let mut job = image_job("a");
+        job.output_path = out.to_string_lossy().to_string();
+
+        // The process died partway through writing this one. It exists and
+        // is non-empty, which is exactly why size alone cannot be trusted.
+        write_partial_png(&dir.join("0000.png"));
+
+        let members = vec![BatchMember {
+            job,
+            cancel_requested: Arc::new(AtomicBool::new(false)),
+        }];
+        let outcomes = collect_outcomes(&members, &dir, "killed", &[false]);
+
+        assert!(outcomes[0].is_err());
+        // A truncated image must never reach the user's output path.
+        assert!(!out.exists());
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -621,7 +831,7 @@ mod tests {
         let job_b = image_job("b");
 
         // Only the first member's output was produced.
-        fs::write(dir.join("0000.png"), b"real output").unwrap();
+        write_complete_png(&dir.join("0000.png"));
 
         let members = vec![
             BatchMember {
@@ -634,7 +844,12 @@ mod tests {
             },
         ];
 
-        let outcomes = collect_outcomes(&members, &dir, "Engine exited with code 1: vk error");
+        let outcomes = collect_outcomes(
+            &members,
+            &dir,
+            "Engine exited with code 1: vk error",
+            &[false, false],
+        );
 
         // One failure in a shared process must not fail its neighbours.
         assert!(outcomes[0].is_ok());

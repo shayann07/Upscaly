@@ -346,6 +346,20 @@ impl JobQueueService {
 
                 for (member, res) in members.iter().zip(results) {
                     let job = &member.job;
+
+                    // A batch member the runner already finalised -- handed
+                    // over the moment its own image finished, or cancelled
+                    // mid-run -- is terminal in the store already. Re-running
+                    // the finalisation below would let a cancel that arrived
+                    // afterwards delete an output that was delivered before
+                    // it. Work that is done is done.
+                    if JobStore::global()
+                        .state_of(&job.id)
+                        .is_some_and(|state| state.is_terminal())
+                    {
+                        service.cleanup_job(&job.id, &job.output_path);
+                        continue;
+                    }
                     // Cancellation is carried by the error type rather than
                     // by a magic message: `AppError::Cancelled` says exactly
                     // this and cannot be confused with a failure that
