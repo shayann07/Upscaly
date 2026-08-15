@@ -66,6 +66,7 @@ export type {
   GpuDevice,
   JobSnapshot,
   JobsDelta,
+  OutputFormat,
   QualityPreset,
   UpscaleJobHandle,
   UpscaleRequest,

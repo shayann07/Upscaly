@@ -34,6 +34,7 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
 
+use crate::engine::output_format::OutputFormat;
 use crate::error::AppError;
 use crate::job_queue::{resolve_effective_scale, sanitize_job_id, Job};
 use crate::job_state::JobState;
@@ -78,6 +79,9 @@ pub fn can_group_with(first: &Job, other: &Job) -> bool {
         // whether -x is passed, so two jobs on different presets are simply
         // not the same invocation.
         && first.preset == other.preset
+        // Becomes the `-f` argument, and decides both the extension the
+        // output lands under and how completeness is detected.
+        && first.output_format == other.output_format
 }
 
 /// One job's participation in a shared run.
@@ -196,38 +200,76 @@ fn prepare_dirs(app: &AppHandle, group_id: &str) -> Result<(BatchDirs, TempFolde
 /// image currently being worked on. This is the progress signal rather than
 /// the percentage the engine prints, which describes only the image in
 /// front of it and restarts for each one.
-fn produced_count(output_dir: &Path, member_count: usize) -> usize {
+fn produced_count(output_dir: &Path, member_count: usize, format: OutputFormat) -> usize {
     (0..member_count)
-        .take_while(|i| is_complete_png(&output_dir.join(format!("{}.png", member_stem(*i)))))
+        .take_while(|i| is_complete_image(&member_output(output_dir, *i, format), format))
         .count()
 }
 
-/// Whether a PNG on disk has been written all the way through.
+/// Where member `index`'s output lands inside the shared output directory.
+fn member_output(output_dir: &Path, index: usize, format: OutputFormat) -> PathBuf {
+    output_dir.join(format!("{}.{}", member_stem(index), format.extension()))
+}
+
+/// Reads the last `n` bytes of a file, or `None` if it is shorter than that.
+fn read_tail(path: &Path, n: usize) -> Option<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = fs::File::open(path).ok()?;
+    let offset = i64::try_from(n).ok()?;
+    file.seek(SeekFrom::End(-offset)).ok()?;
+    let mut tail = vec![0u8; n];
+    file.read_exact(&mut tail).ok()?;
+    Some(tail)
+}
+
+/// Whether an image on disk has been written all the way through.
 ///
 /// "The file exists" is not "the file is finished": the engine's save threads
 /// create the file and then fill it, so a member handed over on existence
 /// alone could be a truncated image delivered to the user and marked
-/// succeeded. Every PNG ends with a fixed 12-byte `IEND` chunk, written only
-/// once the image is complete, so the last twelve bytes answer the question
-/// exactly -- no guessing from file sizes settling, and no dependence on how
-/// many save threads the profile happens to use. Outputs are always PNG here
-/// because the batch forces `-f png`.
-fn is_complete_png(path: &Path) -> bool {
-    use std::io::{Read, Seek, SeekFrom};
+/// succeeded. Each container has a terminator written only once the image is
+/// complete, so its tail answers the question exactly -- no guessing from
+/// file sizes settling, and no dependence on how many save threads the
+/// profile happens to use.
+fn is_complete_image(path: &Path, format: OutputFormat) -> bool {
+    match format {
+        // A fixed 12-byte IEND chunk.
+        OutputFormat::Png => {
+            const IEND: [u8; 12] = [
+                0x00, 0x00, 0x00, 0x00, b'I', b'E', b'N', b'D', 0xAE, 0x42, 0x60, 0x82,
+            ];
+            read_tail(path, IEND.len()).is_some_and(|tail| tail == IEND)
+        }
+        // The EOI marker. Unlike IEND this is only two bytes, so it could in
+        // principle appear as the final two bytes of a truncated file by
+        // chance -- but the engine writes each file once, sequentially, and
+        // a partial write ending exactly on FFD9 would have to be a
+        // coincidence at the one offset that matters.
+        OutputFormat::Jpg => read_tail(path, 2).is_some_and(|tail| tail == [0xFF, 0xD9]),
+        // WEBP is RIFF: bytes 4..8 hold the payload length, and the file is
+        // complete when it is that length plus the 8-byte header. A size
+        // check rather than a terminator, because RIFF has no end marker.
+        OutputFormat::Webp => is_complete_webp(path),
+    }
+}
 
-    const IEND: [u8; 12] = [
-        0x00, 0x00, 0x00, 0x00, b'I', b'E', b'N', b'D', 0xAE, 0x42, 0x60, 0x82,
-    ];
-    const IEND_LEN: i64 = 12;
+fn is_complete_webp(path: &Path) -> bool {
+    use std::io::Read;
 
     let Ok(mut file) = fs::File::open(path) else {
         return false;
     };
-    if file.seek(SeekFrom::End(-IEND_LEN)).is_err() {
+    let mut header = [0u8; 12];
+    if file.read_exact(&mut header).is_err() {
         return false;
     }
-    let mut tail = [0u8; IEND.len()];
-    file.read_exact(&mut tail).is_ok() && tail == IEND
+    if &header[0..4] != b"RIFF" || &header[8..12] != b"WEBP" {
+        return false;
+    }
+    let declared = u32::from_le_bytes([header[4], header[5], header[6], header[7]]);
+    let expected = u64::from(declared).saturating_add(8);
+    fs::metadata(path).is_ok_and(|m| m.len() >= expected && expected > 8)
 }
 
 /// Which members can be handed over now: everything below the completed
@@ -304,10 +346,10 @@ fn build_args(job: &Job, dirs: &BatchDirs, app: &AppHandle) -> (Vec<String>, i32
         "-j".to_string(),
         crate::engine::preset::apply_io_threads(&exec_profile.thread_arg, job.preset),
         // Pin the output extension so the produced file name is derivable
-        // from the staged one. build_output_path already settles on PNG for
-        // every image job, so this is not a second opinion about format.
+        // from the staged one. Same value build_output_path used to name the
+        // reserved path, so this is not a second opinion about format.
         "-f".to_string(),
-        "png".to_string(),
+        job.output_format.extension().to_string(),
         "-v".to_string(),
     ];
     if job.preset.profile().tta {
@@ -368,6 +410,7 @@ fn run_image_batch_inner(
         stage_input(Path::new(&member.job.input_path), &destination)?;
     }
 
+    let output_format = members[0].job.output_format;
     let (args, effective_tile) = build_args(&members[0].job, &dirs, app);
     let handle = StdProcessRunner::new().spawn(&sidecar_path, &args)?;
     {
@@ -449,7 +492,7 @@ fn run_image_batch_inner(
             }
         };
 
-        let produced = produced_count(&dirs.output, members.len());
+        let produced = produced_count(&dirs.output, members.len(), output_format);
 
         // Hand over everything that has finished, rather than holding the
         // whole group hostage to its slowest member. Each row reaches its
@@ -461,7 +504,7 @@ fn run_image_batch_inner(
             .collect();
         for index in newly_deliverable(produced, &delivered, &cancelled) {
             let member = &members[index];
-            let source = dirs.output.join(format!("{}.png", member_stem(index)));
+            let source = member_output(&dirs.output, index, output_format);
             match deliver_output(&source, &member.job.output_path) {
                 Ok(()) => {
                     delivered[index] = true;
@@ -522,6 +565,7 @@ fn run_image_batch_inner(
         &stderr_log,
         &delivered,
         vram_exhausted.then_some(effective_tile),
+        output_format,
     ))
 }
 
@@ -537,6 +581,7 @@ fn collect_outcomes(
     stderr_log: &str,
     delivered: &[bool],
     vram_exhausted_tile: Option<i32>,
+    format: OutputFormat,
 ) -> Vec<Result<(), AppError>> {
     members
         .iter()
@@ -549,7 +594,7 @@ fn collect_outcomes(
                 return Ok(());
             }
 
-            let produced = output_dir.join(format!("{}.png", member_stem(index)));
+            let produced = member_output(output_dir, index, format);
 
             if member.cancel_requested.load(Ordering::SeqCst) {
                 // The engine may have produced this one between the cancel
@@ -559,7 +604,7 @@ fn collect_outcomes(
                 return Err(AppError::Cancelled);
             }
 
-            if !is_complete_png(&produced) {
+            if !is_complete_image(&produced, format) {
                 // Either nothing was written, or the process died partway
                 // through writing it. A half-written image is not a result.
                 let _ = fs::remove_file(&produced);
@@ -591,6 +636,7 @@ mod tests {
             tile_size: 256,
             is_video: false,
             preset: crate::engine::preset::QualityPreset::Balanced,
+            output_format: OutputFormat::Png,
         }
     }
 
@@ -731,6 +777,77 @@ mod tests {
         fs::write(path, b"\x89PNG\r\n\x1a\n....half the pixels....").unwrap();
     }
 
+    /// A RIFF/WEBP container whose declared payload length matches its size.
+    fn write_webp(path: &Path, payload: &[u8], declared_len: u32) {
+        let mut bytes = b"RIFF".to_vec();
+        bytes.extend_from_slice(&declared_len.to_le_bytes());
+        bytes.extend_from_slice(b"WEBP");
+        bytes.extend_from_slice(payload);
+        fs::write(path, bytes).unwrap();
+    }
+
+    #[test]
+    fn test_completeness_is_format_specific() {
+        // Each container is finished by a different signal, and using the
+        // PNG rule on a JPEG would mean either never delivering it or --
+        // worse -- delivering it half-written and marking it succeeded.
+        let dir = std::env::temp_dir().join("upscaly_format_complete");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        // JPEG: the two-byte EOI marker.
+        fs::write(dir.join("done.jpg"), b"\xFF\xD8....scan data....\xFF\xD9").unwrap();
+        fs::write(dir.join("half.jpg"), b"\xFF\xD8....scan da").unwrap();
+        assert!(is_complete_image(&dir.join("done.jpg"), OutputFormat::Jpg));
+        assert!(!is_complete_image(&dir.join("half.jpg"), OutputFormat::Jpg));
+
+        // WEBP: RIFF declares its payload length up front, so a short file
+        // is detectable even though the container has no end marker.
+        // "WEBP" + 12 bytes of payload = 16 bytes after the length field.
+        write_webp(&dir.join("done.webp"), b"vp8ldatadata", 16);
+        write_webp(&dir.join("half.webp"), b"vp8l", 16);
+        assert!(is_complete_image(
+            &dir.join("done.webp"),
+            OutputFormat::Webp
+        ));
+        assert!(!is_complete_image(
+            &dir.join("half.webp"),
+            OutputFormat::Webp
+        ));
+
+        // A file that is not the format claimed is not "complete" either.
+        write_complete_png(&dir.join("actually.png"));
+        assert!(!is_complete_image(
+            &dir.join("actually.png"),
+            OutputFormat::Webp
+        ));
+        assert!(!is_complete_image(
+            &dir.join("missing.jpg"),
+            OutputFormat::Jpg
+        ));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_member_output_follows_the_chosen_format() {
+        let dir = Path::new("C:\\tmp");
+        assert!(member_output(dir, 0, OutputFormat::Png).ends_with("0000.png"));
+        assert!(member_output(dir, 7, OutputFormat::Jpg).ends_with("0007.jpg"));
+        assert!(member_output(dir, 12, OutputFormat::Webp).ends_with("0012.webp"));
+    }
+
+    #[test]
+    fn test_a_differing_output_format_prevents_grouping() {
+        // -f is a process argument, so two jobs wanting different containers
+        // cannot be the same invocation -- and the completeness check that
+        // decides when each member is deliverable is format-specific too.
+        let base = image_job("a");
+        let mut other = image_job("b");
+        other.output_format = OutputFormat::Jpg;
+        assert!(!can_group_with(&base, &other));
+    }
+
     #[test]
     fn test_completeness_is_decided_by_the_png_end_marker() {
         let dir = std::env::temp_dir().join("upscaly_png_complete");
@@ -741,12 +858,18 @@ mod tests {
         write_partial_png(&dir.join("half.png"));
         fs::write(dir.join("empty.png"), b"").unwrap();
 
-        assert!(is_complete_png(&dir.join("done.png")));
+        assert!(is_complete_image(&dir.join("done.png"), OutputFormat::Png));
         // Existing and non-empty, but still being written. Delivering this
         // would hand the user a truncated image marked as succeeded.
-        assert!(!is_complete_png(&dir.join("half.png")));
-        assert!(!is_complete_png(&dir.join("empty.png")));
-        assert!(!is_complete_png(&dir.join("missing.png")));
+        assert!(!is_complete_image(&dir.join("half.png"), OutputFormat::Png));
+        assert!(!is_complete_image(
+            &dir.join("empty.png"),
+            OutputFormat::Png
+        ));
+        assert!(!is_complete_image(
+            &dir.join("missing.png"),
+            OutputFormat::Png
+        ));
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -763,16 +886,16 @@ mod tests {
         // must not be counted as three done.
         write_complete_png(&dir.join("0003.png"));
 
-        assert_eq!(produced_count(&dir, 4), 2);
+        assert_eq!(produced_count(&dir, 4, OutputFormat::Png), 2);
 
         // Filling the gap with a file that is still being written must not
         // advance the frontier either -- save threads can finish out of
         // order, so a later file existing says nothing about this one.
         write_partial_png(&dir.join("0002.png"));
-        assert_eq!(produced_count(&dir, 4), 2);
+        assert_eq!(produced_count(&dir, 4, OutputFormat::Png), 2);
 
         write_complete_png(&dir.join("0002.png"));
-        assert_eq!(produced_count(&dir, 4), 4);
+        assert_eq!(produced_count(&dir, 4, OutputFormat::Png), 4);
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -801,7 +924,7 @@ mod tests {
             cancel_requested: Arc::new(AtomicBool::new(true)),
         }];
 
-        let outcomes = collect_outcomes(&members, &dir, "", &[false], None);
+        let outcomes = collect_outcomes(&members, &dir, "", &[false], None, OutputFormat::Png);
         assert!(outcomes[0].as_ref().is_err_and(AppError::is_cancellation));
         // The engine can finish an image between the cancel landing and the
         // process stopping. That one was never handed over, so it goes.
@@ -823,7 +946,7 @@ mod tests {
             cancel_requested: Arc::new(AtomicBool::new(true)),
         }];
 
-        let outcomes = collect_outcomes(&members, &dir, "", &[true], None);
+        let outcomes = collect_outcomes(&members, &dir, "", &[true], None, OutputFormat::Png);
 
         // Cancelling after the fact cannot undo work that is already done
         // and already in the user's hands.
@@ -851,7 +974,8 @@ mod tests {
             job,
             cancel_requested: Arc::new(AtomicBool::new(false)),
         }];
-        let outcomes = collect_outcomes(&members, &dir, "killed", &[false], None);
+        let outcomes =
+            collect_outcomes(&members, &dir, "killed", &[false], None, OutputFormat::Png);
 
         assert!(outcomes[0].is_err());
         // A truncated image must never reach the user's output path.
@@ -893,6 +1017,7 @@ mod tests {
             "Engine exited with code 1: vk error",
             &[false, false],
             None,
+            OutputFormat::Png,
         );
 
         // One failure in a shared process must not fail its neighbours.

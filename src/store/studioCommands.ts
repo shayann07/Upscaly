@@ -180,6 +180,7 @@ export async function startUpscale(): Promise<void> {
         scale: snapshot.scale,
         tile_size: snapshot.tileSize,
         preset: snapshot.preset,
+        output_format: snapshot.outputFormat,
         is_video: item.isVideo,
       })),
     });

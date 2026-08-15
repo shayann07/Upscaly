@@ -25,6 +25,8 @@ pub struct AppSettings {
     pub default_tile_size: u32,
     #[serde(default)]
     pub default_preset: crate::engine::preset::QualityPreset,
+    #[serde(default)]
+    pub default_output_format: crate::engine::output_format::OutputFormat,
     pub output_directory: Option<String>,
     pub sound_muted: bool,
     pub auto_check_updates: bool,
@@ -38,6 +40,7 @@ impl Default for AppSettings {
             default_scale: 4,
             default_tile_size: 0,
             default_preset: crate::engine::preset::QualityPreset::Balanced,
+            default_output_format: crate::engine::output_format::OutputFormat::Png,
             output_directory: None,
             sound_muted: false,
             auto_check_updates: true,
@@ -122,6 +125,12 @@ mod tests {
         assert_eq!(
             parsed.default_preset,
             crate::engine::preset::QualityPreset::Balanced
+        );
+        // And never a lossy container by default -- an upgrade must not
+        // start re-encoding results the user expects to be lossless.
+        assert_eq!(
+            parsed.default_output_format,
+            crate::engine::output_format::OutputFormat::Png
         );
         assert_eq!(parsed.default_scale, 2);
         assert_eq!(parsed.output_directory.as_deref(), Some("D:/out"));

@@ -29,6 +29,8 @@ pub struct Job {
     pub is_video: bool,
     #[serde(default)]
     pub preset: crate::engine::preset::QualityPreset,
+    #[serde(default)]
+    pub output_format: crate::engine::output_format::OutputFormat,
 }
 
 /// Restricts a job id to a safe filesystem path component. The id is used to
@@ -778,6 +780,7 @@ mod tests {
             tile_size: 256,
             is_video: false,
             preset: crate::engine::preset::QualityPreset::Balanced,
+            output_format: crate::engine::output_format::OutputFormat::Png,
         }
     }
 

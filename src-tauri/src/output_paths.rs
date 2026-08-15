@@ -31,13 +31,17 @@ pub fn build_output_path(
     is_video: bool,
     scale: u32,
     output_dir: Option<&str>,
+    format: crate::engine::output_format::OutputFormat,
 ) -> String {
     let input = Path::new(input_path);
     let stem = input
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("media");
-    let ext = if is_video { "mp4" } else { "png" };
+    // Video is always MP4; the chosen image format has nothing to say about
+    // it, and letting it name a video `.webp` would produce a file no
+    // player would open.
+    let ext = if is_video { "mp4" } else { format.extension() };
     let target_scale = if scale == 0 { 4 } else { scale };
 
     let dir = output_dir
@@ -91,6 +95,7 @@ pub fn release_output_path(path: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::output_format::OutputFormat;
 
     #[test]
     fn test_output_path_reservation_uniqueness() {
@@ -121,25 +126,58 @@ mod tests {
 
     #[test]
     fn test_build_output_path_names_and_places_the_output() {
-        let alongside = build_output_path("C:\\media\\clip.mkv", true, 2, None);
+        let alongside = build_output_path("C:\\media\\clip.mkv", true, 2, None, OutputFormat::Png);
         assert!(alongside.ends_with("clip_upscaled_2x.mp4"));
         assert!(alongside.starts_with("C:\\media"));
 
-        // Images normalize to png regardless of source container.
-        let image = build_output_path("C:\\media\\shot.jpeg", false, 4, None);
+        // Images take the chosen format regardless of source container.
+        let image = build_output_path("C:\\media\\shot.jpeg", false, 4, None, OutputFormat::Png);
         assert!(image.ends_with("shot_upscaled_4x.png"));
 
         // A chosen destination wins over the input's directory.
-        let custom = build_output_path("C:\\media\\clip.mkv", true, 3, Some("D:\\out"));
+        let custom = build_output_path(
+            "C:\\media\\clip.mkv",
+            true,
+            3,
+            Some("D:\\out"),
+            OutputFormat::Png,
+        );
         assert!(custom.starts_with("D:\\out"));
         assert!(custom.ends_with("clip_upscaled_3x.mp4"));
 
         // Blank is treated as "not chosen", not as a relative directory.
-        let blank = build_output_path("C:\\media\\clip.mkv", true, 4, Some("   "));
+        let blank = build_output_path(
+            "C:\\media\\clip.mkv",
+            true,
+            4,
+            Some("   "),
+            OutputFormat::Png,
+        );
         assert!(blank.starts_with("C:\\media"));
 
         // AUTO scale (0) records as the 4x default it actually runs at.
-        let auto = build_output_path("C:\\media\\clip.mkv", true, 0, None);
+        let auto = build_output_path("C:\\media\\clip.mkv", true, 0, None, OutputFormat::Png);
         assert!(auto.ends_with("clip_upscaled_4x.mp4"));
+    }
+
+    #[test]
+    fn test_the_chosen_format_names_images_but_never_video() {
+        for (format, ext) in [
+            (OutputFormat::Png, "png"),
+            (OutputFormat::Jpg, "jpg"),
+            (OutputFormat::Webp, "webp"),
+        ] {
+            let image = build_output_path("C:\\media\\shot.tif", false, 4, None, format);
+            assert!(
+                image.ends_with(&format!("shot_upscaled_4x.{ext}")),
+                "{image}"
+            );
+
+            // Video is always MP4. Naming an H.264 file ".webp" because the
+            // image format happened to be set to WEBP would produce
+            // something no player would open.
+            let video = build_output_path("C:\\media\\clip.mkv", true, 4, None, format);
+            assert!(video.ends_with("clip_upscaled_4x.mp4"), "{video}");
+        }
     }
 }

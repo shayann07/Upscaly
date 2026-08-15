@@ -465,6 +465,7 @@ mod tests {
             tile_size: 256,
             is_video: false,
             preset: crate::engine::preset::QualityPreset::Balanced,
+            output_format: crate::engine::output_format::OutputFormat::Png,
         }
     }
 

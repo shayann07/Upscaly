@@ -35,6 +35,9 @@ pub struct UpscaleRequest {
     /// before this field.
     #[serde(default)]
     pub preset: engine::preset::QualityPreset,
+    /// Container for the result. Images only; video is always MP4.
+    #[serde(default)]
+    pub output_format: engine::output_format::OutputFormat,
 }
 
 /// What `run_upscale` hands back: the job to track, and the path its output
