@@ -177,10 +177,7 @@ pub fn attach_to_job_object(child: &Child) {
     let job_handle = get_or_create_job_object();
     if job_handle != 0 {
         unsafe {
-            AssignProcessToJobObject(
-                job_handle.cast_signed(),
-                child.as_raw_handle() as HANDLE,
-            );
+            AssignProcessToJobObject(job_handle.cast_signed(), child.as_raw_handle() as HANDLE);
         }
     }
 }

@@ -338,9 +338,7 @@ pub fn reassemble_streaming(
     };
 
     let (encoder, audio_mode) = probe_combination(ctx, ffmpeg_binary, fps_string, &sample_frame)
-        .ok_or_else(|| {
-            "All hardware and software video encoders failed to start.".to_string()
-        })?;
+        .ok_or_else(|| "All hardware and software video encoders failed to start.".to_string())?;
     encoder.record_success();
 
     let args = encoder.to_streaming_args(
@@ -572,8 +570,13 @@ mod tests {
 
     #[test]
     fn test_to_args_uses_copy_or_transcode_audio_codec() {
-        let copy_args =
-            EncoderStrategy::Libx264.to_args("30/1", "frame_%08d.jpg", "in.mp4", "out.mp4", AudioMode::Copy);
+        let copy_args = EncoderStrategy::Libx264.to_args(
+            "30/1",
+            "frame_%08d.jpg",
+            "in.mp4",
+            "out.mp4",
+            AudioMode::Copy,
+        );
         let transcode_args = EncoderStrategy::Libx264.to_args(
             "30/1",
             "frame_%08d.jpg",
@@ -598,8 +601,7 @@ mod tests {
             for audio_mode in [AudioMode::Copy, AudioMode::Transcode] {
                 let pattern =
                     encoder.to_args("30/1", "frame_%08d.jpg", "in.mp4", "out.mp4", audio_mode);
-                let streaming =
-                    encoder.to_streaming_args("30/1", "in.mp4", "out.mp4", audio_mode);
+                let streaming = encoder.to_streaming_args("30/1", "in.mp4", "out.mp4", audio_mode);
 
                 // Everything from the audio input onward is shared verbatim.
                 let tail_of = |args: &[String]| {
@@ -617,8 +619,12 @@ mod tests {
 
     #[test]
     fn test_streaming_args_read_frames_from_stdin() {
-        let args =
-            EncoderStrategy::Libx264.to_streaming_args("30/1", "in.mp4", "out.mp4", AudioMode::Copy);
+        let args = EncoderStrategy::Libx264.to_streaming_args(
+            "30/1",
+            "in.mp4",
+            "out.mp4",
+            AudioMode::Copy,
+        );
 
         assert!(args.windows(2).any(|w| w == ["-f", "image2pipe"]));
         // Frame source is stdin, and the framerate must still be declared:

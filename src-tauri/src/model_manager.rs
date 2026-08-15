@@ -74,7 +74,9 @@ pub fn calculate_sha256(path: &Path) -> Result<String, String> {
     #[allow(clippy::large_stack_arrays)]
     let mut buffer = [0; 65536];
     loop {
-        let n = file.read(&mut buffer).map_err(|e| format!("Read error: {e}"))?;
+        let n = file
+            .read(&mut buffer)
+            .map_err(|e| format!("Read error: {e}"))?;
         if n == 0 {
             break;
         }

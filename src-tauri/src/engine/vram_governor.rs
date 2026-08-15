@@ -62,7 +62,11 @@ pub fn estimate_total_vram_mb(tile_size: i32, proc_threads: u32) -> u64 {
 /// can test against the same ceiling the profile itself was sized against,
 /// rather than inventing a second budget that could drift from this one.
 #[must_use]
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 pub fn safe_vram_ceiling_mb(gpu_vram_mb: u64) -> u64 {
     if gpu_vram_mb <= 1024 {
         gpu_vram_mb.saturating_sub(200).max(300)

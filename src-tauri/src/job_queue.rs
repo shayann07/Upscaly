@@ -578,7 +578,9 @@ fn run_single_image_job(
         .map_err(|e| e.to_string())?;
 
     {
-        let mut handle_guard = process_handle.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut handle_guard = process_handle
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *handle_guard = Some(handle);
     }
 
@@ -607,7 +609,9 @@ fn run_single_image_job(
         }
 
         let latest_pct = {
-            let mut handle_guard = process_handle.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut handle_guard = process_handle
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(ref mut child) = *handle_guard {
                 match child.try_wait() {
                     Ok(Some(0)) => {

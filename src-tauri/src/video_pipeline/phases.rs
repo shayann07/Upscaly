@@ -295,7 +295,9 @@ pub fn run_overlapping_upscale_pipeline(
         // it out and reporting "Succeeded" -- a truncated video with no
         // error is worse than an explicit failure.
         if let Some(err) = extraction.failure() {
-            return Err(format!("Video frame extraction failed partway through: {err}"));
+            return Err(format!(
+                "Video frame extraction failed partway through: {err}"
+            ));
         }
 
         let extraction_done = extraction.is_finished.load(Ordering::SeqCst);
@@ -443,8 +445,11 @@ pub fn run_overlapping_upscale_pipeline(
                 }
             };
 
-            batch_completed =
-                advance_completed_outputs(&ctx.frames_out_dir, &batch_output_names, batch_completed);
+            batch_completed = advance_completed_outputs(
+                &ctx.frames_out_dir,
+                &batch_output_names,
+                batch_completed,
+            );
             total_completed = confirmed_completed + batch_completed;
 
             // Halfway through this batch, spend the remaining GPU-busy time
@@ -609,7 +614,9 @@ pub fn run_overlapping_upscale_pipeline(
     // short, and shipping it silently is exactly the truncated-video-as-
     // success bug this guards against.
     if let Some(err) = extraction.failure() {
-        return Err(format!("Video frame extraction failed partway through: {err}"));
+        return Err(format!(
+            "Video frame extraction failed partway through: {err}"
+        ));
     }
 
     let final_completed = count_image_files(&ctx.frames_out_dir);
@@ -652,8 +659,8 @@ fn check_available_disk_space(
     let scale = effective_scale.max(1) as u64;
     let scale_area = scale * scale;
     let output_frame_bytes = SOURCE_FRAME_BYTES.saturating_mul(scale_area);
-    let required_bytes = (total_frames as u64)
-        .saturating_mul(SOURCE_FRAME_BYTES.saturating_add(output_frame_bytes));
+    let required_bytes =
+        (total_frames as u64).saturating_mul(SOURCE_FRAME_BYTES.saturating_add(output_frame_bytes));
 
     match crate::model_manager::get_available_disk_space(&ctx.job_temp_dir) {
         Ok(available_bytes) if available_bytes < required_bytes => {
@@ -762,9 +769,7 @@ fn advance_completed_outputs(
     output_names: &[std::ffi::OsString],
     mut completed: usize,
 ) -> usize {
-    while completed < output_names.len()
-        && frames_out_dir.join(&output_names[completed]).exists()
-    {
+    while completed < output_names.len() && frames_out_dir.join(&output_names[completed]).exists() {
         completed += 1;
     }
     completed
@@ -1177,10 +1182,7 @@ mod tests {
 
     #[test]
     fn test_advance_completed_outputs_counts_only_contiguous_arrivals() {
-        let dir = std::env::temp_dir().join(format!(
-            "upscaly_advance_test_{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("upscaly_advance_test_{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("temp dir");
 
@@ -1218,8 +1220,7 @@ mod tests {
         *control
             .error_msg
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) =
-            Some("decoder crash".to_string());
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some("decoder crash".to_string());
         control.is_finished.store(true, Ordering::SeqCst);
 
         assert_eq!(control.failure().as_deref(), Some("decoder crash"));

@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'refactor/**']
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch makes an in-flight run obsolete.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # Windows is the platform this app ships on, and much of the backend is
+    # Windows-specific -- the DXGI VRAM query, job objects, ntdll process
+    # suspend, CREATE_NO_WINDOW. Running CI anywhere else would skip exactly
+    # the code most likely to break.
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      # Tauri's build script needs the frontend dist directory to exist even
+      # for check-only runs.
+      - name: Build frontend
+        run: npm run build
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint (frontend)
+        run: npx eslint src --max-warnings 999
+
+      - name: Test (frontend)
+        run: npx vitest run
+
+      - name: Format check
+        run: npm run format:check:all
+
+      # Warnings are denied here rather than merely reported: the crate-level
+      # allow that used to neutralize the whole lint policy was only caught by
+      # an audit, and nothing would have stopped it coming back.
+      - name: Clippy (backend)
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: Test (backend)
+        run: cargo test --manifest-path src-tauri/Cargo.toml

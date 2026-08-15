@@ -146,9 +146,7 @@ export function StudioCanvas(props: StudioCanvasProps) {
   );
 
   const handleClearCompletedBatchItems = useCallback(() => {
-    setBatchItems((prev) =>
-      prev.filter((b) => b.status !== 'succeeded')
-    );
+    setBatchItems((prev) => prev.filter((b) => b.status !== 'succeeded'));
   }, [setBatchItems]);
 
   return (
