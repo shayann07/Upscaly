@@ -213,15 +213,31 @@ describe('refreshCatalog', () => {
 });
 
 describe('scale and model stay consistent', () => {
-  it('swaps to a model that can serve the requested scale', () => {
-    // Models are fixed-factor, so asking for 2x while a 4x model is
-    // selected has to move the selection too.
+  it('never leaves the category to satisfy a scale', () => {
+    // The regression this guards: the only 2x model in the catalog is
+    // realesr-animevideov3-x2, an anime *video* model. Falling through to
+    // "any model at this factor" meant asking for 2x on a photograph
+    // silently ran it through that model -- the job succeeded, the file
+    // appeared, and faces came out flat and waxy with nothing reporting
+    // that the model had been swapped.
     studioActions.setSelectedModel('realesrgan-x4plus');
     selectScale(2);
 
-    expect(state().scale).toBe(2);
+    expect(state().selectedModel).toBe('realesrgan-x4plus');
+    // And it says so, rather than leaving the user to infer it from the
+    // output looking wrong.
+    expect(state().toasts.some((toast) => toast.message.includes('4×'))).toBe(true);
+  });
+
+  it('swaps within the category when that category can serve the scale', () => {
+    // The video models do come in 2x/3x/4x, so here the swap is correct
+    // and stays inside the content type it was trained for.
+    studioActions.setSelectedModel('realesr-animevideov3-x4');
+    selectScale(2);
+
+    expect(state().selectedModel).toBe('realesr-animevideov3-x2');
     const chosen = state().supportedModels.find((m) => m.id === state().selectedModel);
-    expect(chosen?.scale).toBe(2);
+    expect(chosen?.cat).toBe('video');
   });
 
   it('leaves the model alone when it already matches the scale', () => {

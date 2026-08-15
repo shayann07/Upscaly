@@ -280,14 +280,34 @@ export function selectScale(newScale: number): void {
   const current = supportedModels.find((m) => m.id === selectedModel);
   if (!current || current.scale === newScale) return;
 
-  const replacement =
-    pickModel(
-      supportedModels,
-      installedModels,
-      (m) => m.cat === current.cat && m.scale === newScale
-    ) ?? pickModel(supportedModels, installedModels, (m) => m.scale === newScale);
+  // Only ever swap within the same category.
+  //
+  // This used to fall through to "any model at that factor", and since the
+  // only 2x model in the catalog is realesr-animevideov3-x2, asking for 2x
+  // on a photograph silently handed the job to an anime *video* model. The
+  // job completed, the file appeared, and the result was flat, waxy skin --
+  // a quality collapse with nothing anywhere reporting that the model had
+  // been changed out from under the user.
+  const replacement = pickModel(
+    supportedModels,
+    installedModels,
+    (m) => m.cat === current.cat && m.scale === newScale
+  );
 
-  if (replacement) studioActions.setSelectedModel(replacement.id);
+  if (replacement) {
+    studioActions.setSelectedModel(replacement.id);
+    return;
+  }
+
+  // Nothing in this category runs at that factor. Keep the model -- it is
+  // still the right one for this kind of image -- and say plainly what the
+  // output will be, rather than substituting a model trained on something
+  // else entirely just to make the number match.
+  studioActions.notify(
+    'info',
+    `${current.name} outputs ${current.scale}×`,
+    `No ${current.cat} model runs at ${newScale}×, so this stays on ${current.name}.`
+  );
 }
 
 // --------------------------------------------------------------- history
