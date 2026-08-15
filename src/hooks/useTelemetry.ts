@@ -24,7 +24,7 @@ export function useTelemetrySync() {
   const selectedGpu = useSelectedGpu();
   const tileSize = useTileSize();
   const scale = useScale();
-  const { usedVramGb, isOverflowing } = useVramProfile(selectedGpu, tileSize, scale);
+  const { usedVramGb, isOverflowing, safeTileSize } = useVramProfile(selectedGpu, tileSize, scale);
 
   const isSystemRam = selectedGpu === SYSTEM_RAM_GPU_ID;
   // A placeholder while the profile is in flight, rather than a
@@ -37,6 +37,6 @@ export function useTelemetrySync() {
   const isVramOverflowing = !isSystemRam && isOverflowing;
 
   useEffect(() => {
-    studioActions.setTelemetry(activeVramGb, isVramOverflowing);
-  }, [activeVramGb, isVramOverflowing]);
+    studioActions.setTelemetry(activeVramGb, isVramOverflowing, safeTileSize);
+  }, [activeVramGb, isVramOverflowing, safeTileSize]);
 }

@@ -65,6 +65,9 @@ export function useVramProfile(gpuId: number = 0, tileSize: number = 0, scale: n
     totalVramGb: profile ? profile.total_vram_mb / 1024 : null,
     usedVramGb: profile ? profile.used_vram_mb / 1024 : null,
     autoTileSize: profile ? profile.auto_tile_size : null,
+    // The tile the backend will actually run, which is the requested one
+    // only when it fits. Readouts must show this rather than the request.
+    safeTileSize: profile ? profile.safe_tile_size : null,
     isOverflowing: profile ? profile.is_overflowing : false,
     statusMessage: profile ? profile.status_message : 'Calculating VRAM profile...',
   };

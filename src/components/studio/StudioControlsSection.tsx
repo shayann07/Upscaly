@@ -5,6 +5,7 @@ import { SettingsPanel } from '../SettingsPanel';
 import {
   useActiveVramGb,
   useCategory,
+  useEffectiveTileSize,
   useComparisonViewMode,
   useInstalledModels,
   useIsMuted,
@@ -65,6 +66,23 @@ function formatRate(
   return mps > 0 ? `${mps.toFixed(1)} MP/s` : '';
 }
 
+/**
+ * Renders the tile size the run is actually using.
+ *
+ * `requested` is the button the user pressed; `effective` is what the VRAM
+ * governor settled on. They differ whenever the request does not fit -- 512
+ * at 4x on a 6GB card runs at 384 -- and the overlay previously showed the
+ * request for the whole run, reporting a configuration that never executed.
+ * When they differ, say both: the clamp is information the user needs, not
+ * something to paper over.
+ */
+export function formatTile(requested: number, effective: number | null): string {
+  if (effective === null) return requested === 0 ? 'AUTO' : `${requested}px`;
+  if (effective === 0) return 'AUTO';
+  if (requested === 0 || requested === effective) return `${effective}px`;
+  return `${effective}px (${requested} capped)`;
+}
+
 export const StudioControlsSection = memo(function StudioControlsSection() {
   const selected = useSelectedItem();
   const progressItem = useProgressItem();
@@ -74,6 +92,7 @@ export const StudioControlsSection = memo(function StudioControlsSection() {
 
   const scale = useScale();
   const tileSize = useTileSize();
+  const effectiveTileSize = useEffectiveTileSize();
   const isMuted = useIsMuted();
 
   const supportedModels = useSupportedModels();
@@ -146,7 +165,7 @@ export const StudioControlsSection = memo(function StudioControlsSection() {
             progressItem.startedAtMs
           )}
           vram={activeVramGb}
-          tileCount={tileSize === 0 ? 'AUTO' : `${tileSize}px`}
+          tileCount={formatTile(tileSize, effectiveTileSize)}
           onCancel={handleCancel}
         />
       )}

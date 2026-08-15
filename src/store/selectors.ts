@@ -79,6 +79,7 @@ const selectCustomOutputPath = (s: StudioState) => s.customOutputPath;
 const selectIsMuted = (s: StudioState) => s.isMuted;
 const selectActiveVramGb = (s: StudioState) => s.activeVramGb;
 const selectIsVramOverflowing = (s: StudioState) => s.isVramOverflowing;
+const selectEffectiveTileSize = (s: StudioState) => s.effectiveTileSize;
 
 export const useGpus = () => useSlice(selectGpus, arrayEqual);
 export const useSelectedGpu = () => useSlice(selectSelectedGpu);
@@ -88,6 +89,7 @@ export const useCustomOutputPath = () => useSlice(selectCustomOutputPath);
 export const useIsMuted = () => useSlice(selectIsMuted);
 export const useActiveVramGb = () => useSlice(selectActiveVramGb);
 export const useIsVramOverflowing = () => useSlice(selectIsVramOverflowing);
+export const useEffectiveTileSize = () => useSlice(selectEffectiveTileSize);
 
 // -------------------------------------------------------------- catalog
 
