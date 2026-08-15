@@ -189,7 +189,10 @@ mod tests {
             QualityPreset::Speed,
         ] {
             let json = serde_json::to_string(&preset).unwrap();
-            assert_eq!(serde_json::from_str::<QualityPreset>(&json).unwrap(), preset);
+            assert_eq!(
+                serde_json::from_str::<QualityPreset>(&json).unwrap(),
+                preset
+            );
         }
         // The wire form the frontend sends.
         assert_eq!(

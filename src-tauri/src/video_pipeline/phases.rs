@@ -452,20 +452,20 @@ pub fn run_overlapping_upscale_pipeline(
                         )))
                     } else {
                         match list[pos].try_wait() {
-                        Ok(Some(0)) => {
-                            list.remove(pos);
-                            Some(Ok(()))
-                        }
-                        Ok(Some(code)) => {
-                            let stderr_log = list[pos].get_stderr_log();
-                            list.remove(pos);
-                            Some(Err(AppError::exec(format!("NCNN upscale engine failed with exit code {code}: {stderr_log}"))))
-                        }
-                        Ok(None) => None,
-                        Err(e) => {
-                            list.remove(pos);
-                            Some(Err(e))
-                        }
+                            Ok(Some(0)) => {
+                                list.remove(pos);
+                                Some(Ok(()))
+                            }
+                            Ok(Some(code)) => {
+                                let stderr_log = list[pos].get_stderr_log();
+                                list.remove(pos);
+                                Some(Err(AppError::exec(format!("NCNN upscale engine failed with exit code {code}: {stderr_log}"))))
+                            }
+                            Ok(None) => None,
+                            Err(e) => {
+                                list.remove(pos);
+                                Some(Err(e))
+                            }
                         }
                     }
                 } else {
