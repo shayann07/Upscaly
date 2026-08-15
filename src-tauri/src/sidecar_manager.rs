@@ -442,6 +442,65 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     Ok(gpus)
 }
 
+/// How well a DXGI adapter description matches the GPU we asked about.
+/// Higher is a better match; `ADAPTER_MATCH_NONE` means it isn't one.
+#[cfg(target_os = "windows")]
+mod adapter_match {
+    pub const NONE: u8 = 0;
+    /// No specific adapter was requested, so every adapter qualifies
+    /// equally and the caller's VRAM tie-break decides.
+    pub const ANY: u8 = 1;
+    /// Same vendor, different card. The weakest real signal: on a machine
+    /// with two cards from one vendor this matches both.
+    pub const VENDOR: u8 = 2;
+    /// One name contains the other.
+    pub const CONTAINS: u8 = 3;
+    pub const EXACT: u8 = 4;
+}
+
+/// Vendor keyword groups. A GPU's marketing name often omits the vendor
+/// (e.g. "Radeon RX 6800 XT" never says "AMD"), so matching on the vendor
+/// word alone misses adapters it should match.
+#[cfg(target_os = "windows")]
+const VENDOR_ALIASES: [&[&str]; 3] = [
+    &["nvidia", "geforce", "rtx", "gtx", "quadro"],
+    &["amd", "radeon"],
+    &["intel", "arc", "iris", "uhd"],
+];
+
+#[cfg(target_os = "windows")]
+fn is_same_vendor(a: &str, b: &str) -> bool {
+    VENDOR_ALIASES.iter().any(|aliases| {
+        aliases.iter().any(|kw| a.contains(kw)) && aliases.iter().any(|kw| b.contains(kw))
+    })
+}
+
+/// Scores one adapter description against the requested GPU name.
+///
+/// Previously the DXGI walk returned the first adapter whose vendor word
+/// appeared in both strings. On a dual-AMD machine (integrated Radeon plus
+/// a discrete Radeon) *both* adapters match that test, so the walk always
+/// reported adapter 0's VRAM no matter which card was asked about --
+/// sizing tiles against the wrong GPU's memory. Scoring every adapter and
+/// keeping the best match fixes that, and lets an exact name beat a
+/// coincidental vendor hit.
+#[cfg(target_os = "windows")]
+fn score_adapter_match(desc_lower: &str, target_lower: &str) -> u8 {
+    if target_lower.is_empty() {
+        return adapter_match::ANY;
+    }
+    if desc_lower == target_lower {
+        return adapter_match::EXACT;
+    }
+    if desc_lower.contains(target_lower) || target_lower.contains(desc_lower) {
+        return adapter_match::CONTAINS;
+    }
+    if is_same_vendor(desc_lower, target_lower) {
+        return adapter_match::VENDOR;
+    }
+    adapter_match::NONE
+}
+
 // Raw COM/DXGI vtable interop: the pointer casts, borrow-as-pointer
 // patterns, and the `GUID` type name all mirror the actual Win32/DXGI ABI,
 // so "fixing" them (e.g. .cast() instead of `as`, renaming GUID) would just
@@ -562,7 +621,11 @@ pub fn query_dxgi_vram_mb(name: &str, is_discrete: bool) -> u64 {
         if create_dxgi_factory1(&iid, &mut factory) >= 0 && !factory.is_null() {
             let mut i = 0u32;
             let mut matched_vram = 0u64;
+            let mut best_score = adapter_match::NONE;
 
+            // Enumerate every adapter and keep the best match rather than
+            // stopping at the first plausible one -- see score_adapter_match
+            // for why first-match silently picked the wrong card.
             loop {
                 let mut adapter: *mut IDXGIAdapter1 = std::ptr::null_mut();
                 if ((*(*factory).lp_vtbl).enum_adapters1)(factory as *mut _, i, &mut adapter) < 0
@@ -581,18 +644,18 @@ pub fn query_dxgi_vram_mb(name: &str, is_discrete: bool) -> u64 {
                     let desc_str =
                         String::from_utf16_lossy(&desc.description[..len]).to_lowercase();
                     let vram_mb = (desc.dedicated_video_memory as u64) / (1024 * 1024);
+                    let score = score_adapter_match(&desc_str, &target_name_lower);
 
-                    if (desc_str.contains("nvidia") && target_name_lower.contains("nvidia"))
-                        || (desc_str.contains("intel") && target_name_lower.contains("intel"))
-                        || (desc_str.contains("amd") && target_name_lower.contains("amd"))
-                        || target_name_lower.contains(&desc_str)
-                        || desc_str.contains(&target_name_lower)
+                    // Tie-break equally-good matches by VRAM, which picks the
+                    // discrete card over an integrated one when the request
+                    // can't distinguish them (notably the empty-name path
+                    // used for the general VRAM estimate).
+                    if score > adapter_match::NONE
+                        && vram_mb > 0
+                        && (score > best_score || (score == best_score && vram_mb > matched_vram))
                     {
-                        if vram_mb > 0 {
-                            matched_vram = vram_mb;
-                            let _ = ((*(*adapter).lp_vtbl).release)(adapter as *mut _);
-                            break;
-                        }
+                        best_score = score;
+                        matched_vram = vram_mb;
                     }
                 }
 
@@ -707,5 +770,79 @@ mod tests {
         let json = serde_json::to_string(&gpu).unwrap();
         assert!(json.contains("RTX 3050"));
         assert!(json.contains("fp16_storage_supported"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_score_adapter_match_ranks_exact_above_vendor() {
+        let target = "amd radeon rx 6800 xt";
+
+        assert_eq!(
+            score_adapter_match("amd radeon rx 6800 xt", target),
+            adapter_match::EXACT
+        );
+        assert_eq!(
+            score_adapter_match("amd radeon rx 6800 xt (0x1234)", target),
+            adapter_match::CONTAINS
+        );
+        // A different AMD card is only a vendor-level match.
+        assert_eq!(
+            score_adapter_match("amd radeon(tm) graphics", target),
+            adapter_match::VENDOR
+        );
+        assert_eq!(
+            score_adapter_match("nvidia geforce rtx 3050", target),
+            adapter_match::NONE
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_score_adapter_match_recognizes_vendor_without_the_vendor_word() {
+        // "Radeon RX 6800" never says "AMD"; "GeForce RTX 3050" never says
+        // "NVIDIA". Matching on the bare vendor word alone missed both.
+        assert_eq!(
+            score_adapter_match("radeon rx 6800", "amd radeon rx 7900"),
+            adapter_match::VENDOR
+        );
+        assert_eq!(
+            score_adapter_match("geforce rtx 3050", "nvidia geforce gtx 1660"),
+            adapter_match::VENDOR
+        );
+        assert_eq!(
+            score_adapter_match("radeon rx 6800", "nvidia geforce rtx 3050"),
+            adapter_match::NONE
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_score_adapter_match_treats_empty_target_as_wildcard() {
+        // The VRAM-estimate path passes an empty name: every adapter is an
+        // equal match so the caller's VRAM tie-break selects the biggest.
+        assert_eq!(
+            score_adapter_match("intel uhd graphics", ""),
+            adapter_match::ANY
+        );
+        assert_eq!(
+            score_adapter_match("nvidia geforce rtx 4090", ""),
+            adapter_match::ANY
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_dual_same_vendor_adapters_are_distinguishable() {
+        // The regression this scoring exists for: two AMD adapters where the
+        // requested one is NOT enumerated first. Vendor-only matching scored
+        // both identically, so first-match returned the integrated card.
+        let integrated = "amd radeon(tm) graphics";
+        let discrete = "amd radeon rx 6800 xt";
+        let target = "amd radeon rx 6800 xt";
+
+        assert!(
+            score_adapter_match(discrete, target) > score_adapter_match(integrated, target),
+            "the requested discrete card must outrank a same-vendor integrated one"
+        );
     }
 }
