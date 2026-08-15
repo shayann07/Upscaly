@@ -20,12 +20,60 @@ pub struct VideoMetadata {
     pub total_frames_estimate: Option<usize>,
 }
 
+/// Staged-frame count at which the extractor is paused. ffmpeg decodes far
+/// faster than the GPU upscales, so left alone it writes the entire video to
+/// disk as JPEGs long before the pipeline needs them -- tens of GB on a long
+/// source, for frames that will sit untouched for minutes. Well above the
+/// 600 a single batch can take, so the GPU never waits on this.
+const EXTRACTION_HIGH_WATER: usize = 2000;
+/// Resume threshold. Hysteresis, not a single mark, so a batch draining just
+/// past the line does not thrash suspend/resume every poll tick.
+const EXTRACTION_LOW_WATER: usize = 1000;
+
 pub struct ExtractionControl {
     pub is_finished: Arc<AtomicBool>,
     pub error_msg: Arc<Mutex<Option<String>>>,
+    /// Extractor pid, used to pause/resume it for backpressure.
+    pid: u32,
+    is_suspended: AtomicBool,
 }
 
 impl ExtractionControl {
+    /// Pauses the extractor once staging is deep enough that further decoding
+    /// is pure disk cost, and resumes it once the GPU has drained back down.
+    ///
+    /// No-op once extraction has finished, and on platforms where suspending
+    /// is unavailable (see `process_runner::suspend_process`) -- there the
+    /// extractor simply runs unthrottled as before, with the pre-flight disk
+    /// check still guarding the failure case.
+    pub fn apply_backpressure(&self, staged: usize) {
+        if self.is_finished.load(Ordering::SeqCst) {
+            return;
+        }
+        let suspended = self.is_suspended.load(Ordering::SeqCst);
+        if !suspended && staged >= EXTRACTION_HIGH_WATER {
+            if crate::process_runner::suspend_process(self.pid) {
+                self.is_suspended.store(true, Ordering::SeqCst);
+            }
+        } else if suspended
+            && staged <= EXTRACTION_LOW_WATER
+            && crate::process_runner::resume_process(self.pid)
+        {
+            self.is_suspended.store(false, Ordering::SeqCst);
+        }
+    }
+
+    /// Lets the extractor run again unconditionally.
+    ///
+    /// The pipeline loop can only exit normally once extraction reports
+    /// finished, which a paused extractor never will, so this mainly guards
+    /// the error paths -- and makes the invariant explicit rather than
+    /// relying on the handle-kill in the caller to collect a paused process.
+    pub fn resume_if_suspended(&self) {
+        if self.is_suspended.swap(false, Ordering::SeqCst) {
+            crate::process_runner::resume_process(self.pid);
+        }
+    }
     /// The extractor's recorded failure, if it died partway through.
     ///
     /// Must be consulted both inside the pipeline loop and once more after
@@ -153,6 +201,8 @@ pub fn spawn_background_extraction(
     Ok(ExtractionControl {
         is_finished,
         error_msg,
+        pid: handle_id,
+        is_suspended: AtomicBool::new(false),
     })
 }
 
@@ -247,6 +297,11 @@ pub fn run_overlapping_upscale_pipeline(
         // longer sorts and allocates a PathBuf per frame across a staging
         // directory that can hold thousands of them.
         let staged_total = count_image_files(&ctx.staging_dir);
+
+        // Throttle the extractor against how far ahead it has run. Bounds
+        // peak staging disk instead of letting ffmpeg decode the whole video
+        // out before the GPU has touched a fraction of it.
+        extraction.apply_backpressure(staged_total);
 
         let available = available_staged_frames(staged_total, extraction_done);
 
@@ -520,6 +575,10 @@ pub fn run_overlapping_upscale_pipeline(
         // moves a whole batch back to staging to be redone.
         confirmed_completed = count_image_files(&ctx.frames_out_dir);
     }
+
+    // Nothing below consumes staged frames, so leaving the extractor paused
+    // here would strand it.
+    extraction.resume_if_suspended();
 
     if ctx.is_cancelled() {
         return Err("cancelled".to_string());
@@ -943,6 +1002,10 @@ mod tests {
         ExtractionControl {
             is_finished: Arc::new(AtomicBool::new(false)),
             error_msg: Arc::new(Mutex::new(None)),
+            // pid 0 never matches a real process, so backpressure calls in
+            // tests are inert rather than suspending something unrelated.
+            pid: 0,
+            is_suspended: AtomicBool::new(false),
         }
     }
 
@@ -963,6 +1026,42 @@ mod tests {
 
         assert!(!control.is_finished.load(Ordering::SeqCst));
         assert_eq!(control.failure().as_deref(), Some("disk full"));
+    }
+
+    #[test]
+    fn test_backpressure_thresholds_have_hysteresis_above_a_full_batch() {
+        // A single batch can take up to 600 frames, so the pause mark must sit
+        // well above that or the GPU would end up waiting on a paused
+        // extractor. And the resume mark must be strictly lower, otherwise a
+        // batch draining across a single threshold would thrash the process
+        // between suspended and running on every poll tick.
+        assert!(EXTRACTION_LOW_WATER < EXTRACTION_HIGH_WATER);
+        assert!(EXTRACTION_HIGH_WATER > 600);
+        assert!(EXTRACTION_LOW_WATER > 600);
+    }
+
+    #[test]
+    fn test_backpressure_is_inert_once_extraction_finished() {
+        let control = extraction_control();
+        control.is_finished.store(true, Ordering::SeqCst);
+
+        // Well past the high-water mark, but a finished extractor has nothing
+        // left to pause -- this must not try to suspend a dead pid.
+        control.apply_backpressure(EXTRACTION_HIGH_WATER * 2);
+        assert!(!control.is_suspended.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_resume_if_suspended_clears_the_flag_once() {
+        let control = extraction_control();
+        control.is_suspended.store(true, Ordering::SeqCst);
+
+        control.resume_if_suspended();
+        assert!(!control.is_suspended.load(Ordering::SeqCst));
+
+        // Idempotent: a second call on an already-running extractor is a no-op.
+        control.resume_if_suspended();
+        assert!(!control.is_suspended.load(Ordering::SeqCst));
     }
 
     #[test]
