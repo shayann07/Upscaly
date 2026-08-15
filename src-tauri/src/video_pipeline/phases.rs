@@ -672,8 +672,6 @@ pub fn probe_video_metadata(app: &AppHandle, video_path: &str) -> Result<VideoMe
         .spawn()
         .map_err(|e| format!("Failed to run ffprobe: {e}"))?;
 
-    crate::sidecar_manager::attach_to_job_object(&child);
-
     let stdout_buf: std::sync::Arc<std::sync::Mutex<String>> = std::sync::Arc::default();
     let stdout_handle = child.stdout.take().map(|mut out| {
         let buf = std::sync::Arc::clone(&stdout_buf);
@@ -696,24 +694,52 @@ pub fn probe_video_metadata(app: &AppHandle, video_path: &str) -> Result<VideoMe
         });
     }
 
+    // Tracked from here on so an app exit mid-probe reaps it rather than
+    // orphaning it (attach_to_job_object happens inside register_process).
+    let tracked = crate::sidecar_manager::register_process(child);
+
     let start_time = Instant::now();
     let succeeded = loop {
-        match child.try_wait() {
+        let poll = {
+            let mut slot = tracked
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            match slot.as_mut() {
+                // kill_all_processes took it: the app is shutting down.
+                None => break false,
+                Some(child) => child.try_wait(),
+            }
+        };
+
+        match poll {
             Ok(Some(status)) => break status.success(),
             Ok(None) => {
                 if start_time.elapsed() > Duration::from_secs(10) {
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    let mut slot = tracked
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if let Some(child) = slot.as_mut() {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    }
                     break false;
                 }
                 thread::sleep(Duration::from_millis(50));
             }
             Err(_) => {
-                let _ = child.kill();
+                let mut slot = tracked
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if let Some(child) = slot.as_mut() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
                 break false;
             }
         }
     };
+
+    crate::sidecar_manager::release_process(&tracked);
 
     if let Some(h) = stdout_handle {
         let _ = h.join();

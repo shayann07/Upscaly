@@ -23,9 +23,15 @@ pub struct GpuCacheEnvelope {
     pub devices: Vec<GpuDevice>,
 }
 
-static ACTIVE_PROCESSES: OnceLock<Mutex<Vec<Child>>> = OnceLock::new();
+/// A child process polled by whoever spawned it rather than owned by the
+/// job queue -- the GPU probe and the ffprobe metadata read. Shared so app
+/// shutdown can reap one that is still running, while its spawner keeps
+/// polling the same handle. `None` means it has already been reaped.
+pub type TrackedChild = Arc<Mutex<Option<Child>>>;
 
-fn get_active_processes() -> &'static Mutex<Vec<Child>> {
+static ACTIVE_PROCESSES: OnceLock<Mutex<Vec<TrackedChild>>> = OnceLock::new();
+
+fn get_active_processes() -> &'static Mutex<Vec<TrackedChild>> {
     ACTIVE_PROCESSES.get_or_init(|| Mutex::new(Vec::new()))
 }
 
@@ -308,8 +314,6 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
         .spawn()
         .map_err(|e| format!("Failed to spawn GPU probe process: {e}"))?;
 
-    attach_to_job_object(&child);
-
     // Drain stdout/stderr on background threads instead of only polling
     // try_wait() below. A GPU probe verbose enough to exceed the OS pipe
     // buffer (common with -v on multi-GPU systems) would otherwise block
@@ -343,25 +347,53 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
         })
     });
 
+    // Tracked from here on so an app exit mid-probe reaps it rather than
+    // orphaning it (attach_to_job_object happens inside register_process).
+    let tracked = register_process(child);
+
     // Timeout mechanism (5 seconds max for GPU discovery)
     let start_time = std::time::Instant::now();
     let exited = loop {
-        match child.try_wait() {
+        let poll = {
+            let mut slot = tracked
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            match slot.as_mut() {
+                // kill_all_processes took it: the app is shutting down.
+                None => break false,
+                Some(child) => child.try_wait(),
+            }
+        };
+
+        match poll {
             Ok(Some(_status)) => break true,
             Ok(None) => {
                 if start_time.elapsed() > std::time::Duration::from_secs(5) {
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    let mut slot = tracked
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if let Some(child) = slot.as_mut() {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    }
                     break false;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
             Err(_) => {
-                let _ = child.kill();
+                let mut slot = tracked
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if let Some(child) = slot.as_mut() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
                 break false;
             }
         }
     };
+
+    release_process(&tracked);
 
     // The child process (and therefore its pipe write ends) has exited or
     // been killed by this point, so these reads are guaranteed to hit EOF
@@ -729,20 +761,49 @@ pub fn extract_gpu_vram_mb(name: &str, is_discrete: bool) -> u64 {
     }
 }
 
-/// Track a newly spawned child process
-#[allow(dead_code)]
-pub fn register_process(child: Child) {
+/// Attaches a freshly spawned child to the shutdown registry and returns the
+/// handle its spawner should poll through.
+///
+/// On Windows the job object alone guarantees these die with the parent, so
+/// this registry is belt-and-braces there. On every other platform
+/// `attach_to_job_object` is a no-op and this is the *only* mechanism that
+/// reaps a probe still running when the app quits -- previously nothing
+/// registered at all, so `kill_all_processes` drained an empty list and
+/// those children were simply orphaned.
+pub fn register_process(child: Child) -> TrackedChild {
     attach_to_job_object(&child);
+    let tracked: TrackedChild = Arc::new(Mutex::new(Some(child)));
     if let Ok(mut lock) = get_active_processes().lock() {
-        lock.push(child);
+        lock.push(Arc::clone(&tracked));
+    }
+    tracked
+}
+
+/// Stops tracking a child whose spawner has finished with it.
+pub fn release_process(tracked: &TrackedChild) {
+    // Clear the slot first and drop the guard before touching the registry:
+    // kill_all_processes locks registry-then-child, so holding a child lock
+    // while taking the registry lock would invert that order.
+    if let Ok(mut slot) = tracked.lock() {
+        *slot = None;
+    }
+    if let Ok(mut lock) = get_active_processes().lock() {
+        lock.retain(|entry| entry.lock().is_ok_and(|slot| slot.is_some()));
     }
 }
 
-/// Kill all active sidecar processes (e.g. on exit or job cancellation)
+/// Kill all tracked sidecar processes (e.g. on exit or job cancellation)
 pub fn kill_all_processes() {
     if let Ok(mut lock) = get_active_processes().lock() {
-        for mut child in lock.drain(..) {
-            let _ = child.kill();
+        for tracked in lock.drain(..) {
+            if let Ok(mut slot) = tracked.lock() {
+                if let Some(mut child) = slot.take() {
+                    let _ = child.kill();
+                    // Reap the zombie so the exit status is collected rather
+                    // than left for init on Unix.
+                    let _ = child.wait();
+                }
+            }
         }
     }
 }
@@ -827,6 +888,59 @@ mod tests {
         assert_eq!(
             score_adapter_match("nvidia geforce rtx 4090", ""),
             adapter_match::ANY
+        );
+    }
+
+    #[test]
+    fn test_register_process_tracks_and_release_untracks() {
+        // register_process previously had no callers at all, so the registry
+        // kill_all_processes drains was permanently empty and the whole
+        // shutdown path was a no-op on any platform without job objects.
+        let before = get_active_processes()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len();
+
+        let mut cmd = Command::new(if cfg!(windows) { "cmd" } else { "sh" });
+        cmd.args(if cfg!(windows) {
+            ["/C", "exit 0"]
+        } else {
+            ["-c", "exit 0"]
+        })
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+        crate::process_runner::suppress_console_window(&mut cmd);
+
+        let Ok(child) = cmd.spawn() else {
+            // No shell available in this environment; nothing to assert.
+            return;
+        };
+
+        let tracked = register_process(child);
+        let during = get_active_processes()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len();
+        assert_eq!(during, before + 1, "registered child should be tracked");
+
+        if let Ok(mut slot) = tracked.lock() {
+            if let Some(child) = slot.as_mut() {
+                let _ = child.wait();
+            }
+        }
+
+        release_process(&tracked);
+        let after = get_active_processes()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len();
+        assert_eq!(after, before, "released child should be untracked");
+        assert!(
+            tracked
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_none(),
+            "released slot should be emptied"
         );
     }
 
