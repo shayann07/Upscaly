@@ -6,7 +6,21 @@ use tauri::{AppHandle, Manager};
 #[derive(Debug, Serialize, Deserialize, Clone, ts_rs::TS)]
 #[ts(export, export_to = "../../src/lib/ipc/")]
 pub struct AppSettings {
+    /// The Vulkan device index chosen last time.
+    ///
+    /// Retained for display and as a hint only. It must never be the thing
+    /// that decides which card runs a job: Vulkan's enumeration order is not
+    /// stable across launches on hybrid laptops. On the development machine
+    /// the same two devices enumerated `[0 NVIDIA][1 Intel]` and, minutes
+    /// later, `[0 Intel][1 NVIDIA]` -- so a saved "0" meaning the discrete
+    /// card silently came to mean the iGPU. `default_gpu_name` is the field
+    /// that survives that; see `resolveGpu` on the frontend.
     pub default_gpu_id: i32,
+    /// The name of the device chosen last time, matched against a fresh
+    /// enumeration at startup. `None` for settings files written before this
+    /// field existed.
+    #[serde(default)]
+    pub default_gpu_name: Option<String>,
     pub default_scale: i32,
     pub default_tile_size: u32,
     pub output_directory: Option<String>,
@@ -18,6 +32,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             default_gpu_id: 0,
+            default_gpu_name: None,
             default_scale: 4,
             default_tile_size: 0,
             output_directory: None,
@@ -80,6 +95,27 @@ mod tests {
         assert_eq!(defaults.default_scale, 4);
         assert_eq!(defaults.default_tile_size, 0);
         assert!(!defaults.sound_muted);
+    }
+
+    #[test]
+    fn test_settings_written_before_gpu_name_existed_still_load() {
+        // Without #[serde(default)] on the new field this fails to
+        // deserialize, and load_settings responds by renaming the file to
+        // .corrupt and returning defaults -- silently discarding the user's
+        // output directory, scale and tile preferences on upgrade.
+        let legacy = r#"{
+            "default_gpu_id": 1,
+            "default_scale": 2,
+            "default_tile_size": 256,
+            "output_directory": "D:/out",
+            "sound_muted": true,
+            "auto_check_updates": false
+        }"#;
+
+        let parsed: AppSettings = serde_json::from_str(legacy).unwrap();
+        assert_eq!(parsed.default_gpu_name, None);
+        assert_eq!(parsed.default_scale, 2);
+        assert_eq!(parsed.output_directory.as_deref(), Some("D:/out"));
     }
 
     #[test]
