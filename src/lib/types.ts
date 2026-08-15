@@ -1,3 +1,5 @@
+import { JobState } from './jobState';
+
 export interface GpuInfo {
   id: number;
   name: string;
@@ -77,16 +79,15 @@ export interface BatchItem {
   name?: string;
   w?: number;
   h?: number;
-  status:
-    | 'ready'
-    | 'queued'
-    | 'processing'
-    | 'done'
-    | 'error'
-    | 'completed'
-    | 'failed'
-    | 'cancelled'
-    | 'idle';
+  /**
+   * Canonical lifecycle state. There used to be two overlapping vocabularies
+   * -- `processing`/`done`/`error`/`idle` in the UI and
+   * `running`/`succeeded`/`failed`/`ready` from the backend -- which meant
+   * every comparison had to test for both spellings and any missed one read
+   * as "not that state". `normalizeJobStatus` maps incoming strings once, at
+   * the event boundary; everything downstream uses only these.
+   */
+  status: JobState;
   progress: number;
   scale?: number;
   model?: string;

@@ -74,7 +74,7 @@ describe('handleStudioJobStatus', () => {
 
     handleStudioJobStatus(progressFor('job-1', { status: 'running', percentage: 40 }), state);
     expect(state.setProgressVal).toHaveBeenCalledWith(40);
-    expect(state.setJobStatus).toHaveBeenCalledWith('processing');
+    expect(state.setJobStatus).toHaveBeenCalledWith('running');
   });
 
   it('does not overwrite the view when a different file was opened before completion', () => {

@@ -19,15 +19,15 @@ interface BatchQueueRowProps {
 }
 
 function getItemColor(status: string, accentColor: string): string {
-  if (status === 'done' || status === 'completed') return 'var(--success)';
-  if (status === 'processing') return accentColor;
+  if (status === 'succeeded') return 'var(--success)';
+  if (status === 'running') return accentColor;
   if (status === 'queued') return 'var(--text-secondary)';
   return 'var(--text-dim)';
 }
 
 function getItemStatusLabel(status: string, progress: number): string {
-  if (status === 'done' || status === 'completed') return '✓';
-  if (status === 'processing') return `${Math.round(progress)}%`;
+  if (status === 'succeeded') return '✓';
+  if (status === 'running') return `${Math.round(progress)}%`;
   if (status === 'queued') return '···';
   return '';
 }
@@ -119,7 +119,7 @@ export const BatchQueueRow = memo(function BatchQueueRow({
       <div
         className="absolute left-0 bottom-0 h-0.5"
         style={{
-          width: `${st === 'processing' ? file.progress : 0}%`,
+          width: `${st === 'running' ? file.progress : 0}%`,
           background: accentColor,
           transition: 'width .2s linear',
         }}

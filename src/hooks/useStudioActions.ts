@@ -2,10 +2,10 @@ import { useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { playErrorSound } from '../lib/sound';
-import { ModelInfo, BatchItem, HistoryEntry } from '../lib/types';
-import { UpscaleJobHandle } from '../lib/types';
+import { ModelInfo, BatchItem, HistoryEntry, UpscaleJobHandle } from '../lib/types';
 import { allowMediaPath } from '../lib/assetScope';
 import { JobInputSnapshot } from '../lib/studioJobHandler';
+import { JobState } from '../lib/jobState';
 
 interface StudioActionsOptions {
   filePath: string | null;
@@ -23,11 +23,11 @@ interface StudioActionsOptions {
   supportedModels: ModelInfo[];
   installedModels: string[];
   activeJobId: string | null;
-  jobStatus?: string;
+  jobStatus?: JobState;
   confirmCancelOpen: boolean;
   setConfirmCancelOpen: (open: boolean) => void;
   setActiveJobId: (id: string | null) => void;
-  setJobStatus: (status: string) => void;
+  setJobStatus: (status: JobState) => void;
   setProgressVal: (val: number) => void;
   setStatusMessage: (msg: string) => void;
   setJobPhase: (phase: string) => void;
@@ -220,12 +220,12 @@ export function useStudioActions({
       );
       pendingOutputPath.current = outPath;
 
-      setJobStatus('processing');
+      setJobStatus('running');
       onNotify('info', 'Upscaling Started', `Job ID: ${jobId.slice(0, 8)}...`);
     } catch (err) {
       activeJobIdRef.current = null;
       setActiveJobId(null);
-      setJobStatus('idle');
+      setJobStatus('ready');
       playErrorSound(isMuted);
       onNotify('error', 'Error Starting Upscale', String(err));
     }
@@ -242,7 +242,7 @@ export function useStudioActions({
       } finally {
         activeJobIdRef.current = null;
         setActiveJobId(null);
-        setJobStatus('idle');
+        setJobStatus('ready');
         onNotify('info', 'Cancelled', 'Upscaling cancelled and resources freed.');
       }
     },
@@ -264,9 +264,7 @@ export function useStudioActions({
       Boolean(
         activeJobId ||
         activeJobIdRef.current ||
-        jobStatus === 'processing' ||
-        jobStatus === 'running' ||
-        jobStatus === 'queued'
+        jobStatus === 'running' || jobStatus === 'queued'
       ),
     [activeJobId, jobStatus]
   );
@@ -293,7 +291,7 @@ export function useStudioActions({
     setIsVideo(false);
     setCurrentFileDims(null);
     setBatchItems([]);
-    setJobStatus('idle');
+    setJobStatus('ready');
     setProgressVal(0);
     setStatusMessage('');
     setJobPhase('');
@@ -339,7 +337,7 @@ export function useStudioActions({
     setIsVideo(false);
     setCurrentFileDims(null);
     setBatchItems([]);
-    setJobStatus('idle');
+    setJobStatus('ready');
     setProgressVal(0);
     setStatusMessage('');
     setJobPhase('');
@@ -387,7 +385,7 @@ export function useStudioActions({
     }
     if (item.upscaledPath) {
       setUpscaledPath(item.upscaledPath);
-      setJobStatus('completed');
+      setJobStatus('succeeded');
     }
     if (item.scale) {
       setScale(item.scale);

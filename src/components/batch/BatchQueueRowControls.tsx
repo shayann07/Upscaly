@@ -38,7 +38,7 @@ export function BatchQueueRowControls({
         {statusLabel}
       </div>
 
-      {onCancelItem && status === 'processing' && (
+      {onCancelItem && status === 'running' && (
         <button
           onClick={() => onCancelItem(fileId)}
           className="text-[9px] text-[var(--danger-text)] ml-1 transition-all duration-150 hover:scale-110"

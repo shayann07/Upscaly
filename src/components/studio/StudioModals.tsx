@@ -80,7 +80,7 @@ export function StudioModals({
               customOutputPath={customOutputPath}
               onSetOutputDir={(dir) => setCustomOutputPath(dir)}
               onSelectOutputPath={handleSelectDestinationFolder}
-              isProcessing={jobStatus === 'processing' || jobStatus === 'queued'}
+              isProcessing={jobStatus === 'running' || jobStatus === 'queued'}
               onAutoTune={(recTile, vramText) => {
                 setTileSize(recTile);
                 addToast(

@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { getRecentHistory, HistoryItem } from '../lib/history';
+import { JobState } from '../lib/jobState';
 import { MAX_VISIBLE_TOASTS } from '../lib/types';
 
 // How long a toast stays visible before it's automatically removed. Without
@@ -28,7 +29,7 @@ export function useStudioState() {
   // a ref-bridge, which only works reliably for callbacks, not values read
   // during the same render they're threaded through.
   const [confirmCancelOpen, setConfirmCancelOpen] = useState<boolean>(false);
-  const [jobStatus, setJobStatus] = useState<string>('idle');
+  const [jobStatus, setJobStatus] = useState<JobState>('ready');
   const [progressVal, setProgressVal] = useState<number>(0);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [jobPhase, setJobPhase] = useState<string>('');
@@ -89,7 +90,7 @@ export function useStudioState() {
   );
 
   const handleResetJob = useCallback(() => {
-    setJobStatus('idle');
+    setJobStatus('ready');
     setProgressVal(0);
     setStatusMessage('');
     setJobPhase('');

@@ -2,6 +2,7 @@ import { JobProgress } from './types';
 import { addHistoryItem, HistoryItem } from './history';
 import { playCompleteSound, playErrorSound } from './sound';
 import { allowMediaPath } from './assetScope';
+import { JobState, normalizeJobStatus, isTerminalState } from './jobState';
 
 export interface JobInputSnapshot {
   filePath: string;
@@ -29,7 +30,7 @@ export interface StudioJobState {
   isMuted: boolean;
   setActiveJobId: (id: string | null) => void;
   setProgressVal: (val: number) => void;
-  setJobStatus: (status: string) => void;
+  setJobStatus: (status: JobState) => void;
   setJobPhase: (phase: string) => void;
   setEtaSeconds: (eta: number) => void;
   setFps: (fps: number) => void;
@@ -103,7 +104,7 @@ function handleFailedStatus(
   if (isActiveJob) {
     state.activeJobIdRef.current = null;
     state.setActiveJobId(null);
-    state.setJobStatus('idle');
+    state.setJobStatus('ready');
     playErrorSound(state.isMuted);
     state.onNotify('error', 'Upscaling Failed', errStr);
   } else {
@@ -115,7 +116,7 @@ function handleCancelledStatus(state: StudioJobState, isActiveJob: boolean) {
   if (isActiveJob) {
     state.activeJobIdRef.current = null;
     state.setActiveJobId(null);
-    state.setJobStatus('idle');
+    state.setJobStatus('ready');
     state.onNotify('info', 'Cancelled', 'Upscaling task was cancelled.');
   }
 }
@@ -155,11 +156,14 @@ export function handleStudioJobStatus(progress: JobProgress, state: StudioJobSta
     state.setActiveJobId(job_id);
   }
 
-  const isDone = status === 'succeeded' || status === 'completed';
-  const isErr = status === 'failed';
-  const isCancelled = status === 'cancelled';
-  const isTerminal = isDone || isErr || isCancelled;
-  const isProc = status === 'running' || status === 'processing';
+  // Normalize once, here at the event boundary; everything below works in
+  // canonical JobState values only.
+  const jobState = normalizeJobStatus(status);
+  const isDone = jobState === 'succeeded';
+  const isErr = jobState === 'failed';
+  const isCancelled = jobState === 'cancelled';
+  const isTerminal = isTerminalState(jobState);
+  const isProc = jobState === 'running';
 
   if (isTerminal) {
     state.jobSnapshotsRef.current.delete(job_id);
@@ -168,9 +172,8 @@ export function handleStudioJobStatus(progress: JobProgress, state: StudioJobSta
   // Live progress-bar/ETA/status mutations only make sense for the job
   // that's actually driving the visible UI right now.
   if (isActiveJob) {
-    const effectiveStatus = isDone ? 'completed' : isProc ? 'processing' : status;
     state.setProgressVal(percentage);
-    state.setJobStatus(effectiveStatus);
+    state.setJobStatus(jobState);
     if (phase) state.setJobPhase(phase);
 
     if (eta_seconds !== undefined && eta_seconds > 0) {
