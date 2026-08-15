@@ -159,13 +159,9 @@ export function useStudioContainerSetup() {
     tileSize: settings.tileSize,
   });
 
-  const handleStartUpscale = () => {
-    if (batch.batchItems.length > 1) {
-      batch.handleStartBatchUpscale();
-    } else {
-      actions.handleStartUpscale();
-    }
-  };
+  // More than one queued item means this is a batch run, not a single-file one.
+  const handleStartUpscale = () =>
+    batch.batchItems.length > 1 ? batch.handleStartBatchUpscale() : actions.handleStartUpscale();
 
   return {
     ...state,
