@@ -126,6 +126,107 @@ impl StdProcessRunner {
     pub fn new() -> Self {
         Self
     }
+
+    /// Spawns a child with stdin piped, handing back the writer alongside the
+    /// usual handle.
+    ///
+    /// Used for image2pipe reassembly: frames are fed to ffmpeg over stdin and
+    /// deleted as they go, so the output directory never has to hold every
+    /// upscaled frame of the video at once. The caller must drop the returned
+    /// writer to signal EOF, or ffmpeg will wait forever for more frames.
+    pub fn spawn_with_stdin(
+        &self,
+        program: &Path,
+        args: &[String],
+    ) -> Result<(StdProcessHandle, std::process::ChildStdin), AppError> {
+        let mut cmd = Command::new(program);
+        cmd.args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        suppress_console_window(&mut cmd);
+
+        let mut child = cmd.spawn().map_err(|e| AppError::ExecutionError {
+            message: format!("Failed to spawn process '{}': {e}", program.display()),
+        })?;
+
+        crate::sidecar_manager::attach_to_job_object(&child);
+
+        let stdin = child.stdin.take().ok_or_else(|| AppError::ExecutionError {
+            message: "Failed to open stdin on the encoder process".to_string(),
+        })?;
+
+        let (progress, stderr_log) = drain_child_output(&mut child);
+        Ok((
+            StdProcessHandle {
+                child,
+                progress,
+                stderr_log,
+            },
+            stdin,
+        ))
+    }
+}
+
+/// Live progress percentage and the capped stderr ring buffer for a child,
+/// both written by the drain threads below.
+type DrainedOutput = (Arc<Mutex<Option<f64>>>, Arc<Mutex<Vec<String>>>);
+
+/// Drains a child's stdout and stderr on background threads.
+///
+/// Both must be consumed continuously or a chatty child blocks forever on a
+/// full OS pipe buffer. stderr is additionally kept as a capped ring buffer
+/// for error reporting, and scanned for the percentage lines the NCNN engine
+/// emits.
+fn drain_child_output(child: &mut Child) -> DrainedOutput {
+    let progress = Arc::new(Mutex::new(None));
+    let progress_clone = Arc::clone(&progress);
+    let stderr_log = Arc::new(Mutex::new(Vec::<String>::new()));
+    let stderr_log_clone = Arc::clone(&stderr_log);
+
+    if let Some(stdout) = child.stdout.take() {
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            let mut reader = std::io::BufReader::new(stdout);
+            let mut line = String::new();
+            while let Ok(bytes) = reader.read_line(&mut line) {
+                if bytes == 0 {
+                    break;
+                }
+                line.clear();
+            }
+        });
+    }
+
+    if let Some(stderr) = child.stderr.take() {
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            let mut reader = std::io::BufReader::new(stderr);
+            let mut line = String::new();
+            while let Ok(bytes) = reader.read_line(&mut line) {
+                if bytes == 0 {
+                    break;
+                }
+                let trimmed = line.trim();
+                if let Ok(mut log) = stderr_log_clone.lock() {
+                    if log.len() >= 20 {
+                        log.remove(0);
+                    }
+                    log.push(trimmed.to_string());
+                }
+                if let Some(pct_str) = trimmed.strip_suffix('%') {
+                    if let Ok(pct) = pct_str.trim().parse::<f64>() {
+                        if let Ok(mut p) = progress_clone.lock() {
+                            *p = Some(pct);
+                        }
+                    }
+                }
+                line.clear();
+            }
+        });
+    }
+
+    (progress, stderr_log)
 }
 
 pub struct StdProcessHandle {
@@ -190,52 +291,7 @@ impl ProcessRunner for StdProcessRunner {
         // Guarantee child process dies when the parent application exits
         crate::sidecar_manager::attach_to_job_object(&child);
 
-        let progress = Arc::new(Mutex::new(None));
-        let progress_clone = Arc::clone(&progress);
-        let stderr_log = Arc::new(Mutex::new(Vec::<String>::new()));
-        let stderr_log_clone = Arc::clone(&stderr_log);
-
-        // Drain stdout and stderr in background threads so OS pipe buffers never fill up and deadlock child processes
-        if let Some(stdout) = child.stdout.take() {
-            std::thread::spawn(move || {
-                use std::io::BufRead;
-                let mut reader = std::io::BufReader::new(stdout);
-                let mut line = String::new();
-                while let Ok(bytes) = reader.read_line(&mut line) {
-                    if bytes == 0 {
-                        break;
-                    }
-                    line.clear();
-                }
-            });
-        }
-        if let Some(stderr) = child.stderr.take() {
-            std::thread::spawn(move || {
-                use std::io::BufRead;
-                let mut reader = std::io::BufReader::new(stderr);
-                let mut line = String::new();
-                while let Ok(bytes) = reader.read_line(&mut line) {
-                    if bytes == 0 {
-                        break;
-                    }
-                    let trimmed = line.trim();
-                    if let Ok(mut log) = stderr_log_clone.lock() {
-                        if log.len() >= 20 {
-                            log.remove(0);
-                        }
-                        log.push(trimmed.to_string());
-                    }
-                    if let Some(pct_str) = trimmed.strip_suffix('%') {
-                        if let Ok(pct) = pct_str.trim().parse::<f64>() {
-                            if let Ok(mut p) = progress_clone.lock() {
-                                *p = Some(pct);
-                            }
-                        }
-                    }
-                    line.clear();
-                }
-            });
-        }
+        let (progress, stderr_log) = drain_child_output(&mut child);
 
         Ok(Box::new(StdProcessHandle {
             child,

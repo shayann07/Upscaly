@@ -12,7 +12,7 @@ use crate::model_manager::get_models_dir;
 use crate::process_runner::{ProcessRunner, StdProcessRunner};
 use crate::sidecar_manager::resolve_sidecar_path;
 use crate::video_pipeline::context::VideoJobContext;
-use crate::video_pipeline::encoder::reassemble_with_encoders;
+use crate::video_pipeline::encoder::{reassemble_streaming, reassemble_with_encoders};
 
 #[derive(Debug, Clone)]
 pub struct VideoMetadata {
@@ -832,10 +832,21 @@ pub fn reassemble_video(
         })
         .unwrap_or("jpg");
 
+    ctx.emit_progress(92.0, "Reassembling Video & Merging Audio Stream...");
+
+    // Stream the frames in rather than pointing ffmpeg at a numbered pattern.
+    // The pattern form needs every upscaled frame resident until reassembly
+    // finishes; feeding them over stdin lets each be deleted the moment it is
+    // consumed, so peak disk is the untouched tail instead of the whole video.
+    let frames = get_sorted_image_files(&ctx.frames_out_dir);
+    if !frames.is_empty() {
+        return reassemble_streaming(ctx, ffmpeg_binary, fps_string, frames);
+    }
+
+    // Nothing matched the sorted-image listing (unexpected extension, say) --
+    // fall back to letting ffmpeg glob the directory itself.
     let out_frame_pattern = ctx.frames_out_dir.join(format!("frame_%08d.{sample_ext}"));
     let normalized_pattern = out_frame_pattern.to_string_lossy().replace('\\', "/");
-
-    ctx.emit_progress(92.0, "Reassembling Video & Merging Audio Stream...");
     reassemble_with_encoders(ctx, ffmpeg_binary, fps_string, &normalized_pattern)
 }
 

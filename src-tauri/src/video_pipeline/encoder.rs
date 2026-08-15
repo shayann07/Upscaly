@@ -1,9 +1,11 @@
-use std::path::PathBuf;
-use std::sync::Mutex;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use crate::process_runner::{ProcessRunner, StdProcessRunner};
+use crate::process_runner::{ProcessHandle, ProcessRunner, StdProcessRunner};
 use crate::video_pipeline::context::VideoJobContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,6 +157,31 @@ impl EncoderStrategy {
         }
     }
 
+    /// Args for reading frames from stdin instead of a numbered file pattern.
+    ///
+    /// Same output configuration as [`Self::to_args`]; only the input source
+    /// differs. `image2pipe` needs the framerate declared exactly as the
+    /// pattern form does, since piped JPEGs carry no timing of their own.
+    fn to_streaming_args(
+        self,
+        fps_string: &str,
+        input_path: &str,
+        output_path: &str,
+        audio_mode: AudioMode,
+    ) -> Vec<String> {
+        let mut args = vec![
+            "-y".to_string(),
+            "-f".to_string(),
+            "image2pipe".to_string(),
+            "-framerate".to_string(),
+            fps_string.to_string(),
+            "-i".to_string(),
+            "-".to_string(),
+        ];
+        args.extend(self.common_output_args(input_path, output_path, audio_mode));
+        args
+    }
+
     fn to_args(
         self,
         fps_string: &str,
@@ -169,6 +196,21 @@ impl EncoderStrategy {
             fps_string.to_string(),
             "-i".to_string(),
             pattern.to_string(),
+        ];
+        args.extend(self.common_output_args(input_path, output_path, audio_mode));
+        args
+    }
+
+    /// Everything after the frame source: the audio input, stream mapping,
+    /// the even-dimension pad, codec settings and the output path. Shared so
+    /// the pattern and streaming paths cannot drift in what they produce.
+    fn common_output_args(
+        self,
+        input_path: &str,
+        output_path: &str,
+        audio_mode: AudioMode,
+    ) -> Vec<String> {
+        let mut args = vec![
             "-i".to_string(),
             input_path.to_string(),
             "-map".to_string(),
@@ -202,6 +244,194 @@ impl EncoderStrategy {
         args.push(output_path.to_string());
         args
     }
+}
+
+/// Finds an encoder + audio-mode combination that actually works here, by
+/// encoding a single frame.
+///
+/// The pattern-based path can afford to discover this by trying each
+/// combination on the real job and letting failures fall through. Streaming
+/// cannot: frames are consumed (and deleted) as they are fed, so there is no
+/// second attempt. Probing with one frame keeps the fallback ladder's
+/// coverage at a fraction of its cost, and the `LAST_SUCCESSFUL_ENCODER`
+/// cache means the first candidate is usually the right one.
+fn probe_combination(
+    ctx: &VideoJobContext,
+    ffmpeg_binary: &str,
+    fps_string: &str,
+    sample_frame: &Path,
+) -> Option<(EncoderStrategy, AudioMode)> {
+    let probe_output = ctx.job_temp_dir.join("encoder_probe.mp4");
+    let sample = std::fs::read(sample_frame).ok()?;
+
+    for audio_mode in [AudioMode::Copy, AudioMode::Transcode] {
+        for &encoder in &EncoderStrategy::candidates() {
+            if ctx.is_cancelled() {
+                return None;
+            }
+
+            let args = encoder.to_streaming_args(
+                fps_string,
+                &ctx.job.input_path,
+                &probe_output.to_string_lossy(),
+                audio_mode,
+            );
+
+            let runner = StdProcessRunner::new();
+            let Ok((mut handle, mut stdin)) =
+                runner.spawn_with_stdin(&PathBuf::from(ffmpeg_binary), &args)
+            else {
+                continue;
+            };
+
+            let wrote = stdin.write_all(&sample).is_ok();
+            // EOF after one frame: ffmpeg encodes it and exits.
+            drop(stdin);
+
+            let mut succeeded = false;
+            if wrote {
+                let deadline = std::time::Instant::now() + Duration::from_secs(20);
+                loop {
+                    match handle.try_wait() {
+                        Ok(Some(0)) => {
+                            succeeded = true;
+                            break;
+                        }
+                        Ok(Some(_)) | Err(_) => break,
+                        Ok(None) => {
+                            if std::time::Instant::now() > deadline {
+                                let _ = handle.kill();
+                                break;
+                            }
+                            thread::sleep(Duration::from_millis(50));
+                        }
+                    }
+                }
+            }
+            if !succeeded {
+                let _ = handle.kill();
+            }
+
+            let _ = std::fs::remove_file(&probe_output);
+            if succeeded {
+                return Some((encoder, audio_mode));
+            }
+        }
+    }
+    None
+}
+
+/// Reassembles by piping frames into ffmpeg over stdin, deleting each frame
+/// once it has been fed.
+///
+/// The pattern-based path requires every upscaled frame to still be on disk
+/// when reassembly starts, so peak usage is the whole decoded video. Feeding
+/// and deleting incrementally keeps only the untouched tail resident.
+pub fn reassemble_streaming(
+    ctx: &VideoJobContext,
+    ffmpeg_binary: &str,
+    fps_string: &str,
+    frames: Vec<PathBuf>,
+) -> Result<(), String> {
+    let Some(sample_frame) = frames.first().cloned() else {
+        return Err("No upscaled frames to reassemble.".to_string());
+    };
+
+    let (encoder, audio_mode) = probe_combination(ctx, ffmpeg_binary, fps_string, &sample_frame)
+        .ok_or_else(|| {
+            "All hardware and software video encoders failed to start.".to_string()
+        })?;
+    encoder.record_success();
+
+    let args = encoder.to_streaming_args(
+        fps_string,
+        &ctx.job.input_path,
+        &ctx.job.output_path,
+        audio_mode,
+    );
+
+    let runner = StdProcessRunner::new();
+    let (handle, mut stdin) = runner
+        .spawn_with_stdin(&PathBuf::from(ffmpeg_binary), &args)
+        .map_err(|e| format!("Failed to launch FFmpeg encoder {encoder:?}: {e}"))?;
+
+    {
+        let mut guard = ctx
+            .process_handle
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = Some(Box::new(handle));
+    }
+
+    let total = frames.len();
+    let fed = Arc::new(AtomicUsize::new(0));
+    let fed_writer = Arc::clone(&fed);
+    let cancel = Arc::clone(&ctx.cancel_requested);
+
+    // Feed on its own thread. If ffmpeg dies early it stops draining stdin
+    // and a write blocks indefinitely, so the polling loop below has to stay
+    // free to notice that and kill the process.
+    let feeder = thread::spawn(move || {
+        for frame in frames {
+            if cancel.load(Ordering::SeqCst) {
+                break;
+            }
+            let Ok(bytes) = std::fs::read(&frame) else {
+                continue;
+            };
+            if stdin.write_all(&bytes).is_err() {
+                break;
+            }
+            let _ = std::fs::remove_file(&frame);
+            fed_writer.fetch_add(1, Ordering::SeqCst);
+        }
+        // Dropping stdin is the EOF signal; without it ffmpeg waits forever.
+        drop(stdin);
+    });
+
+    let result = loop {
+        if ctx.is_cancelled() {
+            let mut guard = ctx
+                .process_handle
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(ref mut h) = *guard {
+                let _ = h.kill();
+            }
+            break Err("cancelled".to_string());
+        }
+
+        let status = {
+            let mut guard = ctx
+                .process_handle
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            match guard.as_mut() {
+                Some(h) => h.try_wait(),
+                None => break Ok(()),
+            }
+        };
+
+        match status {
+            Ok(Some(0)) => break Ok(()),
+            Ok(Some(code)) => {
+                break Err(format!("Encoder {encoder:?} exited with code {code}"));
+            }
+            Err(e) => break Err(format!("Error waiting for encoder {encoder:?}: {e}")),
+            Ok(None) => {}
+        }
+
+        #[allow(clippy::cast_precision_loss)]
+        let ratio = fed.load(Ordering::SeqCst) as f64 / total.max(1) as f64;
+        ctx.emit_progress(
+            92.0 + (ratio * 7.0).min(7.0),
+            "Reassembling Video & Merging Audio Stream...",
+        );
+        thread::sleep(Duration::from_millis(100));
+    };
+
+    let _ = feeder.join();
+    result
 }
 
 pub fn reassemble_with_encoders(
@@ -357,6 +587,46 @@ mod tests {
 
         assert!(transcode_args.windows(2).any(|w| w == ["-c:a", "aac"]));
         assert!(transcode_args.windows(2).any(|w| w == ["-b:a", "256k"]));
+    }
+
+    #[test]
+    fn test_streaming_and_pattern_paths_agree_on_output_config() {
+        // The two input forms must differ only in how frames arrive. If they
+        // drift, streamed video would silently get different codec, colour or
+        // audio handling than the pattern fallback produces.
+        for &encoder in EncoderStrategy::all() {
+            for audio_mode in [AudioMode::Copy, AudioMode::Transcode] {
+                let pattern =
+                    encoder.to_args("30/1", "frame_%08d.jpg", "in.mp4", "out.mp4", audio_mode);
+                let streaming =
+                    encoder.to_streaming_args("30/1", "in.mp4", "out.mp4", audio_mode);
+
+                // Everything from the audio input onward is shared verbatim.
+                let tail_of = |args: &[String]| {
+                    let idx = args.iter().position(|a| a == "-map").expect("-map present");
+                    args[idx..].to_vec()
+                };
+                assert_eq!(
+                    tail_of(&pattern),
+                    tail_of(&streaming),
+                    "{encoder:?}/{audio_mode:?} output config diverged between input forms"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_streaming_args_read_frames_from_stdin() {
+        let args =
+            EncoderStrategy::Libx264.to_streaming_args("30/1", "in.mp4", "out.mp4", AudioMode::Copy);
+
+        assert!(args.windows(2).any(|w| w == ["-f", "image2pipe"]));
+        // Frame source is stdin, and the framerate must still be declared:
+        // piped JPEGs carry no timing of their own.
+        assert!(args.windows(2).any(|w| w == ["-i", "-"]));
+        assert!(args.windows(2).any(|w| w == ["-framerate", "30/1"]));
+        // The original file is still opened as the audio source.
+        assert!(args.windows(2).any(|w| w == ["-i", "in.mp4"]));
     }
 
     #[test]
