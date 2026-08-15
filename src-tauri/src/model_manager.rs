@@ -1,4 +1,3 @@
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -6,40 +5,6 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter, Manager};
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ModelItem {
-    pub id: String,
-    pub name: String,
-    pub version: String,
-    #[serde(default)]
-    pub note: Option<String>,
-    #[serde(default)]
-    pub cat: Option<String>,
-    #[serde(default)]
-    pub scale: Option<u32>,
-    #[serde(default)]
-    pub size: Option<String>,
-    #[serde(default)]
-    pub speed: Option<f64>,
-    pub param_url: String,
-    pub param_sha256: String,
-    pub param_size: u64,
-    pub bin_url: String,
-    pub bin_sha256: String,
-    pub bin_size: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ManifestData {
-    pub models: Vec<ModelItem>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SignedManifest {
-    pub signature: String,
-    pub data: String, // JSON string of ManifestData
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DownloadProgress {
@@ -84,9 +49,9 @@ pub fn get_available_disk_space(dir: &Path) -> Result<u64, String> {
         let res = unsafe {
             GetDiskFreeSpaceExW(
                 wide_path.as_ptr(),
-                &mut free_bytes,
-                &mut total_bytes,
-                &mut total_free,
+                std::ptr::from_mut(&mut free_bytes),
+                std::ptr::from_mut(&mut total_bytes),
+                std::ptr::from_mut(&mut total_free),
             )
         };
         if res == 0 {
@@ -100,41 +65,16 @@ pub fn get_available_disk_space(dir: &Path) -> Result<u64, String> {
     }
 }
 
-/// Verifies Ed25519 signature of data against a hex-encoded public key.
-pub fn verify_signature(
-    data: &[u8],
-    signature_hex: &str,
-    public_key_hex: &str,
-) -> Result<(), String> {
-    let public_key_bytes = hex::decode(public_key_hex).map_err(|e| e.to_string())?;
-    let signature_bytes = hex::decode(signature_hex).map_err(|e| e.to_string())?;
-
-    let public_key_array: [u8; 32] = public_key_bytes
-        .try_into()
-        .map_err(|_| "Invalid public key length. Must be 32 bytes.")?;
-    let signature_array: [u8; 64] = signature_bytes
-        .try_into()
-        .map_err(|_| "Invalid signature length. Must be 64 bytes.")?;
-
-    let verifying_key = VerifyingKey::from_bytes(&public_key_array)
-        .map_err(|e| format!("Failed to parse public key: {}", e))?;
-    let signature = Signature::from_bytes(&signature_array);
-
-    verifying_key
-        .verify(data, &signature)
-        .map_err(|e| format!("Ed25519 signature verification failed: {}", e))
-}
-
 /// Calculates SHA-256 hash of a file.
 pub fn calculate_sha256(path: &Path) -> Result<String, String> {
-    let mut file =
-        File::open(path).map_err(|e| format!("Failed to open file for hashing: {}", e))?;
+    let mut file = File::open(path).map_err(|e| format!("Failed to open file for hashing: {e}"))?;
     let mut hasher = Sha256::new();
+    // 64KB read buffer on a non-recursive leaf function -- fine on the stack,
+    // and avoids a heap allocation on every hash read loop iteration setup.
+    #[allow(clippy::large_stack_arrays)]
     let mut buffer = [0; 65536];
     loop {
-        let n = file
-            .read(&mut buffer)
-            .map_err(|e| format!("Read error: {}", e))?;
+        let n = file.read(&mut buffer).map_err(|e| format!("Read error: {e}"))?;
         if n == 0 {
             break;
         }
@@ -200,6 +140,10 @@ pub fn copy_bundled_models(app: &AppHandle, dest_dir: &Path) {
 }
 
 /// Downloads a single file with resume capability and progress updates.
+// Progress percentage precision loss from the u64 byte counts is
+// inconsequential at file-download sizes (nowhere near f64's 52-bit
+// mantissa limit) and is only ever displayed rounded to one decimal.
+#[allow(clippy::cast_precision_loss)]
 pub async fn download_file(
     app: &AppHandle,
     model_id: &str,
@@ -228,7 +172,7 @@ pub async fn download_file(
     let mut request = client.get(url);
 
     if downloaded > 0 {
-        request = request.header("Range", format!("bytes={}-", downloaded));
+        request = request.header("Range", format!("bytes={downloaded}-"));
     }
 
     let response = request.send().await.map_err(|e| e.to_string())?;
@@ -243,12 +187,16 @@ pub async fn download_file(
 
     let is_partial = response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
 
+    // truncate(false): resume support below depends on the existing partial
+    // download surviving the open -- it's truncated explicitly via set_len(0)
+    // only when a resume isn't possible.
     let mut file = OpenOptions::new()
         .create(true)
         .write(true)
         .read(true)
+        .truncate(false)
         .open(&temp_path)
-        .map_err(|e| format!("Failed to open temp file: {}", e))?;
+        .map_err(|e| format!("Failed to open temp file: {e}"))?;
 
     if !is_partial || downloaded == 0 {
         file.set_len(0).map_err(|e| e.to_string())?;
@@ -293,15 +241,14 @@ pub async fn download_file(
         if !actual_hash.eq_ignore_ascii_case(expected_sha256) {
             let _ = std::fs::remove_file(&temp_path);
             return Err(format!(
-                "Integrity check failed for model '{}' ({}): expected SHA-256 {}, got {}",
-                model_id, file_type, expected_sha256, actual_hash
+                "Integrity check failed for model '{model_id}' ({file_type}): expected SHA-256 {expected_sha256}, got {actual_hash}"
             ));
         }
     }
 
     // Atomic rename from temp file to final dest file
     std::fs::rename(&temp_path, dest_path)
-        .map_err(|e| format!("Failed to finalize model download: {}", e))?;
+        .map_err(|e| format!("Failed to finalize model download: {e}"))?;
 
     Ok(())
 }

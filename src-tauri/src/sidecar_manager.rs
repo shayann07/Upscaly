@@ -44,15 +44,15 @@ pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBu
     };
 
     let filename = if cfg!(target_os = "windows") {
-        format!("{}-{}.exe", binary_name, target_triple)
+        format!("{binary_name}-{target_triple}.exe")
     } else {
-        format!("{}-{}", binary_name, target_triple)
+        format!("{binary_name}-{target_triple}")
     };
 
     // 1. Try resolving via tauri Resource directory
     if let Ok(path) = app
         .path()
-        .resolve(format!("binaries/{}", filename), BaseDirectory::Resource)
+        .resolve(format!("binaries/{filename}"), BaseDirectory::Resource)
     {
         if path.exists() {
             return Ok(path);
@@ -146,20 +146,22 @@ static GLOBAL_JOB_OBJECT: OnceLock<usize> = OnceLock::new();
     clippy::cast_possible_wrap
 )]
 fn get_or_create_job_object() -> usize {
-    *GLOBAL_JOB_OBJECT.get_or_init(|| unsafe {
+    let handle = GLOBAL_JOB_OBJECT.get_or_init(|| unsafe {
         let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
         if job != 0 {
             let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
             info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let info_ptr = std::ptr::from_ref(&info).cast();
             SetInformationJobObject(
                 job,
                 JobObjectExtendedLimitInformation,
-                &info as *const _ as *const _,
+                info_ptr,
                 std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
             );
         }
         job as usize
-    })
+    });
+    *handle
 }
 
 /// Attaches a spawned child process to a Windows Job Object configured to kill child processes on parent exit.
@@ -169,7 +171,10 @@ pub fn attach_to_job_object(child: &Child) {
     let job_handle = get_or_create_job_object();
     if job_handle != 0 {
         unsafe {
-            AssignProcessToJobObject(job_handle as HANDLE, child.as_raw_handle() as HANDLE);
+            AssignProcessToJobObject(
+                job_handle.cast_signed(),
+                child.as_raw_handle() as HANDLE,
+            );
         }
     }
 }
@@ -265,6 +270,22 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     Ok(gpus)
 }
 
+#[allow(clippy::similar_names)]
+fn cmp_by_discrete(a: &GpuDevice, b: &GpuDevice) -> std::cmp::Ordering {
+    let is_a_discrete = a.detail.contains("Discrete");
+    let is_b_discrete = b.detail.contains("Discrete");
+    match (is_a_discrete, is_b_discrete) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.id.cmp(&b.id),
+    }
+}
+
+// Long by line count only because of the deliberate background-thread pipe
+// draining (see comment below) needed to avoid the GPU-probe deadlock this
+// function was rewritten to fix -- splitting it up would scatter that
+// invariant across functions rather than simplify anything.
+#[allow(clippy::too_many_lines, clippy::cast_precision_loss)]
 fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan")?;
     let models_dir = crate::model_manager::get_models_dir(app);
@@ -416,21 +437,30 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     }
 
     // Prioritize discrete GPUs (NVIDIA, AMD Radeon) first, then integrated GPUs, then CPU
-    gpus.sort_by(|a, b| {
-        let is_a_discrete = a.detail.contains("Discrete");
-        let is_b_discrete = b.detail.contains("Discrete");
-        match (is_a_discrete, is_b_discrete) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.id.cmp(&b.id),
-        }
-    });
+    gpus.sort_by(cmp_by_discrete);
 
     Ok(gpus)
 }
 
+// Raw COM/DXGI vtable interop: the pointer casts, borrow-as-pointer
+// patterns, and the `GUID` type name all mirror the actual Win32/DXGI ABI,
+// so "fixing" them (e.g. .cast() instead of `as`, renaming GUID) would just
+// be stylistic churn on unsafe FFI code that already carries its own risk.
 #[cfg(target_os = "windows")]
-#[allow(unsafe_code)]
+#[allow(
+    unsafe_code,
+    clippy::ptr_as_ptr,
+    clippy::borrow_as_ptr,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::upper_case_acronyms,
+    clippy::too_many_lines,
+    clippy::unreadable_literal,
+    clippy::manual_c_str_literals,
+    clippy::collapsible_if
+)]
 pub fn query_dxgi_vram_mb(name: &str, is_discrete: bool) -> u64 {
     use std::ffi::c_void;
 

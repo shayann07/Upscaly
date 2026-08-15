@@ -1,5 +1,3 @@
-#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
-
 pub mod commands;
 pub mod engine;
 pub mod error;
@@ -34,21 +32,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::gpu::list_gpus,
-            commands::gpu::get_gpus,
             commands::gpu::get_vram_profile,
-            commands::models::get_installed_models,
             commands::models::list_installed_models,
-            commands::models::list_available_models,
             commands::models::get_model_catalog,
-            commands::models::check_for_model_updates,
-            commands::models::download_model_files,
             commands::models::download_model,
-            commands::models::repair_model,
-            commands::upscale::upscale_image,
             commands::upscale::run_upscale,
             commands::upscale::cancel_upscale,
-            commands::upscale::enqueue_job,
-            commands::upscale::cancel_active_job,
             commands::settings::get_app_settings,
             commands::settings::update_app_settings,
             commands::settings::get_default_output_dir,
@@ -56,8 +45,7 @@ pub fn run() {
             commands::files::close_window,
             commands::files::minimize_window,
             commands::files::toggle_maximize_window,
-            commands::files::get_file_size_bytes,
-            commands::diagnostics::get_system_diagnostics
+            commands::files::get_file_size_bytes
         ])
         .on_window_event(|_window, event| {
             if matches!(

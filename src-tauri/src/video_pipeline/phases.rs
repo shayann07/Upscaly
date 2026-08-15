@@ -25,7 +25,7 @@ pub struct ExtractionControl {
     pub error_msg: Arc<Mutex<Option<String>>>,
 }
 
-/// Spawns multi-threaded fast frame extraction in a background thread writing to staging_dir.
+/// Spawns multi-threaded fast frame extraction in a background thread writing to `staging_dir`.
 pub fn spawn_background_extraction(
     ctx: &VideoJobContext,
     ffmpeg_binary: &str,
@@ -138,16 +138,31 @@ pub fn spawn_background_extraction(
     })
 }
 
+// Long by line count because the overlapping extract/upscale/reassemble
+// batches share a lot of loop-local state (VRAM retry, staging counts,
+// throughput history) that would need threading through several function
+// signatures if split up -- not a natural seam to cut along.
 #[allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
-    clippy::cast_sign_loss
+    clippy::cast_sign_loss,
+    clippy::too_many_lines
 )]
 pub fn run_overlapping_upscale_pipeline(
     ctx: &VideoJobContext,
     ffmpeg_binary: &str,
     meta: &VideoMetadata,
 ) -> Result<usize, String> {
+    // get_sorted_image_files does a full directory read + sort of
+    // staging_dir, and count_image_files a full directory read of
+    // frames_out_dir, on every loop tick -- for a long video these can
+    // hold tens to hundreds of thousands of entries by the later stages of
+    // a job, pegging a core on repeated full scans for no benefit beyond a
+    // marginally smoother progress bar. 60-100ms was far more often than
+    // the UI needs; still smooth at a third of the frequency.
+    const STAGING_POLL_INTERVAL: Duration = Duration::from_millis(200);
+    const NCNN_POLL_INTERVAL: Duration = Duration::from_millis(300);
+
     ctx.emit_progress(1.0, "Initializing Hardware-Accelerated Video Pipeline...");
 
     let models_dir = get_models_dir(ctx.app);
@@ -185,15 +200,6 @@ pub fn run_overlapping_upscale_pipeline(
     // slightly higher peak disk usage per in-flight batch (a few hundred
     // JPEG frames, negligible next to the already-unbounded staging dir).
     let batch_target_size = 300usize;
-    // get_sorted_image_files does a full directory read + sort of
-    // staging_dir, and count_image_files a full directory read of
-    // frames_out_dir, on every loop tick -- for a long video these can
-    // hold tens to hundreds of thousands of entries by the later stages of
-    // a job, pegging a core on repeated full scans for no benefit beyond a
-    // marginally smoother progress bar. 60-100ms was far more often than
-    // the UI needs; still smooth at a third of the frequency.
-    const STAGING_POLL_INTERVAL: Duration = Duration::from_millis(200);
-    const NCNN_POLL_INTERVAL: Duration = Duration::from_millis(300);
 
     loop {
         if ctx.is_cancelled() {
@@ -500,17 +506,18 @@ fn check_available_disk_space(
     meta: &VideoMetadata,
     effective_scale: i32,
 ) -> Result<(), String> {
+    // Conservative per-frame estimate for a q:v2 JPEG source frame; the
+    // upscaled output frame is estimated to grow with the scaled pixel
+    // area (scale^2), which is intentionally generous since JPEG tends to
+    // compress larger images more efficiently per pixel, not less.
+    const SOURCE_FRAME_BYTES: u64 = 300_000;
+
     let Some(total_frames) = meta.total_frames_estimate else {
         // Unknown duration/frame count -- nothing reliable to estimate
         // against, so don't block the job over a guess.
         return Ok(());
     };
 
-    // Conservative per-frame estimate for a q:v2 JPEG source frame; the
-    // upscaled output frame is estimated to grow with the scaled pixel
-    // area (scale^2), which is intentionally generous since JPEG tends to
-    // compress larger images more efficiently per pixel, not less.
-    const SOURCE_FRAME_BYTES: u64 = 300_000;
     let scale = effective_scale.max(1) as u64;
     let scale_area = scale * scale;
     let output_frame_bytes = SOURCE_FRAME_BYTES.saturating_mul(scale_area);
@@ -530,18 +537,16 @@ fn check_available_disk_space(
 }
 
 fn count_image_files(dir: &Path) -> usize {
-    fs::read_dir(dir)
-        .map(|entries| {
-            entries
-                .filter_map(Result::ok)
-                .filter(|entry| {
-                    entry.path().extension().is_some_and(|ext| {
-                        ext.eq_ignore_ascii_case("jpg") || ext.eq_ignore_ascii_case("png")
-                    })
+    fs::read_dir(dir).map_or(0, |entries| {
+        entries
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry.path().extension().is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("jpg") || ext.eq_ignore_ascii_case("png")
                 })
-                .count()
-        })
-        .unwrap_or(0)
+            })
+            .count()
+    })
 }
 
 fn get_sorted_image_files(dir: &Path) -> Vec<PathBuf> {
@@ -600,10 +605,15 @@ pub fn reassemble_video(
     reassemble_with_encoders(ctx, ffmpeg_binary, fps_string, &normalized_pattern)
 }
 
+// Long by line count because of the timeout + pipe-draining rewrite (see
+// comment below) needed to stop a hung ffprobe from wedging the single
+// worker thread -- that invariant has to stay inline with the process
+// lifecycle it's guarding.
 #[allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
-    clippy::cast_sign_loss
+    clippy::cast_sign_loss,
+    clippy::too_many_lines
 )]
 pub fn probe_video_metadata(app: &AppHandle, video_path: &str) -> Result<VideoMetadata, String> {
     let ffprobe_bin = resolve_ffprobe_binary(app)?;

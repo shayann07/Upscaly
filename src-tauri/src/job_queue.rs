@@ -97,29 +97,29 @@ impl JobQueueService {
     fn lock_queue(&self) -> std::sync::MutexGuard<'_, VecDeque<Job>> {
         self.queue
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn lock_registry(&self) -> std::sync::MutexGuard<'_, HashMap<String, JobControl>> {
         self.registry
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn lock_processing(&self) -> std::sync::MutexGuard<'_, bool> {
         self.is_processing
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn lock_pending_cancellations(&self) -> std::sync::MutexGuard<'_, HashSet<String>> {
         self.pending_cancellations
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     pub fn enqueue(&self, app: AppHandle, mut job: Job) {
-        job.output_path = reserve_output_path(&job.output_path, job.scale as u32);
+        job.output_path = reserve_output_path(&job.output_path, job.scale.cast_unsigned());
 
         {
             let mut q = self.lock_queue();
@@ -145,7 +145,7 @@ impl JobQueueService {
         {
             let mut q = self.lock_queue();
             if let Some(pos) = q.iter().position(|j| j.id == job_id) {
-                output_path = q[pos].output_path.clone();
+                output_path.clone_from(&q[pos].output_path);
                 q.remove(pos);
                 was_queued = true;
             }
@@ -217,6 +217,12 @@ impl JobQueueService {
         release_output_path(output_path);
     }
 
+    // Long by line count because the terminal-state handling (success /
+    // failure / cancelled, each with its own output-file cleanup and event)
+    // has to stay inline with the loop that owns `job` -- splitting it out
+    // would mean threading half a dozen loop-local values through a second
+    // function signature for no real gain in clarity.
+    #[allow(clippy::too_many_lines)]
     fn process_next(&self, app: AppHandle) {
         let mut processing_guard = self.lock_processing();
         if *processing_guard {
@@ -233,29 +239,26 @@ impl JobQueueService {
                     q.pop_front()
                 };
 
-                let job = match next_job {
-                    Some(j) => j,
-                    None => {
-                        // Decide "stop processing" and "queue is empty" atomically
-                        // by holding the processing lock while re-checking the
-                        // queue. Without this, a concurrent enqueue() that runs
-                        // between our pop_front() returning None and us setting
-                        // is_processing = false would see is_processing == true,
-                        // skip spawning a new worker, and its job would sit in
-                        // the queue forever with nothing left to drain it.
-                        let mut processing_lock = service.lock_processing();
-                        let q = service.lock_queue();
-                        if q.is_empty() {
-                            *processing_lock = false;
-                            break;
-                        }
-                        // Something was enqueued in the gap; keep this worker
-                        // alive (is_processing stays true) and loop back to
-                        // pop it instead of racing a fresh process_next() call.
-                        drop(q);
-                        drop(processing_lock);
-                        continue;
+                let Some(job) = next_job else {
+                    // Decide "stop processing" and "queue is empty" atomically
+                    // by holding the processing lock while re-checking the
+                    // queue. Without this, a concurrent enqueue() that runs
+                    // between our pop_front() returning None and us setting
+                    // is_processing = false would see is_processing == true,
+                    // skip spawning a new worker, and its job would sit in
+                    // the queue forever with nothing left to drain it.
+                    let mut processing_lock = service.lock_processing();
+                    let q = service.lock_queue();
+                    if q.is_empty() {
+                        *processing_lock = false;
+                        break;
                     }
+                    // Something was enqueued in the gap; keep this worker
+                    // alive (is_processing stays true) and loop back to
+                    // pop it instead of racing a fresh process_next() call.
+                    drop(q);
+                    drop(processing_lock);
+                    continue;
                 };
 
                 // A cancel() call that arrived in the window between this
@@ -323,7 +326,7 @@ impl JobQueueService {
                 };
 
                 let is_cancelled = cancel_requested.load(Ordering::SeqCst)
-                    || res.as_ref().err().map_or(false, |e| e == "cancelled");
+                    || res.as_ref().err().is_some_and(|e| e == "cancelled");
                 service.cleanup_job(&job.id, &job.output_path);
 
                 if is_cancelled {
@@ -343,10 +346,10 @@ impl JobQueueService {
                     );
                 } else {
                     match res {
-                        Ok(_) => {
+                        Ok(()) => {
                             let out_path = Path::new(&job.output_path);
                             if out_path.exists()
-                                && fs::metadata(out_path).map(|m| m.len() > 0).unwrap_or(false)
+                                && fs::metadata(out_path).is_ok_and(|m| m.len() > 0)
                             {
                                 service.emit_progress(
                                     &app,
@@ -398,6 +401,16 @@ impl JobQueueService {
         });
     }
 
+    // Deliberately mirrors JobProgress's field set 1:1 (this is its only
+    // constructor) -- splitting the params into a struct would just move the
+    // "too many fields" shape one level down without reducing it. Kept as a
+    // &self method for consistency with the rest of JobQueueService's API,
+    // even though the body itself doesn't touch self.
+    #[allow(
+        clippy::too_many_arguments,
+        clippy::unused_self,
+        clippy::needless_pass_by_value
+    )]
     fn emit_progress(
         &self,
         app: &AppHandle,
@@ -416,10 +429,10 @@ impl JobQueueService {
                 percentage,
                 status: state.as_str().to_string(),
                 error: state.error_message(),
-                phase: phase.map(|s| s.to_string()),
+                phase: phase.map(ToString::to_string),
                 eta_seconds,
                 fps,
-                output_path: output_path.map(|s| s.to_string()),
+                output_path: output_path.map(ToString::to_string),
             },
         );
     }
@@ -504,6 +517,10 @@ pub fn compute_workload_threads(_input_path: &str, _is_video: bool) -> &'static 
     "1:2:2"
 }
 
+// Owned Arc clones (rather than references) intentionally match
+// run_video_job's signature -- both are dispatched from the same call site
+// in process_next behind a shared `if job.is_video` branch.
+#[allow(clippy::too_many_lines, clippy::needless_pass_by_value)]
 fn run_single_image_job(
     app: &AppHandle,
     job: &Job,
@@ -547,7 +564,7 @@ fn run_single_image_job(
         .map_err(|e| e.to_string())?;
 
     {
-        let mut handle_guard = process_handle.lock().unwrap_or_else(|p| p.into_inner());
+        let mut handle_guard = process_handle.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         *handle_guard = Some(handle);
     }
 
@@ -574,7 +591,7 @@ fn run_single_image_job(
         }
 
         let latest_pct = {
-            let mut handle_guard = process_handle.lock().unwrap_or_else(|p| p.into_inner());
+            let mut handle_guard = process_handle.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(ref mut child) = *handle_guard {
                 match child.try_wait() {
                     Ok(Some(0)) => {
@@ -614,6 +631,9 @@ fn run_single_image_job(
             0.0
         };
         let remaining_pct = (100.0 - current_pct).max(0.0);
+        // ETA seconds is always a small non-negative duration in practice;
+        // truncation/sign-loss from the f64 ceil() result can't occur here.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let eta_secs = if rate_pct_per_sec > 0.01 {
             Some((remaining_pct / rate_pct_per_sec).ceil() as u64)
         } else {
@@ -627,7 +647,7 @@ fn run_single_image_job(
                 percentage: current_pct,
                 status: JobState::Running.as_str().to_string(),
                 error: None,
-                phase: Some(format!("GPU Accelerated Upscaling ({:.1}%)", current_pct)),
+                phase: Some(format!("GPU Accelerated Upscaling ({current_pct:.1}%)")),
                 eta_seconds: eta_secs,
                 fps: None,
                 output_path: Some(job.output_path.clone()),

@@ -38,7 +38,7 @@ impl GitHubReleaseProvider {
         }
     }
 
-    /// Fetches release models using ETag caching for zero rate-limit penalty.
+    /// Fetches release models using `ETag` caching for zero rate-limit penalty.
     pub async fn fetch_manifest(&self, cache_dir: &Path) -> Result<RegistryManifest, String> {
         let cache_file = cache_dir.join("registry_cache.json");
         let etag_file = cache_dir.join("registry_etag.txt");
@@ -48,7 +48,7 @@ impl GitHubReleaseProvider {
         let client = reqwest::Client::builder()
             .user_agent("UpscalyApp/1.0")
             .build()
-            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+            .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
 
         let primary_url = format!(
             "https://raw.githubusercontent.com/{}/main/registry/models.json",
@@ -62,39 +62,35 @@ impl GitHubReleaseProvider {
 
         let response_res = request.send().await;
 
-        match response_res {
-            Ok(resp) => {
-                if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
-                    // 304 Not Modified: load cached catalog
-                    if let Ok(content) = fs::read_to_string(&cache_file) {
-                        if let Ok(manifest) = serde_json::from_str::<RegistryManifest>(&content) {
-                            return Ok(manifest);
-                        }
-                    }
-                }
-
-                if resp.status().is_success() {
-                    let new_etag = resp
-                        .headers()
-                        .get("etag")
-                        .and_then(|v| v.to_str().ok())
-                        .map(|s| s.to_string());
-                    let content = resp
-                        .text()
-                        .await
-                        .map_err(|e| format!("Failed to read registry response: {}", e))?;
-
+        // Err falls through to the offline disk-cache fallback below.
+        if let Ok(resp) = response_res {
+            if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
+                // 304 Not Modified: load cached catalog
+                if let Ok(content) = fs::read_to_string(&cache_file) {
                     if let Ok(manifest) = serde_json::from_str::<RegistryManifest>(&content) {
-                        let _ = fs::write(&cache_file, &content);
-                        if let Some(etag_str) = new_etag {
-                            let _ = fs::write(&etag_file, &etag_str);
-                        }
                         return Ok(manifest);
                     }
                 }
             }
-            Err(_) => {
-                // Offline fallback to disk cache
+
+            if resp.status().is_success() {
+                let new_etag = resp
+                    .headers()
+                    .get("etag")
+                    .and_then(|v| v.to_str().ok())
+                    .map(ToString::to_string);
+                let content = resp
+                    .text()
+                    .await
+                    .map_err(|e| format!("Failed to read registry response: {e}"))?;
+
+                if let Ok(manifest) = serde_json::from_str::<RegistryManifest>(&content) {
+                    let _ = fs::write(&cache_file, &content);
+                    if let Some(etag_str) = new_etag {
+                        let _ = fs::write(&etag_file, &etag_str);
+                    }
+                    return Ok(manifest);
+                }
             }
         }
 

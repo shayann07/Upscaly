@@ -21,9 +21,14 @@ pub struct VramProfile {
 }
 
 /// Calculate single tile memory footprint in megabytes (including model baseline tensors).
+///
+/// All casts below convert small, always-positive domain values (a clamped
+/// tile size, a rounded MB figure well under 2^52) -- precision/sign loss
+/// cannot actually occur at these magnitudes.
 #[must_use]
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub fn estimate_single_tile_memory_mb(tile_size: i32) -> u64 {
-    let t = tile_size.clamp(32, 1024) as f64;
+    let t = f64::from(tile_size.clamp(32, 1024));
     // Model base weight overhead: ~400 MB
     // Buffer scaling: (t / 100)^2 * 130 MB
     let buffer_mb = (t / 100.0).powi(2) * 130.0;
@@ -36,14 +41,15 @@ pub fn estimate_single_tile_memory_mb(tile_size: i32) -> u64 {
 /// not once per GPU worker thread -- realesrgan-ncnn-vulkan's `-j 1:N:2`
 /// spawns N processing threads inside a single process sharing one copy of
 /// the weights. Only the per-tile compute buffer duplicates per thread.
-/// Multiplying the whole `(base + buffer)` sum by proc_threads (the
+/// Multiplying the whole `(base + buffer)` sum by `proc_threads` (the
 /// previous formula) overstated projected usage for every multi-thread
 /// profile -- e.g. dual-proc at a 256px tile was estimated at ~2.5GB when
 /// the real figure is closer to ~2.1GB.
 #[must_use]
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub fn estimate_total_vram_mb(tile_size: i32, proc_threads: u32) -> u64 {
     let base_model_mb = 400u64;
-    let t = tile_size.clamp(32, 1024) as f64;
+    let t = f64::from(tile_size.clamp(32, 1024));
     let single_buffer_mb = ((t / 100.0).powi(2) * 130.0).round() as u64;
     base_model_mb + single_buffer_mb * u64::from(proc_threads.max(1))
 }
@@ -52,6 +58,11 @@ pub fn estimate_total_vram_mb(tile_size: i32, proc_threads: u32) -> u64 {
 ///
 /// Ensures total VRAM stays strictly below `0.75 * gpu_vram_mb` to leave generous headroom for OS/DWM.
 #[must_use]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 pub fn calculate_safe_execution_profile(
     gpu_vram_mb: u64,
     requested_tile: i32,
@@ -141,6 +152,7 @@ pub fn calculate_safe_execution_profile(
 }
 
 #[must_use]
+#[allow(clippy::cast_precision_loss)]
 pub fn build_vram_profile(gpu_vram_mb: u64, requested_tile: i32) -> VramProfile {
     let auto_profile = calculate_safe_execution_profile(gpu_vram_mb, 0, false);
     let selected_profile = calculate_safe_execution_profile(gpu_vram_mb, requested_tile, false);
@@ -149,28 +161,22 @@ pub fn build_vram_profile(gpu_vram_mb: u64, requested_tile: i32) -> VramProfile 
     let total_gb = gpu_vram_mb as f64 / 1024.0;
     let used_gb = selected_profile.projected_vram_mb as f64 / 1024.0;
 
+    let tile_size = selected_profile.tile_size;
     let status_message = if requested_tile == 0 {
         format!(
-            "AUTO dynamically tunes tile size via Vulkan hardware heaps (Single-Thread Safe Mode) · Projected: {:.1} GB / {:.1} GB.",
-            used_gb,
-            total_gb
+            "AUTO dynamically tunes tile size via Vulkan hardware heaps (Single-Thread Safe Mode) · Projected: {used_gb:.1} GB / {total_gb:.1} GB."
         )
     } else if selected_profile.tile_size < requested_tile {
         format!(
-            "Clamped to {}px (Single-Thread Safe Mode) to prevent VRAM overflow ({:.1} GB / {:.1} GB).",
-            selected_profile.tile_size,
-            used_gb,
-            total_gb
+            "Clamped to {tile_size}px (Single-Thread Safe Mode) to prevent VRAM overflow ({used_gb:.1} GB / {total_gb:.1} GB)."
         )
     } else if selected_profile.proc_threads == 1 {
         format!(
-            "Selected {}px tile (Single-Thread Safe Mode) · Projected: {:.1} GB / {:.1} GB.",
-            selected_profile.tile_size, used_gb, total_gb
+            "Selected {tile_size}px tile (Single-Thread Safe Mode) · Projected: {used_gb:.1} GB / {total_gb:.1} GB."
         )
     } else {
         format!(
-            "Selected {}px tile (Dual-Thread Accelerated) · Projected: {:.1} GB / {:.1} GB.",
-            selected_profile.tile_size, used_gb, total_gb
+            "Selected {tile_size}px tile (Dual-Thread Accelerated) · Projected: {used_gb:.1} GB / {total_gb:.1} GB."
         )
     };
 
@@ -197,6 +203,7 @@ mod tests {
         // compute buffer scales with thread count.
         let single = estimate_total_vram_mb(256, 1);
         let dual = estimate_total_vram_mb(256, 2);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let buffer_256 = ((256.0f64 / 100.0).powi(2) * 130.0).round() as u64;
 
         assert_eq!(single, 400 + buffer_256);
