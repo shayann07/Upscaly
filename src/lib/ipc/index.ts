@@ -17,6 +17,7 @@ export type { FullModelInfo } from './FullModelInfo';
 export type { GpuDevice } from './GpuDevice';
 export type { JobSnapshot } from './JobSnapshot';
 export type { JobsDelta } from './JobsDelta';
+export type { OutputFormat } from './OutputFormat';
 export type { QualityPreset } from './QualityPreset';
 export type { UpscaleJobHandle } from './UpscaleJobHandle';
 export type { UpscaleRequest } from './UpscaleRequest';

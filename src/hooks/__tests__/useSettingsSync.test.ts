@@ -21,6 +21,7 @@ const SAVED = {
   default_scale: 2,
   default_tile_size: 256,
   default_preset: 'quality' as const,
+  default_output_format: 'webp' as const,
   output_directory: 'D:/renders',
   sound_muted: true,
   auto_check_updates: false,
@@ -57,6 +58,7 @@ describe('useSettingsSync', () => {
     expect(state().scale).toBe(2);
     expect(state().tileSize).toBe(256);
     expect(state().preset).toBe('quality');
+    expect(state().outputFormat).toBe('webp');
     expect(state().customOutputPath).toBe('D:/renders');
     expect(state().isMuted).toBe(true);
     expect(state().autoCheckUpdates).toBe(false);
@@ -139,6 +141,7 @@ describe('useSettingsSync', () => {
           default_scale: 2,
           default_tile_size: 256,
           default_preset: 'quality',
+          default_output_format: 'webp',
           output_directory: 'D:/renders',
           sound_muted: true,
           auto_check_updates: false,

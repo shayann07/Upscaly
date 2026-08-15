@@ -1,4 +1,4 @@
-import { JobSnapshot, QualityPreset } from '../lib/ipc';
+import { JobSnapshot, OutputFormat, QualityPreset } from '../lib/ipc';
 import { GpuInfo, ModelInfo, MAX_VISIBLE_TOASTS, SUPPORTED_MODELS } from '../lib/types';
 import { getRecentHistory, HistoryItem } from '../lib/history';
 import { isTerminalState } from '../lib/jobState';
@@ -42,6 +42,12 @@ export interface StudioState {
    * and an explicit `tileSize` above still overrides the proposal.
    */
   preset: QualityPreset;
+  /**
+   * Container for image results. Video is always MP4 and ignores this.
+   * PNG by default: it is the only lossless choice, and re-encoding a
+   * finished upscale is the exact failure this work started from.
+   */
+  outputFormat: OutputFormat;
   customOutputPath: string;
   isMuted: boolean;
   autoCheckUpdates: boolean;
@@ -87,6 +93,7 @@ function createInitialState(): StudioState {
     scale: 4,
     tileSize: 0,
     preset: 'balanced',
+    outputFormat: 'png',
     customOutputPath: '',
     isMuted: localStorage.getItem('upscaly_sound_muted') === 'true',
     autoCheckUpdates: true,
@@ -292,6 +299,9 @@ export const studioActions = {
   },
   setPreset(preset: QualityPreset) {
     setState((prev) => ({ ...prev, preset }));
+  },
+  setOutputFormat(outputFormat: OutputFormat) {
+    setState((prev) => ({ ...prev, outputFormat }));
   },
   setTileSize(tileSize: number) {
     setState((prev) => ({ ...prev, tileSize }));

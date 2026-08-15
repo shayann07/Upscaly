@@ -2,14 +2,34 @@ import { useMemo } from 'react';
 import { DeviceSelectorSection } from './settings/DeviceSelectorSection';
 import { TileSizeSection } from './settings/TileSizeSection';
 import { PresetSection } from './settings/PresetSection';
+import { OutputFormatSection } from './settings/OutputFormatSection';
 import { useVramProfile } from '../hooks/useVramProfile';
-import { QualityPreset } from '../lib/types';
+import { OutputFormat, QualityPreset } from '../lib/types';
 
 export interface GpuInfo {
   id: number;
   name: string;
   detail?: string;
   vram_mb?: number;
+}
+
+/**
+ * The device list, from whichever of the two props supplied it.
+ *
+ * `availableGpus` arrives already shaped; `gpus` is the raw backend list and
+ * needs a display fallback for `detail`. Lifted out of the component so this
+ * branching does not count against its complexity budget alongside the
+ * settings it actually renders.
+ */
+function toDeviceList(availableGpus?: GpuInfo[], gpus?: GpuInfo[]): GpuInfo[] {
+  if (availableGpus) return availableGpus;
+  if (!gpus) return [];
+  return gpus.map((g) => ({
+    id: g.id,
+    name: g.name,
+    detail: g.detail || 'VULKAN',
+    vram_mb: g.vram_mb,
+  }));
 }
 
 export interface AdvancedSettingsProps {
@@ -24,6 +44,8 @@ export interface AdvancedSettingsProps {
   scale?: number;
   preset?: QualityPreset;
   onSelectPreset?: (preset: QualityPreset) => void;
+  outputFormat?: OutputFormat;
+  onSelectOutputFormat?: (format: OutputFormat) => void;
   outputDir?: string;
   customOutputPath?: string;
   onSetOutputDir?: (dir: string) => void;
@@ -45,6 +67,8 @@ export function AdvancedSettings({
   scale = 4,
   preset = 'balanced',
   onSelectPreset = () => {},
+  outputFormat = 'png',
+  onSelectOutputFormat = () => {},
   outputDir = '~/Pictures/Upscaled',
   customOutputPath,
   onSetOutputDir,
@@ -56,16 +80,7 @@ export function AdvancedSettings({
 }: AdvancedSettingsProps) {
   const EASE = 'var(--ease-spring)';
 
-  const devices: GpuInfo[] =
-    availableGpus ||
-    (gpus
-      ? gpus.map((g) => ({
-          id: g.id,
-          name: g.name,
-          detail: g.detail || 'VULKAN',
-          vram_mb: g.vram_mb,
-        }))
-      : []);
+  const devices = toDeviceList(availableGpus, gpus);
   const handleTileSize = onSetTileSize || onSelectTileSize || (() => {});
   const displayOutputDir = customOutputPath !== undefined ? customOutputPath : outputDir;
 
@@ -136,6 +151,12 @@ export function AdvancedSettings({
           usedVramGb={usedVramGb}
           totalVramGb={totalVramGb}
           statusMessage={statusMessage}
+          accentColor={accentColor}
+        />
+
+        <OutputFormatSection
+          outputFormat={outputFormat}
+          onSelectOutputFormat={onSelectOutputFormat}
           accentColor={accentColor}
         />
 

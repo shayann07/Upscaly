@@ -16,6 +16,7 @@ const selectPersisted = (s: StudioState) =>
     s.scale,
     s.tileSize,
     s.preset,
+    s.outputFormat,
     s.customOutputPath,
     s.isMuted,
     s.autoCheckUpdates,
@@ -26,6 +27,9 @@ async function restoreNonGpuSettings(saved: AppSettings): Promise<void> {
   if (saved.default_scale != null) studioActions.setScale(saved.default_scale);
   if (saved.default_tile_size != null) studioActions.setTileSize(saved.default_tile_size);
   if (saved.default_preset != null) studioActions.setPreset(saved.default_preset);
+  if (saved.default_output_format != null) {
+    studioActions.setOutputFormat(saved.default_output_format);
+  }
   if (saved.auto_check_updates != null) {
     studioActions.setAutoCheckUpdates(saved.auto_check_updates);
   }
@@ -128,6 +132,7 @@ export function useSettingsSync() {
         default_scale: s.scale,
         default_tile_size: s.tileSize,
         default_preset: s.preset,
+        default_output_format: s.outputFormat,
         output_directory: s.customOutputPath || null,
         sound_muted: s.isMuted,
         auto_check_updates: s.autoCheckUpdates,

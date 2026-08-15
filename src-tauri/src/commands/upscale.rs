@@ -28,6 +28,7 @@ fn build_job(app_handle: &tauri::AppHandle, request: UpscaleRequest) -> (Job, Up
         request.is_video,
         effective_scale.max(0).cast_unsigned(),
         request.output_dir.as_deref(),
+        request.output_format,
     );
     let output_path = reserve_output_path(&desired);
 
@@ -41,6 +42,7 @@ fn build_job(app_handle: &tauri::AppHandle, request: UpscaleRequest) -> (Job, Up
         tile_size: request.tile_size,
         is_video: request.is_video,
         preset: request.preset,
+        output_format: request.output_format,
     };
 
     (
