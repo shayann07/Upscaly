@@ -73,7 +73,7 @@ pub struct ModelStore;
 
 impl ModelStore {
     pub async fn resolve_catalog(
-        _app: &AppHandle,
+        app: &AppHandle,
         models_dir: &Path,
     ) -> Result<Vec<EngineModelItem>, String> {
         let provider = GitHubReleaseProvider::new("xinntao/Real-ESRGAN");
@@ -82,8 +82,35 @@ impl ModelStore {
         let mut catalog = Vec::new();
         let mut seen_ids = HashSet::new();
 
-        for entry in manifest.models {
-            seen_ids.insert(entry.id.clone());
+        // The bundled registry is authoritative for the models it names.
+        //
+        // A remote manifest supplies both the URL *and* the hash it will be
+        // checked against, so letting it redefine a bundled entry would make
+        // verification circular -- the download would be dutifully checked
+        // against a hash chosen by whoever supplied the file. Bundled ids
+        // are claimed first and a remote entry reusing one is ignored, which
+        // leaves the remote manifest able to do the one useful thing (offer
+        // additional models) and not the dangerous one.
+        let bundled = GitHubReleaseProvider::default_registry();
+        let bundled_ids: HashSet<String> = bundled.models.iter().map(|m| m.id.clone()).collect();
+
+        for entry in bundled
+            .models
+            .into_iter()
+            .chain(manifest.models.into_iter().filter(|m| {
+                let shadows = bundled_ids.contains(&m.id);
+                if shadows {
+                    eprintln!(
+                        "ignoring remote catalog entry '{}': it shadows a bundled model",
+                        m.id
+                    );
+                }
+                !shadows
+            }))
+        {
+            if !seen_ids.insert(entry.id.clone()) {
+                continue;
+            }
 
             let param_path = models_dir.join(format!("{}.param", entry.id));
             let bin_path = models_dir.join(format!("{}.bin", entry.id));
@@ -118,61 +145,89 @@ impl ModelStore {
             });
         }
 
-        if let Ok(entries) = fs::read_dir(models_dir) {
-            for entry_res in entries.flatten() {
-                let path = entry_res.path();
-                if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("param") {
-                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                        if !seen_ids.contains(stem) {
-                            seen_ids.insert(stem.to_string());
-                            let bin_path = models_dir.join(format!("{stem}.bin"));
-
-                            let metadata_res = parse_ncnn_param_cached(&path);
-                            let is_corrupt = metadata_res.is_err() || !bin_path.exists();
-                            let scale = crate::job_queue::resolve_effective_scale(
-                                stem,
-                                4,
-                                Some(models_dir),
-                            )
-                            .cast_unsigned();
-
-                            let cat = if stem.contains("anime") {
-                                "anime".to_string()
-                            } else if stem.contains("video") {
-                                "video".to_string()
-                            } else {
-                                "photo".to_string()
-                            };
-
-                            catalog.push(EngineModelItem {
-                                id: stem.to_string(),
-                                name: stem.to_string(),
-                                note: "User imported model file".to_string(),
-                                cat,
-                                scale,
-                                size: "Local".to_string(),
-                                speed: 1.0,
-                                version: "v1.0.0".to_string(),
-                                status: if is_corrupt {
-                                    ModelStatus::Corrupt
-                                } else {
-                                    ModelStatus::Installed
-                                },
-                                is_custom: true,
-                                param_url: String::new(),
-                                param_sha256: None,
-                                param_size: None,
-                                bin_url: String::new(),
-                                bin_sha256: None,
-                                bin_size: None,
-                            });
-                        }
-                    }
-                }
+        // The app's own directory first, then the user's folder if one is
+        // configured. Order matters: seen_ids means the app's copy wins a
+        // name collision, so a file dropped in the custom folder cannot
+        // shadow a bundled model and quietly change what a saved selection
+        // runs. resolve_model_dir applies the same precedence when the job
+        // actually executes, so the catalog and the engine never disagree
+        // about which file a given id refers to.
+        let mut scan_dirs = vec![models_dir.to_path_buf()];
+        if let Some(custom) = crate::model_manager::get_custom_models_dir(app) {
+            if custom != models_dir {
+                scan_dirs.push(custom);
             }
         }
 
+        for dir in &scan_dirs {
+            Self::scan_local_models(dir, &mut seen_ids, &mut catalog);
+        }
+
         Ok(catalog)
+    }
+
+    /// Adds every usable `.param`+`.bin` pair in `dir` that no catalog
+    /// entry has already claimed.
+    fn scan_local_models(
+        dir: &Path,
+        seen_ids: &mut HashSet<String>,
+        catalog: &mut Vec<EngineModelItem>,
+    ) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry_res in entries.flatten() {
+            let path = entry_res.path();
+            if !path.is_file() || path.extension().and_then(|s| s.to_str()) != Some("param") {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if !seen_ids.insert(stem.to_string()) {
+                continue;
+            }
+
+            let bin_path = dir.join(format!("{stem}.bin"));
+            // A .param with no .bin is half a model. Reported as corrupt
+            // rather than omitted, so a user who dropped in one file of a
+            // pair sees why it is not selectable instead of wondering where
+            // it went.
+            let is_corrupt = parse_ncnn_param_cached(&path).is_err() || !bin_path.exists();
+            let scale =
+                crate::job_queue::resolve_effective_scale(stem, 4, Some(dir)).cast_unsigned();
+
+            let cat = if stem.contains("anime") {
+                "anime".to_string()
+            } else if stem.contains("video") {
+                "video".to_string()
+            } else {
+                "photo".to_string()
+            };
+
+            catalog.push(EngineModelItem {
+                id: stem.to_string(),
+                name: stem.to_string(),
+                note: "User imported model file".to_string(),
+                cat,
+                scale,
+                size: "Local".to_string(),
+                speed: 1.0,
+                version: "v1.0.0".to_string(),
+                status: if is_corrupt {
+                    ModelStatus::Corrupt
+                } else {
+                    ModelStatus::Installed
+                },
+                is_custom: true,
+                param_url: String::new(),
+                param_sha256: None,
+                param_size: None,
+                bin_url: String::new(),
+                bin_sha256: None,
+                bin_size: None,
+            });
+        }
     }
 
     fn determine_model_status(

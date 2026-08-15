@@ -99,6 +99,51 @@ pub fn get_models_dir(app: &AppHandle) -> PathBuf {
     models_dir
 }
 
+/// The user's extra model folder, if one is configured and still exists.
+///
+/// A folder that has been unplugged, renamed or deleted is treated as unset
+/// rather than as an error: the app should keep working with its own models
+/// and simply stop offering what it can no longer find.
+#[must_use]
+pub fn get_custom_models_dir(app: &AppHandle) -> Option<PathBuf> {
+    let dir = crate::settings::load_settings(app).custom_models_dir?;
+    let path = PathBuf::from(dir.trim());
+    (path.is_dir()).then_some(path)
+}
+
+/// Which directory to hand the engine as `-m` for a given model.
+///
+/// `realesrgan-ncnn-vulkan` takes exactly one model directory, so a model
+/// living in the user's own folder cannot be run by pointing the engine at
+/// the app's. This resolves per model rather than globally: the custom
+/// folder is only used when it is the folder that actually holds the pair.
+///
+/// The app's own directory is checked first, so a custom file cannot shadow
+/// a bundled model of the same name and quietly change what a saved
+/// selection runs.
+#[must_use]
+pub fn resolve_model_dir(app: &AppHandle, model_name: &str) -> PathBuf {
+    let models_dir = get_models_dir(app);
+    if model_pair_exists(&models_dir, model_name) {
+        return models_dir;
+    }
+    if let Some(custom) = get_custom_models_dir(app) {
+        if model_pair_exists(&custom, model_name) {
+            return custom;
+        }
+    }
+    models_dir
+}
+
+/// Whether `dir` holds both halves of an ncnn model. One without the other
+/// is not a usable model, and reporting it as one produces a job that fails
+/// at spawn time with an engine error rather than a clear message.
+#[must_use]
+pub fn model_pair_exists(dir: &Path, model_name: &str) -> bool {
+    dir.join(format!("{model_name}.param")).is_file()
+        && dir.join(format!("{model_name}.bin")).is_file()
+}
+
 /// Copies bundled model weights into the writable app data models directory if not already present.
 pub fn copy_bundled_models(app: &AppHandle, dest_dir: &Path) {
     let mut candidate_dirs = Vec::new();
@@ -237,15 +282,27 @@ pub async fn download_file(
     let _ = file.flush();
     drop(file);
 
-    // Integrity verification
-    if !expected_sha256.is_empty() {
-        let actual_hash = calculate_sha256(&temp_path)?;
-        if !actual_hash.eq_ignore_ascii_case(expected_sha256) {
-            let _ = std::fs::remove_file(&temp_path);
-            return Err(format!(
-                "Integrity check failed for model '{model_id}' ({file_type}): expected SHA-256 {expected_sha256}, got {actual_hash}"
-            ));
-        }
+    // Integrity verification.
+    //
+    // An absent hash used to mean "skip the check" -- so a catalog entry
+    // that simply forgot one downloaded and installed whatever the URL
+    // served, with no failure and nothing said. That is the opposite of
+    // what verification is for: the case where the hash is missing is
+    // exactly the case where the bytes are unaccounted for. Missing is now
+    // a refusal, which also makes it impossible to add a catalog entry
+    // without one.
+    if expected_sha256.is_empty() {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(format!(
+            "Refusing to install model '{model_id}' ({file_type}): the catalog entry has no SHA-256 to verify it against"
+        ));
+    }
+    let actual_hash = calculate_sha256(&temp_path)?;
+    if !actual_hash.eq_ignore_ascii_case(expected_sha256) {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(format!(
+            "Integrity check failed for model '{model_id}' ({file_type}): expected SHA-256 {expected_sha256}, got {actual_hash}"
+        ));
     }
 
     // Atomic rename from temp file to final dest file

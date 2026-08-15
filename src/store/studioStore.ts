@@ -48,6 +48,11 @@ export interface StudioState {
    * finished upscale is the exact failure this work started from.
    */
   outputFormat: OutputFormat;
+  /**
+   * A folder of user-supplied ncnn `.param`+`.bin` pairs, searched in
+   * addition to the app's own. Empty when unset.
+   */
+  customModelsDir: string;
   customOutputPath: string;
   isMuted: boolean;
   autoCheckUpdates: boolean;
@@ -94,6 +99,7 @@ function createInitialState(): StudioState {
     tileSize: 0,
     preset: 'balanced',
     outputFormat: 'png',
+    customModelsDir: '',
     customOutputPath: '',
     isMuted: localStorage.getItem('upscaly_sound_muted') === 'true',
     autoCheckUpdates: true,
@@ -302,6 +308,9 @@ export const studioActions = {
   },
   setOutputFormat(outputFormat: OutputFormat) {
     setState((prev) => ({ ...prev, outputFormat }));
+  },
+  setCustomModelsDir(customModelsDir: string) {
+    setState((prev) => ({ ...prev, customModelsDir }));
   },
   setTileSize(tileSize: number) {
     setState((prev) => ({ ...prev, tileSize }));

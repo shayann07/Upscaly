@@ -27,6 +27,10 @@ pub struct AppSettings {
     pub default_preset: crate::engine::preset::QualityPreset,
     #[serde(default)]
     pub default_output_format: crate::engine::output_format::OutputFormat,
+    /// A folder of user-supplied ncnn `.param`+`.bin` pairs, searched in
+    /// addition to the app's own models directory. `None` when unset.
+    #[serde(default)]
+    pub custom_models_dir: Option<String>,
     pub output_directory: Option<String>,
     pub sound_muted: bool,
     pub auto_check_updates: bool,
@@ -41,6 +45,7 @@ impl Default for AppSettings {
             default_tile_size: 0,
             default_preset: crate::engine::preset::QualityPreset::Balanced,
             default_output_format: crate::engine::output_format::OutputFormat::Png,
+            custom_models_dir: None,
             output_directory: None,
             sound_muted: false,
             auto_check_updates: true,

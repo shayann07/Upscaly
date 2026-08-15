@@ -107,12 +107,25 @@ impl GitHubReleaseProvider {
         Ok(Self::default_registry())
     }
 
-    #[allow(clippy::unreadable_literal)]
+    /// The catalog compiled into the binary.
+    ///
+    /// Authoritative for the ids it names: see `ModelStore::resolve_catalog`,
+    /// which refuses to let a remote manifest redefine any of them.
+    #[must_use]
     pub fn default_registry() -> RegistryManifest {
+        let mut models = Self::stock_models();
+        models.extend(Self::community_models());
         RegistryManifest {
             schema_version: 1,
-            updated_at: Some("2026-08-09T00:00:00Z".to_string()),
-            models: vec![
+            updated_at: Some("2026-08-15T00:00:00Z".to_string()),
+            models,
+        }
+    }
+
+    /// The upstream Real-ESRGAN release models.
+    #[allow(clippy::unreadable_literal)]
+    fn stock_models() -> Vec<RegistryModelEntry> {
+        vec![
                 RegistryModelEntry {
                     id: "realesrgan-x4plus".to_string(),
                     name: "RealESRGAN Ultra".to_string(),
@@ -193,7 +206,168 @@ impl GitHubReleaseProvider {
                     bin_sha256: Some("548a36f9c3f4ab8da56cd3b13badf23968bee207b396dad14d04b830e5f2ab2d".to_string()),
                     bin_size: Some(1247368),
                 },
-            ],
+        ]
+    }
+
+    /// Community models, all ncnn conversions sharing the `RRDBNet`
+    /// architecture the stock `realesrgan-x4plus` model uses.
+    #[allow(clippy::unreadable_literal)]
+    fn community_models() -> Vec<RegistryModelEntry> {
+        vec![
+            // --- Community photographic models -------------------------
+            //
+            // All four are the same RRDBNet architecture as
+            // realesrgan-x4plus (identical 33,424,520-byte weights file,
+            // identical inference cost) trained on different data, so
+            // they are drop-in and share its 1.0 speed figure.
+            //
+            // URLs are pinned to a commit, never to `main`. A hash pinned
+            // against a moving branch verifies nothing: the file could
+            // change and downloads would simply start failing -- or,
+            // had the hash been omitted, start silently installing
+            // something else. Every hash below was computed from the
+            // bytes these exact URLs actually served.
+            //
+            // The two 108,039-byte .param files legitimately share a
+            // hash: same architecture definition, different weights.
+            // Their .bin hashes are distinct.
+            RegistryModelEntry {
+                id: "remacri-4x".to_string(),
+                name: "Remacri".to_string(),
+                version: "v1.0.0".to_string(),
+                note: Some("Sharper texture and edge detail than the stock model. A common choice for photographs and film scans".to_string()),
+                cat: Some("photo".to_string()),
+                scale: Some(4),
+                size: Some("33.6 MB".to_string()),
+                speed: Some(1.0),
+                param_url: "https://raw.githubusercontent.com/upscayl/upscayl/a00d55fee90e0f9435d5eaa86e76700df8199af8/resources/models/remacri-4x.param".to_string(),
+                param_sha256: Some("859ecba5b3592ecf3e76c93bed65e9f627b5236dd696aae5a84ecf8c93ab65ce".to_string()),
+                param_size: Some(140295),
+                bin_url: "https://raw.githubusercontent.com/upscayl/upscayl/a00d55fee90e0f9435d5eaa86e76700df8199af8/resources/models/remacri-4x.bin".to_string(),
+                bin_sha256: Some("a43be595c0d743314c30b50fe7ef188be0c61cc55c46ce81adb79ba4b3c3fb7a".to_string()),
+                bin_size: Some(33424520),
+            },
+            RegistryModelEntry {
+                id: "high-fidelity-4x".to_string(),
+                name: "High Fidelity".to_string(),
+                version: "v1.0.0".to_string(),
+                note: Some("Conservative reconstruction that stays close to the source. Least prone to inventing detail that was never there".to_string()),
+                cat: Some("photo".to_string()),
+                scale: Some(4),
+                size: Some("33.5 MB".to_string()),
+                speed: Some(1.0),
+                param_url: "https://raw.githubusercontent.com/upscayl/upscayl/a00d55fee90e0f9435d5eaa86e76700df8199af8/resources/models/high-fidelity-4x.param".to_string(),
+                param_sha256: Some("4576ed5c2fc5fa250d3c3d585ef02248f26abdfc1867088078f501fe71e5d61e".to_string()),
+                param_size: Some(108039),
+                bin_url: "https://raw.githubusercontent.com/upscayl/upscayl/a00d55fee90e0f9435d5eaa86e76700df8199af8/resources/models/high-fidelity-4x.bin".to_string(),
+                bin_sha256: Some("8a135402b4f39286121b76abb47601a6b7b7e8d4f3e999a5aaa45ed277824fb4".to_string()),
+                bin_size: Some(33424520),
+            },
+            RegistryModelEntry {
+                id: "ultrasharp-4x".to_string(),
+                name: "UltraSharp".to_string(),
+                version: "v1.0.0".to_string(),
+                note: Some("Strong edge definition and micro-contrast. Can over-sharpen sources that were already crisp".to_string()),
+                cat: Some("photo".to_string()),
+                scale: Some(4),
+                size: Some("33.5 MB".to_string()),
+                speed: Some(1.0),
+                param_url: "https://raw.githubusercontent.com/upscayl/upscayl/a00d55fee90e0f9435d5eaa86e76700df8199af8/resources/models/ultrasharp-4x.param".to_string(),
+                param_sha256: Some("0136ca83686809a8f17f7111f11b951e8db93610e24b7f4137c9ffe4dbc4a806".to_string()),
+                param_size: Some(116029),
+                bin_url: "https://raw.githubusercontent.com/upscayl/upscayl/a00d55fee90e0f9435d5eaa86e76700df8199af8/resources/models/ultrasharp-4x.bin".to_string(),
+                bin_sha256: Some("fb3e279d40d4cddb44db4e684d59e68d0aa39852c8cc14dc3f23ccc7e6eee9c1".to_string()),
+                bin_size: Some(33424520),
+            },
+            RegistryModelEntry {
+                id: "4xNomos8kSC".to_string(),
+                name: "Nomos 8k SC".to_string(),
+                version: "v1.0.0".to_string(),
+                note: Some("Photographic training set with natural texture. Gentler than UltraSharp on skin and foliage".to_string()),
+                cat: Some("photo".to_string()),
+                scale: Some(4),
+                size: Some("33.5 MB".to_string()),
+                speed: Some(1.0),
+                param_url: "https://raw.githubusercontent.com/upscayl/custom-models/4b6d2cfa59c7442af115dfc6e50fd8d7d40b96ef/models/4xNomos8kSC.param".to_string(),
+                param_sha256: Some("4576ed5c2fc5fa250d3c3d585ef02248f26abdfc1867088078f501fe71e5d61e".to_string()),
+                param_size: Some(108039),
+                bin_url: "https://raw.githubusercontent.com/upscayl/custom-models/4b6d2cfa59c7442af115dfc6e50fd8d7d40b96ef/models/4xNomos8kSC.bin".to_string(),
+                bin_sha256: Some("da16e3880d87b177b7c6b659bbd880f8a101b868eb9ebc08d69eaa6d3edc4517".to_string()),
+                bin_size: Some(33424520),
+            },
+        ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_every_bundled_model_carries_both_hashes() {
+        // download_file refuses to install anything without a hash, so an
+        // entry missing one is not a weaker download -- it is a model that
+        // can never be installed at all. Cheaper to catch here than as a
+        // support question.
+        for m in GitHubReleaseProvider::default_registry().models {
+            assert!(
+                m.param_sha256.as_ref().is_some_and(|h| h.len() == 64),
+                "{} has no usable param sha256",
+                m.id
+            );
+            assert!(
+                m.bin_sha256.as_ref().is_some_and(|h| h.len() == 64),
+                "{} has no usable bin sha256",
+                m.id
+            );
+            assert!(m.param_size.is_some_and(|s| s > 0), "{} param_size", m.id);
+            assert!(m.bin_size.is_some_and(|s| s > 0), "{} bin_size", m.id);
+        }
+    }
+
+    #[test]
+    fn test_no_bundled_url_points_at_a_moving_branch() {
+        // A hash pinned against `main` verifies nothing useful: the content
+        // it names can be replaced, at which point downloads either break or
+        // -- worse -- the hash gets "fixed" to match whatever is there now.
+        // Release tags and commit SHAs are the only acceptable anchors.
+        for m in GitHubReleaseProvider::default_registry().models {
+            for url in [&m.param_url, &m.bin_url] {
+                assert!(
+                    !url.contains("/main/") && !url.contains("/master/"),
+                    "{} points at a branch: {url}",
+                    m.id
+                );
+                assert!(url.starts_with("https://"), "{} is not https: {url}", m.id);
+            }
+        }
+    }
+
+    #[test]
+    fn test_bundled_ids_are_unique() {
+        // resolve_catalog claims bundled ids first and drops later
+        // duplicates, so a repeated id here would silently hide one entry.
+        let models = GitHubReleaseProvider::default_registry().models;
+        let unique: HashSet<&String> = models.iter().map(|m| &m.id).collect();
+        assert_eq!(unique.len(), models.len());
+    }
+
+    #[test]
+    fn test_the_community_models_the_catalog_promises_are_present() {
+        let ids: HashSet<String> = GitHubReleaseProvider::default_registry()
+            .models
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        for expected in [
+            "realesrgan-x4plus",
+            "remacri-4x",
+            "high-fidelity-4x",
+            "ultrasharp-4x",
+            "4xNomos8kSC",
+        ] {
+            assert!(ids.contains(expected), "missing {expected}");
         }
     }
 }
