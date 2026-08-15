@@ -3,7 +3,6 @@ import { invoke } from '@tauri-apps/api/core';
 import { BatchItem, JobProgress, UpscaleJobHandle } from '../lib/types';
 import { normalizeJobStatus, isValidStateTransition, isTerminalState } from '../lib/jobState';
 
-
 export interface UseUpscaleQueueOptions {
   selectedGpu: number;
   selectedModel: string;

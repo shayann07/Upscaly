@@ -262,9 +262,7 @@ export function useStudioActions({
   const isSingleFileJobActive = useCallback(
     () =>
       Boolean(
-        activeJobId ||
-        activeJobIdRef.current ||
-        jobStatus === 'running' || jobStatus === 'queued'
+        activeJobId || activeJobIdRef.current || jobStatus === 'running' || jobStatus === 'queued'
       ),
     [activeJobId, jobStatus]
   );

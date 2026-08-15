@@ -34,22 +34,28 @@ describe('nav panel accessibility', () => {
     },
   ];
 
-  it.each(panels)('$name panel is a labelled, non-modal dialog', ({ accessibleName, render: renderPanel }) => {
-    renderPanel();
+  it.each(panels)(
+    '$name panel is a labelled, non-modal dialog',
+    ({ accessibleName, render: renderPanel }) => {
+      renderPanel();
 
-    const dialog = screen.getByRole('dialog');
-    expect(dialog).toHaveAccessibleName(accessibleName);
-    // Non-modal: must NOT claim modality.
-    expect(dialog).not.toHaveAttribute('aria-modal', 'true');
-  });
+      const dialog = screen.getByRole('dialog');
+      expect(dialog).toHaveAccessibleName(accessibleName);
+      // Non-modal: must NOT claim modality.
+      expect(dialog).not.toHaveAttribute('aria-modal', 'true');
+    }
+  );
 
   it.each(panels)('$name panel takes focus when opened', ({ render: renderPanel }) => {
     renderPanel();
     expect(screen.getByRole('dialog')).toHaveFocus();
   });
 
-  it.each(panels)('$name close control has an accessible name', ({ closeLabel, render: renderPanel }) => {
-    renderPanel();
-    expect(screen.getByRole('button', { name: closeLabel })).toBeInTheDocument();
-  });
+  it.each(panels)(
+    '$name close control has an accessible name',
+    ({ closeLabel, render: renderPanel }) => {
+      renderPanel();
+      expect(screen.getByRole('button', { name: closeLabel })).toBeInTheDocument();
+    }
+  );
 });

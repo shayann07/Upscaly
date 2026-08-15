@@ -30,7 +30,10 @@ fn upscale_image(app_handle: tauri::AppHandle, request: UpscaleRequest) -> Upsca
     };
 
     add_job_to_queue(app_handle, job);
-    UpscaleJobHandle { job_id, output_path }
+    UpscaleJobHandle {
+        job_id,
+        output_path,
+    }
 }
 
 #[tauri::command]

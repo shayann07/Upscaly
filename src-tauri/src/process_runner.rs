@@ -244,7 +244,9 @@ impl ProcessHandle for StdProcessHandle {
             // Ok(None) reads as "still running" to every caller, so a
             // cancelled/crashed process on Unix spun the polling loop
             // forever instead of ever reaching a terminal state.
-            Ok(Some(status)) => Ok(Some(status.code().unwrap_or_else(|| unix_signal_code(status)))),
+            Ok(Some(status)) => Ok(Some(
+                status.code().unwrap_or_else(|| unix_signal_code(status)),
+            )),
             Ok(None) => Ok(None),
             Err(e) => Err(AppError::ExecutionError {
                 message: format!("Failed to poll process status: {e}"),
