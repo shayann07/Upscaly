@@ -1,61 +1,58 @@
+import { memo, useCallback } from 'react';
 import { AdvancedSettings } from '../AdvancedSettings';
 import { ModelCatalogModal } from '../ModelCatalogModal';
 import { RecentHistoryDrawer } from '../RecentHistoryDrawer';
 import { AboutModal } from '../AboutModal';
-import { ToastContainer, ToastItem } from '../ToastContainer';
-import { GpuInfo, ModelInfo, HistoryEntry } from '../../lib/types';
+import { ToastContainer } from '../ToastContainer';
+import { HistoryEntry } from '../../lib/types';
+import {
+  useActiveNavTab,
+  useCustomOutputPath,
+  useDownloadProgress,
+  useDownloadingModelId,
+  useGpus,
+  useHistoryItems,
+  useInstalledModels,
+  useIsProcessing,
+  useSelectedGpu,
+  useSupportedModels,
+  useTileSize,
+  useToasts,
+} from '../../store/selectors';
+import { studioActions } from '../../store/studioStore';
+import { downloadModel, loadHistoryItem, selectOutputDirectory } from '../../store/studioCommands';
 
-interface StudioModalsProps {
-  activeNavTab: 'models' | 'history' | 'settings' | 'about' | null;
-  setActiveNavTab: (tab: 'models' | 'history' | 'settings' | 'about' | null) => void;
-  gpus: GpuInfo[];
-  selectedGpu: number;
-  setSelectedGpu: (gpu: number) => void;
-  tileSize: number;
-  setTileSize: (size: number) => void;
-  customOutputPath: string;
-  setCustomOutputPath: (path: string) => void;
-  handleSelectDestinationFolder: () => void;
-  jobStatus: string;
-  addToast: (
-    type: 'success' | 'error' | 'info' | 'warning',
-    title: string,
-    message: string
-  ) => void;
-  supportedModels: ModelInfo[];
-  installedModels: string[];
-  handleDownloadModel: (id: string) => void;
-  downloadingModelId: string | null;
-  downloadProgress: number;
-  historyItems: HistoryEntry[];
-  handleLoadHistoryItem: (item: HistoryEntry) => void;
-  toasts: ToastItem[];
-  removeToast: (id: string) => void;
-}
+const closeNav = () => studioActions.setActiveNavTab(null);
+const handleDownloadModel = (id: string) => void downloadModel(id);
+const handleSelectOutputDir = () => void selectOutputDirectory();
 
-export function StudioModals({
-  activeNavTab,
-  setActiveNavTab,
-  gpus,
-  selectedGpu,
-  setSelectedGpu,
-  tileSize,
-  setTileSize,
-  customOutputPath,
-  setCustomOutputPath,
-  handleSelectDestinationFolder,
-  jobStatus,
-  addToast,
-  supportedModels,
-  installedModels,
-  handleDownloadModel,
-  downloadingModelId,
-  downloadProgress,
-  historyItems,
-  handleLoadHistoryItem,
-  toasts,
-  removeToast,
-}: StudioModalsProps) {
+export const StudioModals = memo(function StudioModals() {
+  const activeNavTab = useActiveNavTab();
+  const gpus = useGpus();
+  const selectedGpu = useSelectedGpu();
+  const tileSize = useTileSize();
+  const customOutputPath = useCustomOutputPath();
+  const isProcessing = useIsProcessing();
+  const supportedModels = useSupportedModels();
+  const installedModels = useInstalledModels();
+  const downloadingModelId = useDownloadingModelId();
+  const downloadProgress = useDownloadProgress();
+  const historyItems = useHistoryItems();
+  const toasts = useToasts();
+
+  const handleAutoTune = useCallback((recTile: number, vramText: string) => {
+    studioActions.setTileSize(recTile);
+    studioActions.notify(
+      'info',
+      'Auto-Tuned Tile Size',
+      `Set to ${recTile === 0 ? 'AUTO' : `${recTile}px`} based on ${vramText}`
+    );
+  }, []);
+
+  const handleSelectHistoryItem = useCallback((item: HistoryEntry) => {
+    loadHistoryItem(item);
+  }, []);
+
   return (
     <>
       {activeNavTab && (
@@ -74,22 +71,15 @@ export function StudioModals({
             <AdvancedSettings
               gpus={gpus}
               selectedGpu={selectedGpu}
-              onSelectGpu={setSelectedGpu}
+              onSelectGpu={studioActions.setSelectedGpu}
               tileSize={tileSize}
-              onSelectTileSize={setTileSize}
+              onSelectTileSize={studioActions.setTileSize}
               customOutputPath={customOutputPath}
-              onSetOutputDir={(dir) => setCustomOutputPath(dir)}
-              onSelectOutputPath={handleSelectDestinationFolder}
-              isProcessing={jobStatus === 'running' || jobStatus === 'queued'}
-              onAutoTune={(recTile, vramText) => {
-                setTileSize(recTile);
-                addToast(
-                  'info',
-                  'Auto-Tuned Tile Size',
-                  `Set to ${recTile === 0 ? 'AUTO' : recTile + 'px'} based on ${vramText}`
-                );
-              }}
-              onClose={() => setActiveNavTab(null)}
+              onSetOutputDir={studioActions.setCustomOutputPath}
+              onSelectOutputPath={handleSelectOutputDir}
+              isProcessing={isProcessing}
+              onAutoTune={handleAutoTune}
+              onClose={closeNav}
             />
           )}
 
@@ -100,7 +90,7 @@ export function StudioModals({
               onDownloadModel={handleDownloadModel}
               downloadingModelId={downloadingModelId}
               downloadProgress={downloadProgress}
-              onClose={() => setActiveNavTab(null)}
+              onClose={closeNav}
             />
           )}
 
@@ -108,18 +98,16 @@ export function StudioModals({
             <RecentHistoryDrawer
               history={historyItems}
               supportedModels={supportedModels}
-              onSelectHistoryItem={(item: HistoryEntry) => {
-                handleLoadHistoryItem(item);
-              }}
-              onClose={() => setActiveNavTab(null)}
+              onSelectHistoryItem={handleSelectHistoryItem}
+              onClose={closeNav}
             />
           )}
 
-          {activeNavTab === 'about' && <AboutModal onClose={() => setActiveNavTab(null)} />}
+          {activeNavTab === 'about' && <AboutModal onClose={closeNav} />}
         </div>
       )}
 
-      <ToastContainer toasts={toasts} onDismiss={removeToast} />
+      <ToastContainer toasts={toasts} onDismiss={studioActions.dismissToast} />
     </>
   );
-}
+});

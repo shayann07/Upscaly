@@ -1,31 +1,32 @@
-import { GpuInfo } from '../lib/types';
+import { useEffect } from 'react';
 import { useVramProfile } from './useVramProfile';
-
-interface TelemetryOptions {
-  gpus: GpuInfo[];
-  selectedGpu: number;
-  jobStatus: string;
-  tileSize: number;
-}
+import { studioActions } from '../store/studioStore';
+import { useSelectedGpu, useTileSize } from '../store/selectors';
 
 // selectedGpu === -1 is the "system RAM" pseudo-GPU choice (CPU fallback),
 // which has no VRAM profile to query.
 const SYSTEM_RAM_GPU_ID = -1;
 
 /**
- * Was previously fabricated: it parsed a GB figure out of the GPU *name*
- * string via regex, then multiplied by a hardcoded tile-size guess
- * (0.25/0.45/0.75) to invent a "used VRAM" number -- capped at the total,
- * which made isVramOverflowing mathematically unable to ever be true. The
- * real number (get_vram_profile) was already one invoke away and used
- * elsewhere (AdvancedSettings), just never fed into the titlebar/progress
- * overlay that actually displayed a VRAM figure to the user.
+ * Mirrors the backend's VRAM profile into the store.
+ *
+ * Mounted once, so the profile is queried once per GPU/tile change no
+ * matter how many components display it -- the figures were previously
+ * recomputed by every consumer that wanted them.
+ *
+ * The number itself was fabricated before this existed: a GB figure parsed
+ * out of the GPU *name* string, multiplied by a hardcoded tile-size guess,
+ * and capped at the total -- which made "overflowing" mathematically
+ * impossible. `get_vram_profile` was already one invoke away and used in
+ * the settings panel; it just never reached the readouts the user saw.
  */
-export function useTelemetry({ selectedGpu, tileSize }: TelemetryOptions) {
+export function useTelemetrySync() {
+  const selectedGpu = useSelectedGpu();
+  const tileSize = useTileSize();
   const { usedVramGb, isOverflowing } = useVramProfile(selectedGpu, tileSize);
 
   const isSystemRam = selectedGpu === SYSTEM_RAM_GPU_ID;
-  // Show a placeholder while the profile is in flight rather than a
+  // A placeholder while the profile is in flight, rather than a
   // confident-looking number the backend has not actually reported.
   const activeVramGb = isSystemRam
     ? 'SYSTEM RAM'
@@ -34,5 +35,7 @@ export function useTelemetry({ selectedGpu, tileSize }: TelemetryOptions) {
       : `${usedVramGb.toFixed(1)} GB`;
   const isVramOverflowing = !isSystemRam && isOverflowing;
 
-  return { activeVramGb, isVramOverflowing };
+  useEffect(() => {
+    studioActions.setTelemetry(activeVramGb, isVramOverflowing);
+  }, [activeVramGb, isVramOverflowing]);
 }

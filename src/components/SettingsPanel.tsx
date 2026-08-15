@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { SUPPORTED_MODELS, ModelInfo } from '../lib/types';
 import { ModelSelectorDropdown } from './settings/ModelSelectorDropdown';
 import { CategorySelectorSection } from './settings/CategorySelectorSection';
@@ -86,7 +86,7 @@ function getRunButtonStyle(
   };
 }
 
-export function SettingsPanel(props: SettingsPanelProps) {
+function SettingsPanelImpl(props: SettingsPanelProps) {
   const {
     supportedModels,
     modelCategory = 'photo',
@@ -191,5 +191,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     </div>
   );
 }
+
+export const SettingsPanel = memo(SettingsPanelImpl);
 
 export default SettingsPanel;

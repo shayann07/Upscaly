@@ -1,248 +1,111 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import { memo, useMemo } from 'react';
 import { Titlebar } from '../Titlebar';
 import { BatchQueueView } from '../BatchQueueView';
 import { ConfirmCancelDialog } from '../ConfirmCancelDialog';
 import { StudioPreviewSection } from './StudioPreviewSection';
 import { StudioControlsSection } from './StudioControlsSection';
-import { BatchItem, ModelInfo, GpuInfo } from '../../lib/types';
+import {
+  useActiveNavTab,
+  useConfirmCancelOpen,
+  useGpus,
+  useIsProcessing,
+  useIsVramOverflowing,
+  useItems,
+  useJobStatus,
+  useScale,
+  useSelectedId,
+  useSelectedItem,
+  useSelectedGpu,
+} from '../../store/selectors';
+import { studioActions } from '../../store/studioStore';
+import {
+  cancelItem,
+  clearFile,
+  confirmCancelAndClear,
+  dismissCancelConfirmation,
+  openFiles,
+} from '../../store/studioCommands';
 
-interface StudioCanvasProps {
-  filePath: string | null;
-  fileName: string | null;
-  upscaledPath: string | null;
-  currentFileDims: { w: number; h: number } | null;
-  scale: number;
-  comparisonViewMode: 'split' | 'side-by-side';
-  setComparisonViewMode: (mode: 'split' | 'side-by-side') => void;
-  zoomLevel: number;
-  setZoomLevel: React.Dispatch<React.SetStateAction<number>>;
-  handleOpenFile: () => void;
-  handleOpenFolder?: () => void;
-  isDragOver?: boolean;
-  handleShowInExplorerNative: (path: string) => void;
-  handleClearFile: () => void;
-  confirmCancelOpen?: boolean;
-  handleConfirmCancelAndClear?: () => void;
-  handleDismissCancel?: () => void;
-  jobStatus: string;
-  progressVal: number;
-  statusMessage: string;
-  jobPhase: string;
-  etaSeconds?: number;
-  fps?: number;
-  rateStr: string;
-  activeVramGb: string;
-  tileSize: number;
-  handleCancelUpscale: () => void;
-  handleCancelItem?: (id?: string) => void;
-  handleCycleZoom: () => void;
-  batchItems: BatchItem[];
-  selectedGpu: number;
-  gpus: GpuInfo[];
-  setSelectedGpu: (gpu: number) => void;
-  isVramOverflowing: boolean;
-  activeNavTab: 'models' | 'history' | 'settings' | 'about' | null;
-  handleToggleNavTab: (tab: 'models' | 'history' | 'settings' | 'about') => void;
-  setFilePath: (path: string) => void;
-  setFileName: (name: string) => void;
-  setCurrentFileDims: (dims: { w: number; h: number } | null) => void;
-  setBatchItems: React.Dispatch<React.SetStateAction<BatchItem[]>>;
-  handleRemoveBatchItem: (id: string) => void;
-  supportedModels: ModelInfo[];
-  category: 'photos' | 'anime' | 'video';
-  handleSelectCategory: (cat: 'photos' | 'anime' | 'video') => void;
-  installedModels: string[];
-  selectedModel: string;
-  handleSelectModel: (id: string) => void;
-  setScale: (s: number) => void;
-  handleStartUpscale: () => void;
-  isMuted: boolean;
-  handleToggleMute: () => void;
-  setActiveNavTab: (tab: 'models' | 'history' | 'settings' | 'about' | null) => void;
-}
+const handleOpenFile = () => void openFiles();
+const handleCancelItem = (id: string) => void cancelItem(id);
+const handleConfirmCancel = () => void confirmCancelAndClear();
 
-export function StudioCanvas(props: StudioCanvasProps) {
-  const {
-    filePath,
-    fileName,
-    upscaledPath,
-    currentFileDims,
-    scale,
-    comparisonViewMode,
-    setComparisonViewMode,
-    zoomLevel,
-    setZoomLevel,
-    handleOpenFile,
-    handleOpenFolder,
-    isDragOver,
-    handleShowInExplorerNative,
-    handleClearFile,
-    confirmCancelOpen,
-    handleConfirmCancelAndClear,
-    handleDismissCancel,
-    jobStatus,
-    progressVal,
-    statusMessage,
-    jobPhase,
-    etaSeconds,
-    fps,
-    rateStr,
-    activeVramGb,
-    tileSize,
-    handleCancelUpscale,
-    handleCancelItem,
-    handleCycleZoom,
-    batchItems,
-    selectedGpu,
-    gpus,
-    setSelectedGpu,
-    isVramOverflowing,
-    activeNavTab,
-    handleToggleNavTab,
-    setFilePath,
-    setFileName,
-    setCurrentFileDims,
-    setBatchItems,
-    handleRemoveBatchItem,
-    supportedModels,
-    category,
-    handleSelectCategory,
-    installedModels,
-    selectedModel,
-    handleSelectModel,
-    setScale,
-    handleStartUpscale,
-    isMuted,
-    handleToggleMute,
-    setActiveNavTab,
-  } = props;
+export const StudioCanvas = memo(function StudioCanvas({ isDragOver }: { isDragOver: boolean }) {
+  const items = useItems();
+  const selected = useSelectedItem();
+  const selectedId = useSelectedId();
+  const jobStatus = useJobStatus();
+  const isProc = useIsProcessing();
+  const scale = useScale();
+  const gpus = useGpus();
+  const selectedGpu = useSelectedGpu();
+  const activeNavTab = useActiveNavTab();
+  const confirmCancelOpen = useConfirmCancelOpen();
 
-  const isProc = jobStatus === 'running' || jobStatus === 'queued';
-  const currentFileName = filePath || (batchItems.length > 0 ? batchItems[0].fileName : null);
+  const isVramOverflowing = useIsVramOverflowing();
 
-  // Stable references so BatchQueueRow's React.memo (batch progress ticks
-  // can fire 10+/sec) actually skips re-rendering rows whose own data
-  // didn't change, instead of being defeated by a fresh inline closure on
-  // every StudioCanvas render. batchItems is read via a ref rather than
-  // closed over directly -- its array reference changes on every progress
-  // tick (a fresh array from .map(), even though unaffected items keep
-  // their own object identity), which would otherwise force this
-  // callback's identity to change just as often.
-  const batchItemsRef = useRef(batchItems);
-  useEffect(() => {
-    batchItemsRef.current = batchItems;
-  }, [batchItems]);
-
-  const handleSelectBatchItem = useCallback(
-    (id: string) => {
-      const item = batchItemsRef.current.find((b) => b.id === id);
-      if (item && item.filePath && item.fileName) {
-        setFilePath(item.filePath);
-        setFileName(item.fileName);
-        if (item.w && item.h) setCurrentFileDims({ w: item.w, h: item.h });
-      }
-    },
-    [setFilePath, setFileName, setCurrentFileDims]
+  // Derived objects are memoized rather than rebuilt inline. Titlebar is
+  // memoized, and a fresh object literal in any one of these props would
+  // have re-rendered it on every progress tick regardless.
+  const originalDims = useMemo(
+    () => (selected?.w != null && selected.h != null ? { w: selected.w, h: selected.h } : null),
+    [selected?.w, selected?.h]
+  );
+  const outputDims = useMemo(
+    () => (originalDims ? { w: originalDims.w * scale, h: originalDims.h * scale } : null),
+    [originalDims, scale]
+  );
+  const availableGpus = useMemo(
+    () =>
+      gpus.map((g) => ({
+        id: g.id,
+        name: g.name,
+        detail: g.detail || (g.id === 0 ? 'Default GPU' : 'Vulkan Device'),
+      })),
+    [gpus]
   );
 
-  const handleClearCompletedBatchItems = useCallback(() => {
-    setBatchItems((prev) => prev.filter((b) => b.status !== 'succeeded'));
-  }, [setBatchItems]);
+  const currentFileDims = originalDims;
 
   return (
     <>
-      <StudioPreviewSection
-        filePath={filePath}
-        batchItems={batchItems}
-        upscaledPath={upscaledPath}
-        jobStatus={jobStatus}
-        comparisonViewMode={comparisonViewMode}
-        zoomLevel={zoomLevel}
-        setZoomLevel={setZoomLevel}
-        handleOpenFile={handleOpenFile}
-        handleOpenFolder={handleOpenFolder}
-        isDragOver={isDragOver}
-        isProc={isProc}
-        progressVal={progressVal}
-      />
+      <StudioPreviewSection isDragOver={isDragOver} />
 
       <Titlebar
-        hasFiles={Boolean(filePath || batchItems.length > 0)}
-        currentFile={currentFileName}
-        originalDims={currentFileDims}
-        outputDims={
-          currentFileDims ? { w: currentFileDims.w * scale, h: currentFileDims.h * scale } : null
-        }
+        hasFiles={items.length > 0}
+        currentFile={selected?.fileName ?? null}
+        originalDims={originalDims}
+        outputDims={outputDims}
         isDone={jobStatus === 'succeeded'}
         isProcessing={isProc}
         selectedGpu={selectedGpu}
-        availableGpus={gpus.map((g) => ({
-          id: g.id,
-          name: g.name,
-          detail: g.detail || (g.id === 0 ? 'Default GPU' : 'Vulkan Device'),
-        }))}
-        onSelectGpu={setSelectedGpu}
+        availableGpus={availableGpus}
+        onSelectGpu={studioActions.setSelectedGpu}
         isVramOverflowing={isVramOverflowing}
         activeNavTab={activeNavTab}
-        onToggleNavTab={handleToggleNavTab}
-        onRemoveFile={handleClearFile}
+        onToggleNavTab={studioActions.toggleNavTab}
+        onRemoveFile={clearFile}
       />
 
       <BatchQueueView
-        items={batchItems}
-        selectedId={batchItems.find((b) => b.fileName === fileName)?.id}
+        items={items}
+        selectedId={selectedId ?? undefined}
         selectedScale={scale}
         currentFileDims={currentFileDims}
-        onSelect={handleSelectBatchItem}
+        onSelect={studioActions.selectItem}
         onAddFiles={handleOpenFile}
-        onAddMoreFiles={handleOpenFile}
-        onClear={handleClearFile}
-        onClearCompleted={handleClearCompletedBatchItems}
-        onRemoveItem={handleRemoveBatchItem}
+        onClear={clearFile}
+        onRemoveItem={studioActions.removeItem}
         onCancelItem={handleCancelItem}
       />
 
-      <StudioControlsSection
-        isProc={isProc}
-        progressVal={progressVal}
-        statusMessage={statusMessage}
-        jobPhase={jobPhase}
-        etaSeconds={etaSeconds}
-        fps={fps}
-        rateStr={rateStr}
-        activeVramGb={activeVramGb}
-        tileSize={tileSize}
-        handleCancelUpscale={handleCancelUpscale}
-        jobStatus={jobStatus}
-        upscaledPath={upscaledPath}
-        currentFileDims={currentFileDims}
-        scale={scale}
-        comparisonViewMode={comparisonViewMode}
-        zoomLevel={zoomLevel}
-        setComparisonViewMode={setComparisonViewMode}
-        handleCycleZoom={handleCycleZoom}
-        handleShowInExplorerNative={handleShowInExplorerNative}
-        handleClearFile={handleClearFile}
-        supportedModels={supportedModels}
-        category={category}
-        handleSelectCategory={handleSelectCategory}
-        installedModels={installedModels}
-        selectedModel={selectedModel}
-        handleSelectModel={handleSelectModel}
-        setScale={setScale}
-        filePath={filePath}
-        batchItemsCount={batchItems.length}
-        handleStartUpscale={handleStartUpscale}
-        isMuted={isMuted}
-        handleToggleMute={handleToggleMute}
-        setActiveNavTab={setActiveNavTab}
-      />
+      <StudioControlsSection />
 
       <ConfirmCancelDialog
-        isOpen={Boolean(confirmCancelOpen)}
-        onConfirm={handleConfirmCancelAndClear || (() => {})}
-        onDismiss={handleDismissCancel || (() => {})}
+        isOpen={confirmCancelOpen}
+        onConfirm={handleConfirmCancel}
+        onDismiss={dismissCancelConfirmation}
       />
     </>
   );
-}
+});

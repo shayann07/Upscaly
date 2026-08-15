@@ -1,10 +1,10 @@
 import { memo } from 'react';
-import { BatchItem } from '../../lib/types';
+import { QueueItem } from '../../store/queueItem';
 import { BatchQueueRowThumbnail } from './BatchQueueRowThumbnail';
 import { BatchQueueRowControls } from './BatchQueueRowControls';
 
 interface BatchQueueRowProps {
-  file: BatchItem;
+  file: QueueItem;
   index: number;
   open: boolean;
   active: boolean;
@@ -97,7 +97,7 @@ export const BatchQueueRow = memo(function BatchQueueRow({
 
       <div className="flex-1 min-w-0" style={{ display: open ? 'block' : 'none' }}>
         <div className="text-[11.5px] font-medium text-[#EDEAE6] whitespace-nowrap overflow-hidden text-ellipsis mb-0.5">
-          {file.fileName || file.name || 'Untitled'}
+          {file.fileName || 'Untitled'}
         </div>
         {file.w && file.h ? (
           <div className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-muted)] tracking-[0.03em] whitespace-nowrap overflow-hidden text-ellipsis">

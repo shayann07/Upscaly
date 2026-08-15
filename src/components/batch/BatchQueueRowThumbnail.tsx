@@ -1,8 +1,8 @@
-import { BatchItem } from '../../lib/types';
+import { QueueItem } from '../../store/queueItem';
 import { getMediaSrc } from '../../lib/media';
 
 interface BatchQueueRowThumbnailProps {
-  file: BatchItem;
+  file: QueueItem;
   open: boolean;
   active: boolean;
   accentColor: string;
@@ -18,7 +18,7 @@ export function BatchQueueRowThumbnail({
   EASE,
   col,
 }: BatchQueueRowThumbnailProps) {
-  const itemPath = file.filePath || file.path || '';
+  const itemPath = file.filePath;
   const itemSrc = itemPath ? getMediaSrc(itemPath) : '';
 
   return (

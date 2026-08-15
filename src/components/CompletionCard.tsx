@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -21,7 +21,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-export function CompletionCard({
+function CompletionCardImpl({
   outputPath,
   outputDims = { w: 3840, h: 2160 },
   compareMode = 'split',
@@ -120,5 +120,7 @@ export function CompletionCard({
     </motion.div>
   );
 }
+
+export const CompletionCard = memo(CompletionCardImpl);
 
 export default CompletionCard;
