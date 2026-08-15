@@ -527,6 +527,17 @@ fn run_single_image_job(
     cancel_requested: Arc<AtomicBool>,
     process_handle: Arc<Mutex<Option<Box<dyn ProcessHandle>>>>,
 ) -> Result<(), String> {
+    // Cancellation is detected by the poll loop below, so it keeps polling
+    // briskly. Emitting is decoupled from it: every job-status-changed event
+    // drives a React render pass across the studio tree, and firing ~17 of
+    // those a second for a bar that moves in tenths of a percent burned CPU
+    // in the webview for no visible benefit. Emit when the displayed value
+    // actually changes (rate-limited), plus a slow heartbeat so a stalled job
+    // still refreshes its ETA.
+    const IMAGE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(60);
+    const EMIT_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(200);
+    const EMIT_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(1);
+
     let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan")?;
     let models_dir = get_models_dir(app);
 
@@ -570,6 +581,8 @@ fn run_single_image_job(
 
     let start_time = std::time::Instant::now();
     let mut current_pct = 0.0f64;
+    let mut last_emit: Option<std::time::Instant> = None;
+    let mut last_emitted_pct = 0.0f64;
 
     let _ = app.emit(
         "job-status-changed",
@@ -640,21 +653,34 @@ fn run_single_image_job(
             None
         };
 
-        let _ = app.emit(
-            "job-status-changed",
-            JobProgress {
-                job_id: job.id.clone(),
-                percentage: current_pct,
-                status: JobState::Running.as_str().to_string(),
-                error: None,
-                phase: Some(format!("GPU Accelerated Upscaling ({current_pct:.1}%)")),
-                eta_seconds: eta_secs,
-                fps: None,
-                output_path: Some(job.output_path.clone()),
-            },
-        );
+        let now = std::time::Instant::now();
+        // 0.1 is the granularity the phase string actually renders at, so a
+        // smaller delta than that could not change anything on screen.
+        let pct_changed = (current_pct - last_emitted_pct).abs() >= 0.1;
+        let should_emit = last_emit.is_none_or(|prev| {
+            let since = now.duration_since(prev);
+            (pct_changed && since >= EMIT_MIN_INTERVAL) || since >= EMIT_HEARTBEAT
+        });
 
-        thread::sleep(std::time::Duration::from_millis(60));
+        if should_emit {
+            let _ = app.emit(
+                "job-status-changed",
+                JobProgress {
+                    job_id: job.id.clone(),
+                    percentage: current_pct,
+                    status: JobState::Running.as_str().to_string(),
+                    error: None,
+                    phase: Some(format!("GPU Accelerated Upscaling ({current_pct:.1}%)")),
+                    eta_seconds: eta_secs,
+                    fps: None,
+                    output_path: Some(job.output_path.clone()),
+                },
+            );
+            last_emit = Some(now);
+            last_emitted_pct = current_pct;
+        }
+
+        thread::sleep(IMAGE_POLL_INTERVAL);
     }
 
     Ok(())

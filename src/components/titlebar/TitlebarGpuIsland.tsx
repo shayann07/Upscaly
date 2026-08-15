@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { GpuInfo } from '../../lib/types';
 
 interface TitlebarGpuIslandProps {
@@ -9,7 +9,7 @@ interface TitlebarGpuIslandProps {
   accentColor: string;
 }
 
-export function TitlebarGpuIsland({
+function TitlebarGpuIslandImpl({
   selectedGpu,
   availableGpus,
   onSelectGpu,
@@ -100,3 +100,11 @@ export function TitlebarGpuIsland({
     </div>
   );
 }
+
+/**
+ * Memoized: the titlebar re-renders on every job progress event, but this
+ * island only depends on GPU selection and VRAM state. All five props are
+ * primitives or references owned by useSettings, so they stay referentially
+ * stable across progress ticks and the memo actually holds.
+ */
+export const TitlebarGpuIsland = memo(TitlebarGpuIslandImpl);
