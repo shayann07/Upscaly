@@ -13,7 +13,8 @@ pub mod video_pipeline;
 pub use error::AppError;
 use sidecar_manager::kill_all_processes;
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../src/lib/ipc/")]
 pub struct UpscaleRequest {
     pub job_id: Option<String>,
     pub input_path: String,
@@ -31,7 +32,8 @@ pub struct UpscaleRequest {
 
 /// What `run_upscale` hands back: the job to track, and the path its output
 /// is reserved at.
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../src/lib/ipc/")]
 pub struct UpscaleJobHandle {
     pub job_id: String,
     pub output_path: String,

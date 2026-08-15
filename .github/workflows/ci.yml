@@ -44,6 +44,21 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # The IPC types in src/lib/ipc are generated from the Rust structs.
+      # Regenerating and diffing catches a backend shape change that the
+      # committed bindings (and therefore the frontend) have not caught up
+      # with -- the drift class that produced the duplicated model catalogs,
+      # the two output-path schemes and the two status vocabularies.
+      - name: Check generated IPC types are current
+        shell: bash
+        run: |
+          npm run gen:types
+          if ! git diff --quiet -- src/lib/ipc; then
+            echo "::error::src/lib/ipc is stale. Run 'npm run gen:types' and commit the result."
+            git diff -- src/lib/ipc
+            exit 1
+          fi
+
       - name: Typecheck
         run: npx tsc --noEmit
 

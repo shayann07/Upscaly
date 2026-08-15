@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useUpscaleQueue } from '../useUpscaleQueue';
+import { JobProgress } from '../../lib/types';
 
 vi.mock('@tauri-apps/api/core', () => ({
   // run_upscale returns the job id together with the output path the backend
@@ -16,6 +17,22 @@ vi.mock('@tauri-apps/api/core', () => ({
     return Promise.resolve(null);
   }),
 }));
+
+// JobProgress is generated from the Rust struct, where every optional field
+// is an explicit null rather than an absent key. This mirrors what actually
+// arrives over IPC instead of hand-writing partial payloads.
+function progress(
+  over: Partial<JobProgress> & Pick<JobProgress, 'job_id' | 'percentage' | 'status'>
+): JobProgress {
+  return {
+    error: null,
+    phase: null,
+    eta_seconds: null,
+    fps: null,
+    output_path: null,
+    ...over,
+  };
+}
 
 describe('useUpscaleQueue hook', () => {
   it('initializes with empty queue state', () => {
@@ -65,23 +82,27 @@ describe('useUpscaleQueue hook', () => {
     });
 
     act(() => {
-      result!.current.handleJobProgress({
-        job_id: 'job-1',
-        percentage: 50,
-        status: 'processing',
-      });
+      result!.current.handleJobProgress(
+        progress({
+          job_id: 'job-1',
+          percentage: 50,
+          status: 'processing',
+        })
+      );
     });
 
     expect(result!.current.batchItems[0].progress).toBe(50);
     expect(result!.current.batchItems[0].status).toBe('running');
 
     act(() => {
-      result!.current.handleJobProgress({
-        job_id: 'job-1',
-        percentage: 100,
-        status: 'completed',
-        output_path: 'C:/out/in_upscaled_4x.png',
-      });
+      result!.current.handleJobProgress(
+        progress({
+          job_id: 'job-1',
+          percentage: 100,
+          status: 'completed',
+          output_path: 'C:/out/in_upscaled_4x.png',
+        })
+      );
     });
 
     expect(result!.current.batchItems[0].status).toBe('succeeded');
@@ -132,23 +153,27 @@ describe('useUpscaleQueue hook', () => {
     expect(result!.current.batchItems[1].status).toBe('queued');
 
     await act(async () => {
-      result!.current.handleJobProgress({
-        job_id: 'item-1',
-        percentage: 50,
-        status: 'running',
-      });
+      result!.current.handleJobProgress(
+        progress({
+          job_id: 'item-1',
+          percentage: 50,
+          status: 'running',
+        })
+      );
     });
 
     expect(result!.current.activeJobId).toBe('item-1');
     expect(result!.current.batchItems[0].status).toBe('running');
 
     await act(async () => {
-      result!.current.handleJobProgress({
-        job_id: 'item-1',
-        percentage: 100,
-        status: 'succeeded',
-        output_path: 'C:/img1_upscaled_4x.png',
-      });
+      result!.current.handleJobProgress(
+        progress({
+          job_id: 'item-1',
+          percentage: 100,
+          status: 'succeeded',
+          output_path: 'C:/img1_upscaled_4x.png',
+        })
+      );
     });
 
     expect(result!.current.batchItems[0].status).toBe('succeeded');
@@ -187,22 +212,26 @@ describe('useUpscaleQueue late/out-of-order events', () => {
     });
 
     act(() => {
-      result!.current.handleJobProgress({
-        job_id: 'job-1',
-        percentage: 100,
-        status: 'cancelled',
-      });
+      result!.current.handleJobProgress(
+        progress({
+          job_id: 'job-1',
+          percentage: 100,
+          status: 'cancelled',
+        })
+      );
     });
     expect(result!.current.batchItems[0].status).toBe('cancelled');
 
     // A stale "running" tick for the same job arrives after cancellation
     // was already recorded -- it must not resurrect the row.
     act(() => {
-      result!.current.handleJobProgress({
-        job_id: 'job-1',
-        percentage: 42,
-        status: 'running',
-      });
+      result!.current.handleJobProgress(
+        progress({
+          job_id: 'job-1',
+          percentage: 42,
+          status: 'running',
+        })
+      );
     });
     expect(result!.current.batchItems[0].status).toBe('cancelled');
     expect(result!.current.batchItems[0].progress).toBe(100);
@@ -210,12 +239,14 @@ describe('useUpscaleQueue late/out-of-order events', () => {
     // Nor a stale "succeeded" -- which would otherwise both flip the row
     // and record an incorrect history entry for a job that was cancelled.
     act(() => {
-      result!.current.handleJobProgress({
-        job_id: 'job-1',
-        percentage: 100,
-        status: 'succeeded',
-        output_path: 'C:/out/in_upscaled_4x.png',
-      });
+      result!.current.handleJobProgress(
+        progress({
+          job_id: 'job-1',
+          percentage: 100,
+          status: 'succeeded',
+          output_path: 'C:/out/in_upscaled_4x.png',
+        })
+      );
     });
     expect(result!.current.batchItems[0].status).toBe('cancelled');
     expect(onItemCompleted).not.toHaveBeenCalled();

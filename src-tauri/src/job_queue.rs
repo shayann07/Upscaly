@@ -54,13 +54,18 @@ pub fn generate_job_id() -> String {
     format!("job_{nanos:x}")
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, ts_rs::TS)]
+#[ts(export, export_to = "../src/lib/ipc/")]
 pub struct JobProgress {
     pub job_id: String,
     pub percentage: f64,
     pub status: String, // "queued" | "running" | "succeeded" | "failed" | "cancelled"
     pub error: Option<String>,
     pub phase: Option<String>,
+    // ts-rs maps u64 to bigint, which is technically right for the full range
+    // but wrong in practice here: this is a duration in seconds, serde_json
+    // emits it as a plain JSON number, and the webview receives a JS number.
+    #[ts(type = "number | null")]
     pub eta_seconds: Option<u64>,
     pub fps: Option<f64>,
     pub output_path: Option<String>,

@@ -191,7 +191,8 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
             progress: percentage,
             status: nextState,
             outputPath: finalOut,
-            error: isErr ? error : item.error,
+            // Rust Option<String> arrives as null, not absent.
+            error: isErr ? (error ?? undefined) : item.error,
           };
         })
       );
