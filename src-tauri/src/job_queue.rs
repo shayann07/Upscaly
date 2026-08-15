@@ -11,7 +11,6 @@ use crate::error::AppError;
 use crate::image_batch::{can_group_with, run_image_batch, BatchMember, MAX_BATCH_SIZE};
 use crate::job_state::JobState;
 use crate::job_store::JobStore;
-use crate::model_manager::get_models_dir;
 use crate::output_paths::release_output_path;
 use crate::process_runner::{ProcessHandle, ProcessRunner, StdProcessRunner};
 use crate::sidecar_manager::resolve_sidecar_path;
@@ -576,7 +575,11 @@ fn run_single_image_job(
     const IMAGE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(60);
 
     let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan")?;
-    let models_dir = get_models_dir(app);
+    // Resolved per model: a model from the user's own folder has to be
+    // run with the engine pointed at that folder, since `-m` takes one
+    // path. Also the directory the .param is read from for scale, so
+    // both agree on which file is actually being used.
+    let models_dir = crate::model_manager::resolve_model_dir(app, &job.model_name);
 
     let gpu_vram_mb = get_gpu_vram_mb_for_id(app, job.gpu_id);
     let effective_scale = resolve_effective_scale(&job.model_name, job.scale, Some(&models_dir));

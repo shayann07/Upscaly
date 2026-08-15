@@ -39,7 +39,6 @@ use crate::error::AppError;
 use crate::job_queue::{resolve_effective_scale, sanitize_job_id, Job};
 use crate::job_state::JobState;
 use crate::job_store::JobStore;
-use crate::model_manager::get_models_dir;
 use crate::process_runner::{ProcessHandle, ProcessRunner, StdProcessRunner};
 use crate::sidecar_manager::resolve_sidecar_path;
 use crate::video_pipeline::context::TempFolderGuard;
@@ -317,7 +316,7 @@ fn member_phase(index: usize, produced: usize, total: usize) -> String {
 /// Builds the shared process's argument list, and reports the tile size the
 /// governor actually settled on so a VRAM failure can name it.
 fn build_args(job: &Job, dirs: &BatchDirs, app: &AppHandle) -> (Vec<String>, i32) {
-    let models_dir = get_models_dir(app);
+    let models_dir = crate::model_manager::resolve_model_dir(app, &job.model_name);
     let gpu_vram_mb = crate::job_queue::get_gpu_vram_mb_for_id(app, job.gpu_id);
     let effective_scale = resolve_effective_scale(&job.model_name, job.scale, Some(&models_dir));
     let requested_tile = crate::engine::preset::effective_requested_tile(job.tile_size, job.preset);

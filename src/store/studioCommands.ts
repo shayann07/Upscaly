@@ -103,6 +103,30 @@ export async function selectOutputDirectory(): Promise<void> {
   }
 }
 
+/**
+ * Points the app at a folder of user-supplied ncnn models.
+ *
+ * The folder is remembered, not copied from: models stay where the user put
+ * them, and the engine is pointed at that directory per job (see
+ * `resolve_model_dir`). Passing an empty string clears the setting.
+ */
+export async function selectCustomModelsDir(): Promise<void> {
+  try {
+    const selected = await open({ directory: true, multiple: false });
+    if (selected && typeof selected === 'string') {
+      studioActions.setCustomModelsDir(selected);
+      await refreshCatalog();
+    }
+  } catch (err) {
+    console.error('Failed to select model folder:', err);
+  }
+}
+
+export async function clearCustomModelsDir(): Promise<void> {
+  studioActions.setCustomModelsDir('');
+  await refreshCatalog();
+}
+
 export function clearFile(): void {
   // A live job has to be dealt with before the queue it belongs to can be
   // thrown away, so route through the same confirmation the X button uses.

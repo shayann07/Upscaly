@@ -17,6 +17,7 @@ const selectPersisted = (s: StudioState) =>
     s.tileSize,
     s.preset,
     s.outputFormat,
+    s.customModelsDir,
     s.customOutputPath,
     s.isMuted,
     s.autoCheckUpdates,
@@ -30,6 +31,7 @@ async function restoreNonGpuSettings(saved: AppSettings): Promise<void> {
   if (saved.default_output_format != null) {
     studioActions.setOutputFormat(saved.default_output_format);
   }
+  if (saved.custom_models_dir) studioActions.setCustomModelsDir(saved.custom_models_dir);
   if (saved.auto_check_updates != null) {
     studioActions.setAutoCheckUpdates(saved.auto_check_updates);
   }
@@ -133,6 +135,7 @@ export function useSettingsSync() {
         default_tile_size: s.tileSize,
         default_preset: s.preset,
         default_output_format: s.outputFormat,
+        custom_models_dir: s.customModelsDir || null,
         output_directory: s.customOutputPath || null,
         sound_muted: s.isMuted,
         auto_check_updates: s.autoCheckUpdates,

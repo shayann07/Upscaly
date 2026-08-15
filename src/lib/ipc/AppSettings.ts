@@ -20,4 +20,9 @@ default_gpu_id: number,
  * enumeration at startup. `None` for settings files written before this
  * field existed.
  */
-default_gpu_name: string | null, default_scale: number, default_tile_size: number, default_preset: QualityPreset, default_output_format: OutputFormat, output_directory: string | null, sound_muted: boolean, auto_check_updates: boolean, };
+default_gpu_name: string | null, default_scale: number, default_tile_size: number, default_preset: QualityPreset, default_output_format: OutputFormat, 
+/**
+ * A folder of user-supplied ncnn `.param`+`.bin` pairs, searched in
+ * addition to the app's own models directory. `None` when unset.
+ */
+custom_models_dir: string | null, output_directory: string | null, sound_muted: boolean, auto_check_updates: boolean, };

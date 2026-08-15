@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
 use crate::error::AppError;
-use crate::model_manager::get_models_dir;
 use crate::process_runner::{ProcessRunner, StdProcessRunner};
 use crate::sidecar_manager::resolve_sidecar_path;
 use crate::video_pipeline::context::VideoJobContext;
@@ -260,7 +259,7 @@ pub fn run_overlapping_upscale_pipeline(
 
     ctx.emit_progress(1.0, "Initializing Hardware-Accelerated Video Pipeline...");
 
-    let models_dir = get_models_dir(ctx.app);
+    let models_dir = crate::model_manager::resolve_model_dir(ctx.app, &ctx.job.model_name);
     let effective_scale = crate::job_queue::resolve_effective_scale(
         &ctx.job.model_name,
         ctx.job.scale,

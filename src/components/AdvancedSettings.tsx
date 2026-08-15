@@ -3,8 +3,22 @@ import { DeviceSelectorSection } from './settings/DeviceSelectorSection';
 import { TileSizeSection } from './settings/TileSizeSection';
 import { PresetSection } from './settings/PresetSection';
 import { OutputFormatSection } from './settings/OutputFormatSection';
+import { CustomModelsSection } from './settings/CustomModelsSection';
 import { useVramProfile } from '../hooks/useVramProfile';
 import { OutputFormat, QualityPreset } from '../lib/types';
+
+export interface CustomModelsConfig {
+  dir: string;
+  onSelect: () => void;
+  onClear: () => void;
+}
+
+/** Module scope so the default keeps a stable identity across renders. */
+const NO_CUSTOM_MODELS: CustomModelsConfig = {
+  dir: '',
+  onSelect: () => {},
+  onClear: () => {},
+};
 
 export interface GpuInfo {
   id: number;
@@ -46,6 +60,12 @@ export interface AdvancedSettingsProps {
   onSelectPreset?: (preset: QualityPreset) => void;
   outputFormat?: OutputFormat;
   onSelectOutputFormat?: (format: OutputFormat) => void;
+  /**
+   * Grouped rather than three loose props: they are only ever supplied
+   * together, and three more defaulted parameters pushed this component
+   * past its complexity budget on their own.
+   */
+  customModels?: CustomModelsConfig;
   outputDir?: string;
   customOutputPath?: string;
   onSetOutputDir?: (dir: string) => void;
@@ -69,6 +89,7 @@ export function AdvancedSettings({
   onSelectPreset = () => {},
   outputFormat = 'png',
   onSelectOutputFormat = () => {},
+  customModels = NO_CUSTOM_MODELS,
   outputDir = '~/Pictures/Upscaled',
   customOutputPath,
   onSetOutputDir,
@@ -76,7 +97,6 @@ export function AdvancedSettings({
   accentColor = 'var(--accent)',
   onClose = () => {},
   onAutoTune,
-  isProcessing: _isProcessing = false,
 }: AdvancedSettingsProps) {
   const EASE = 'var(--ease-spring)';
 
@@ -152,6 +172,12 @@ export function AdvancedSettings({
           totalVramGb={totalVramGb}
           statusMessage={statusMessage}
           accentColor={accentColor}
+        />
+
+        <CustomModelsSection
+          customModelsDir={customModels.dir}
+          onSelectFolder={customModels.onSelect}
+          onClearFolder={customModels.onClear}
         />
 
         <OutputFormatSection

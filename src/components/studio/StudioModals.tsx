@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { AdvancedSettings } from '../AdvancedSettings';
 import { ModelCatalogModal } from '../ModelCatalogModal';
 import { RecentHistoryDrawer } from '../RecentHistoryDrawer';
@@ -7,6 +7,7 @@ import { ToastContainer } from '../ToastContainer';
 import { HistoryEntry } from '../../lib/types';
 import {
   useActiveNavTab,
+  useCustomModelsDir,
   useCustomOutputPath,
   useDownloadProgress,
   useDownloadingModelId,
@@ -23,11 +24,19 @@ import {
   useToasts,
 } from '../../store/selectors';
 import { studioActions } from '../../store/studioStore';
-import { downloadModel, loadHistoryItem, selectOutputDirectory } from '../../store/studioCommands';
+import {
+  clearCustomModelsDir,
+  downloadModel,
+  loadHistoryItem,
+  selectCustomModelsDir,
+  selectOutputDirectory,
+} from '../../store/studioCommands';
 
 const closeNav = () => studioActions.setActiveNavTab(null);
 const handleDownloadModel = (id: string) => void downloadModel(id);
 const handleSelectOutputDir = () => void selectOutputDirectory();
+const handleSelectModelsDir = () => void selectCustomModelsDir();
+const handleClearModelsDir = () => void clearCustomModelsDir();
 
 export const StudioModals = memo(function StudioModals() {
   const activeNavTab = useActiveNavTab();
@@ -37,6 +46,15 @@ export const StudioModals = memo(function StudioModals() {
   const scale = useScale();
   const preset = usePreset();
   const outputFormat = useOutputFormat();
+  const customModelsDir = useCustomModelsDir();
+  const customModels = useMemo(
+    () => ({
+      dir: customModelsDir,
+      onSelect: handleSelectModelsDir,
+      onClear: handleClearModelsDir,
+    }),
+    [customModelsDir]
+  );
   const customOutputPath = useCustomOutputPath();
   const isProcessing = useIsProcessing();
   const supportedModels = useSupportedModels();
@@ -85,6 +103,7 @@ export const StudioModals = memo(function StudioModals() {
               onSelectPreset={studioActions.setPreset}
               outputFormat={outputFormat}
               onSelectOutputFormat={studioActions.setOutputFormat}
+              customModels={customModels}
               customOutputPath={customOutputPath}
               onSetOutputDir={studioActions.setCustomOutputPath}
               onSelectOutputPath={handleSelectOutputDir}
