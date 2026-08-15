@@ -55,7 +55,7 @@ pub fn generate_job_id() -> String {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, ts_rs::TS)]
-#[ts(export, export_to = "../src/lib/ipc/")]
+#[ts(export, export_to = "../../src/lib/ipc/")]
 pub struct JobProgress {
     pub job_id: String,
     pub percentage: f64,

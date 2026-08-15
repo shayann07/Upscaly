@@ -33,7 +33,7 @@ pub async fn list_installed_models(app_handle: tauri::AppHandle) -> Result<Vec<S
 // serde contract rather than simplify anything.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Serialize, Deserialize, Clone, ts_rs::TS)]
-#[ts(export, export_to = "../src/lib/ipc/")]
+#[ts(export, export_to = "../../src/lib/ipc/")]
 pub struct FullModelInfo {
     pub id: String,
     pub name: String,

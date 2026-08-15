@@ -9,7 +9,7 @@ pub struct ExecutionProfile {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
-#[ts(export, export_to = "../src/lib/ipc/")]
+#[ts(export, export_to = "../../src/lib/ipc/")]
 pub struct VramProfile {
     #[ts(type = "number")]
     pub total_vram_mb: u64,

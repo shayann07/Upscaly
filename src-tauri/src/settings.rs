@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Serialize, Deserialize, Clone, ts_rs::TS)]
-#[ts(export, export_to = "../src/lib/ipc/")]
+#[ts(export, export_to = "../../src/lib/ipc/")]
 pub struct AppSettings {
     pub default_gpu_id: i32,
     pub default_scale: i32,

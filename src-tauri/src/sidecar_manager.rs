@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{path::BaseDirectory, AppHandle, Manager};
 
 #[derive(Debug, Serialize, Deserialize, Clone, ts_rs::TS)]
-#[ts(export, export_to = "../src/lib/ipc/")]
+#[ts(export, export_to = "../../src/lib/ipc/")]
 pub struct GpuDevice {
     pub id: i32,
     pub name: String,
