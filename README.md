@@ -55,6 +55,7 @@ Concretely, it tries hard to never lie to you:
 ## Features
 
 ### Upscaling
+
 - **Real-ESRGAN** super-resolution at **2×, 3× and 4×**
 - **Nine built-in models** across photo, anime and video categories
 - **Custom model folder** — drop in any ncnn `.param` + `.bin` pair
@@ -63,6 +64,7 @@ Concretely, it tries hard to never lie to you:
 - Compatible images in a batch share **one engine process**, skipping repeated model loads
 
 ### Video
+
 - Full pipeline: extract → upscale → reassemble, with the **audio track preserved**
 - **Lossless PNG intermediate frames** — no JPEG generation loss on the model's input or output
 - **Hardware encoding** via NVENC / QuickSync / AMF where available
@@ -71,6 +73,7 @@ Concretely, it tries hard to never lie to you:
 - Extraction is **throttled** so ffmpeg cannot race ahead and write tens of GB of unused frames
 
 ### Safety and control
+
 - **VRAM governor** sizes tile and thread count against your card's actual memory
 - **Live GPU-exhaustion guard** kills the engine on the first failed allocation, before the driver is lost
 - **Automatic tile back-off and retry** on video when memory runs short
@@ -78,6 +81,7 @@ Concretely, it tries hard to never lie to you:
 - **Hash-verified model downloads** that refuse to install unverified bytes
 
 ### Interface
+
 - Side-by-side and split **before/after comparison** with zoom
 - Live VRAM, tile, rate and ETA readouts
 - **Recent history** with one-click reload
@@ -89,20 +93,20 @@ Concretely, it tries hard to never lie to you:
 
 > **Contributors welcome here** — add screenshots to `docs/screenshots/` and link them below.
 
-| Studio view | Model catalog | Settings |
-| :---: | :---: | :---: |
+|   Studio view    |  Model catalog   |     Settings     |
+| :--------------: | :--------------: | :--------------: |
 | _add screenshot_ | _add screenshot_ | _add screenshot_ |
 
 ---
 
 ## Requirements
 
-| | Minimum | Recommended |
-| --- | --- | --- |
-| **OS** | Windows 10 x64 | Windows 11 x64 |
-| **GPU** | Any **Vulkan 1.2** capable GPU | Discrete NVIDIA / AMD, 6 GB+ VRAM |
-| **Drivers** | Current vendor drivers | Current vendor drivers |
-| **Disk** | ~1 GB for the app and models | Much more for video — see [Upscaling video](#upscaling-video) |
+|             | Minimum                        | Recommended                                                   |
+| ----------- | ------------------------------ | ------------------------------------------------------------- |
+| **OS**      | Windows 10 x64                 | Windows 11 x64                                                |
+| **GPU**     | Any **Vulkan 1.2** capable GPU | Discrete NVIDIA / AMD, 6 GB+ VRAM                             |
+| **Drivers** | Current vendor drivers         | Current vendor drivers                                        |
+| **Disk**    | ~1 GB for the app and models   | Much more for video — see [Upscaling video](#upscaling-video) |
 
 Integrated GPUs (Intel UHD/Iris, AMD Radeon Graphics) work but are considerably slower, and the governor will clamp tiles accordingly.
 
@@ -140,15 +144,15 @@ Drop several files at once to build a batch. Results land next to the input unle
 
 This is the setting that most affects your result. All the photo models below run at the same speed — they differ only in what they were trained on.
 
-| Model | Best for | Character |
-| --- | --- | --- |
-| **RealESRGAN Ultra** (`realesrgan-x4plus`) | General purpose | The stock model. Reliable, occasionally plasticky on skin. |
-| **Remacri** | **Photographs, film and print scans** | Sharper texture and edge detail than stock. A strong default for real-world photos. |
-| **High Fidelity** | Archival work, documents | Conservative. Least likely to invent detail that was never there. |
-| **UltraSharp** | Already-clean digital sources | Strong edge definition and micro-contrast. Will amplify grain and dust on scans. |
-| **Nomos 8k SC** | Portraits, nature | Natural texture, gentler than UltraSharp on skin and foliage. |
-| **RealESRGAN Anime Art** | Illustration, manga | Line work, flats and cel shading. |
-| **Anime Video 2× / 3× / 4×** | Animated video | Frame sequences, tuned for throughput. |
+| Model                                      | Best for                              | Character                                                                           |
+| ------------------------------------------ | ------------------------------------- | ----------------------------------------------------------------------------------- |
+| **RealESRGAN Ultra** (`realesrgan-x4plus`) | General purpose                       | The stock model. Reliable, occasionally plasticky on skin.                          |
+| **Remacri**                                | **Photographs, film and print scans** | Sharper texture and edge detail than stock. A strong default for real-world photos. |
+| **High Fidelity**                          | Archival work, documents              | Conservative. Least likely to invent detail that was never there.                   |
+| **UltraSharp**                             | Already-clean digital sources         | Strong edge definition and micro-contrast. Will amplify grain and dust on scans.    |
+| **Nomos 8k SC**                            | Portraits, nature                     | Natural texture, gentler than UltraSharp on skin and foliage.                       |
+| **RealESRGAN Anime Art**                   | Illustration, manga                   | Line work, flats and cel shading.                                                   |
+| **Anime Video 2× / 3× / 4×**               | Animated video                        | Frame sequences, tuned for throughput.                                              |
 
 **Rules of thumb**
 
@@ -157,7 +161,7 @@ This is the setting that most affects your result. All the photo models below ru
 - You need it to stay faithful → **High Fidelity**.
 - Line art → **Anime Art**, never a photo model.
 
-No upscaler fixes colour casts, fading, or dust — those are restoration problems, and a sharper model makes dust *more* visible.
+No upscaler fixes colour casts, fading, or dust — those are restoration problems, and a sharper model makes dust _more_ visible.
 
 ---
 
@@ -165,15 +169,15 @@ No upscaler fixes colour casts, fading, or dust — those are restoration proble
 
 ### Presets
 
-| Preset | Tile | TTA | Codec threads | Use when |
-| --- | --- | --- | --- | --- |
-| **Quality** | Largest the card allows | **On** (8 passes) | 2 | Single images where you want the best possible edges |
-| **Balanced** | Engine-tuned | Off | 2 | **Default.** Everything else. |
-| **Speed** | Engine-tuned | Off | 4 | Large batches — wider decode/encode, identical image |
+| Preset       | Tile                    | TTA               | Codec threads | Use when                                             |
+| ------------ | ----------------------- | ----------------- | ------------- | ---------------------------------------------------- |
+| **Quality**  | Largest the card allows | **On** (8 passes) | 2             | Single images where you want the best possible edges |
+| **Balanced** | Engine-tuned            | Off               | 2             | **Default.** Everything else.                        |
+| **Speed**    | Engine-tuned            | Off               | 4             | Large batches — wider decode/encode, identical image |
 
 > **TTA is roughly 8× the GPU work.** On a single image that is seconds. On a 300-frame clip it is the difference between about an hour and about eight, so Upscaly asks for confirmation before starting a video run under Quality.
 
-Presets only ever *propose* settings. The VRAM governor has the final say on tile size, and an explicit tile choice always overrides the preset.
+Presets only ever _propose_ settings. The VRAM governor has the final say on tile size, and an explicit tile choice always overrides the preset.
 
 ### Tile size
 
@@ -185,11 +189,11 @@ Whatever you pick, the governor sizes it against your card and the scale factor 
 
 Images only; video is always MP4.
 
-| Format | Lossless | Notes |
-| --- | --- | --- |
-| **PNG** | Yes | Default. Exactly what the model produced. Large files. |
-| **JPG** | No | Much smaller, discards detail the upscale just produced. |
-| **WEBP** | No | Better than JPG at the same size, keeps transparency. |
+| Format   | Lossless | Notes                                                    |
+| -------- | -------- | -------------------------------------------------------- |
+| **PNG**  | Yes      | Default. Exactly what the model produced. Large files.   |
+| **JPG**  | No       | Much smaller, discards detail the upscale just produced. |
+| **WEBP** | No       | Better than JPG at the same size, keeps transparency.    |
 
 ### Device
 
@@ -231,13 +235,13 @@ Good sources: [OpenModelDB](https://openmodeldb.info/), [upscayl/custom-models](
 
 ## Keyboard shortcuts
 
-| Shortcut | Action |
-| --- | --- |
-| `Ctrl+O` | Open file(s) |
-| `Ctrl+Enter` | Start upscaling |
-| `Ctrl+S` | Toggle Settings |
-| `Ctrl+H` | Toggle History |
-| `Esc` | Dismiss dialog, or cancel the running job (with confirmation) |
+| Shortcut     | Action                                                        |
+| ------------ | ------------------------------------------------------------- |
+| `Ctrl+O`     | Open file(s)                                                  |
+| `Ctrl+Enter` | Start upscaling                                               |
+| `Ctrl+S`     | Toggle Settings                                               |
+| `Ctrl+H`     | Toggle History                                                |
+| `Esc`        | Dismiss dialog, or cancel the running job (with confirmation) |
 
 ---
 
@@ -253,11 +257,11 @@ Good sources: [OpenModelDB](https://openmodeldb.info/), [upscayl/custom-models](
 
 Executables are **not** committed (`*.exe` is gitignored — ffmpeg alone is ~240 MB). Place these in `src-tauri/binaries/` before building:
 
-| File | Source |
-| --- | --- |
+| File                                                | Source                                                                                          |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `realesrgan-ncnn-vulkan-x86_64-pc-windows-msvc.exe` | [Real-ESRGAN-ncnn-vulkan releases](https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan/releases) |
-| `ffmpeg-x86_64-pc-windows-msvc.exe` | [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) — **LGPL build** |
-| `ffprobe-x86_64-pc-windows-msvc.exe` | as above |
+| `ffmpeg-x86_64-pc-windows-msvc.exe`                 | [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) — **LGPL build**                                |
+| `ffprobe-x86_64-pc-windows-msvc.exe`                | as above                                                                                        |
 
 Tauri's sidecar naming requires the `-x86_64-pc-windows-msvc` suffix exactly.
 
@@ -367,7 +371,7 @@ Install current vendor drivers. Very old GPUs may not support Vulkan 1.2 at all.
 
 Open **Settings → Device** and select the discrete card explicitly. The choice is stored by name and re-resolved each launch.
 
-Note that high integrated-GPU usage during *video* jobs is normal — that is playback and decode, not the upscaler.
+Note that high integrated-GPU usage during _video_ jobs is normal — that is playback and decode, not the upscaler.
 </details>
 
 <details>
@@ -399,7 +403,7 @@ Contributions are welcome — bug reports, models, docs, screenshots, and especi
 3. `npm run check:quality` must pass, and `cargo test --manifest-path src-tauri/Cargo.toml`.
 4. Open a pull request describing what changed and why.
 
-**House style:** comments explain *why*, not *what*. If a line looks odd, the comment should say what breaks without it. Tests should state the failure they prevent.
+**House style:** comments explain _why_, not _what_. If a line looks odd, the comment should say what breaks without it. Tests should state the failure they prevent.
 
 Good first issues: screenshots for this README, additional model catalog entries (with verified hashes and commit-pinned URLs), and cross-platform sidecar/disk-space support.
 
@@ -419,12 +423,12 @@ Released under the [MIT License](LICENSE) — free for personal and commercial u
 
 Upscaly bundles software under its own licenses. Full details in [`docs/THIRD_PARTY_NOTICES.md`](docs/THIRD_PARTY_NOTICES.md).
 
-| Component | License |
-| --- | --- |
-| [Real-ESRGAN ncnn Vulkan](https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan) | BSD 3-Clause / MIT |
-| [ncnn](https://github.com/Tencent/ncnn) (Tencent) | BSD 3-Clause |
-| [FFmpeg / FFprobe](https://ffmpeg.org/) | **LGPL v2.1 / v3.0** (GPL components excluded) |
-| [Tauri](https://tauri.app) | MIT / Apache-2.0 |
+| Component                                                                     | License                                        |
+| ----------------------------------------------------------------------------- | ---------------------------------------------- |
+| [Real-ESRGAN ncnn Vulkan](https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan) | BSD 3-Clause / MIT                             |
+| [ncnn](https://github.com/Tencent/ncnn) (Tencent)                             | BSD 3-Clause                                   |
+| [FFmpeg / FFprobe](https://ffmpeg.org/)                                       | **LGPL v2.1 / v3.0** (GPL components excluded) |
+| [Tauri](https://tauri.app)                                                    | MIT / Apache-2.0                               |
 
 > **If you redistribute builds of Upscaly**, the bundled FFmpeg is LGPL. You must keep the notices intact and make its source available. Upscaly ships an LGPL build with GPL-only encoders (x264, x265, xvid) excluded, relying on hardware encoders instead — do not swap in a GPL build without understanding what that means for your distribution.
 
