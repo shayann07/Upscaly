@@ -23,6 +23,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # tauri.conf.json declares three sidecars under externalBin, and the
+      # Tauri build script refuses to run if any of them is missing. That is
+      # every CI checkout: the real binaries are third-party executables
+      # totalling ~500MB and are deliberately not in git (.gitignore: *.exe),
+      # so every cargo command here died in the build script with
+      # "resource path binaries\... doesn't exist" and exit code 101. It is
+      # why this workflow had never once gone green.
+      #
+      # Empty placeholders satisfy the existence check, which is all that is
+      # needed: this job type-checks, lints and runs unit tests, none of
+      # which spawn the engine, ffmpeg or ffprobe. Anything that actually
+      # executes a sidecar would need the real thing and does not belong
+      # here. Existing files are never overwritten, so a future workflow that
+      # fetches the real binaries can reuse this step untouched.
+      - name: Stub sidecar binaries for check-only build
+        shell: bash
+        run: |
+          mkdir -p src-tauri/binaries
+          for name in realesrgan-ncnn-vulkan ffmpeg ffprobe; do
+            path="src-tauri/binaries/${name}-x86_64-pc-windows-msvc.exe"
+            if [ -f "$path" ]; then
+              echo "present: $path"
+            else
+              : > "$path"
+              echo "stubbed: $path"
+            fi
+          done
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
