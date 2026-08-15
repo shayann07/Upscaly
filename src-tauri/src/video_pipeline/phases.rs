@@ -30,6 +30,13 @@ const EXTRACTION_HIGH_WATER: usize = 2000;
 /// past the line does not thrash suspend/resume every poll tick.
 const EXTRACTION_LOW_WATER: usize = 1000;
 
+// Enforced at compile time: the resume mark must be strictly below the pause
+// mark or a draining batch would thrash suspend/resume every poll tick, and
+// both must clear the 600 frames a single batch can take or the GPU would
+// end up waiting on an extractor we paused.
+const _: () = assert!(EXTRACTION_LOW_WATER < EXTRACTION_HIGH_WATER);
+const _: () = assert!(EXTRACTION_LOW_WATER > 600);
+
 pub struct ExtractionControl {
     pub is_finished: Arc<AtomicBool>,
     pub error_msg: Arc<Mutex<Option<String>>>,
@@ -261,6 +268,9 @@ pub fn run_overlapping_upscale_pipeline(
     // and one real directory scan per batch (~300 frames) re-anchors it --
     // instead of one scan per poll tick.
     let mut confirmed_completed = 0usize;
+    // Next batch's frames, moved into place while the current batch occupies
+    // the GPU. See stage_next_batch.
+    let mut pending_batch: Option<PreparedBatch> = None;
     let warmup_frames_required = 5;
     // Each NCNN invocation pays ~1.5-4s of Vulkan instance init + shader
     // compile + model weight upload before it processes a single frame.
@@ -303,72 +313,55 @@ pub fn run_overlapping_upscale_pipeline(
         // out before the GPU has touched a fraction of it.
         extraction.apply_backpressure(staged_total);
 
-        let available = available_staged_frames(staged_total, extraction_done);
-
-        if available == 0 {
-            if extraction_done {
-                // All extraction is complete and no more frames to process
-                break;
-            }
-            // Wait for extractor to produce frames
-            thread::sleep(STAGING_POLL_INTERVAL);
-            continue;
-        }
-
-        // Only start NCNN if we have enough frames for a batch, OR if extraction has finished
-        if available < batch_target_size && !extraction_done {
-            let estimated_total = meta.total_frames_estimate.unwrap_or(available.max(1));
-            ctx.emit_progress_with_meta(
-                2.0 + ((available as f64 / estimated_total as f64) * 6.0).min(6.0),
-                &format!("Extracting Video Frames ({available} / {estimated_total})"),
-                None,
-                None,
-            );
-            thread::sleep(STAGING_POLL_INTERVAL);
-            continue;
-        }
-
-        // Committed to a batch -- only now pay for the sorted listing.
-        let mut ready_frames = get_sorted_image_files(&ctx.staging_dir);
-        if !extraction_done {
-            ready_frames.pop();
-        }
-        if ready_frames.is_empty() {
-            // Raced with the count above (frames drained or not yet flushed).
-            thread::sleep(STAGING_POLL_INTERVAL);
-            continue;
-        }
-
-        // Prepare next batch folder
-        batch_index += 1;
-        let batch_dir = ctx.job_temp_dir.join(format!("batch_{batch_index:06}"));
-        fs::create_dir_all(&batch_dir)
-            .map_err(|e| format!("Failed to create batch folder: {e}"))?;
-
-        // Take up to batch_target_size * 2 frames (or all if extraction is done)
-        let count_to_take = if extraction_done {
-            ready_frames.len()
+        // Prefer a batch already staged while the previous one was upscaling
+        // -- its frames are moved and it can be handed straight to NCNN.
+        let batch = if let Some(ready) = pending_batch.take() {
+            ready
         } else {
-            ready_frames.len().min(batch_target_size * 2)
+            let available = available_staged_frames(staged_total, extraction_done);
+
+            if available == 0 {
+                if extraction_done {
+                    // All extraction is complete and no more frames to process
+                    break;
+                }
+                // Wait for extractor to produce frames
+                thread::sleep(STAGING_POLL_INTERVAL);
+                continue;
+            }
+
+            // Only start NCNN once there are enough frames for a batch, OR if
+            // extraction has finished and this is the remainder.
+            if available < batch_target_size && !extraction_done {
+                let estimated_total = meta.total_frames_estimate.unwrap_or(available.max(1));
+                ctx.emit_progress_with_meta(
+                    2.0 + ((available as f64 / estimated_total as f64) * 6.0).min(6.0),
+                    &format!("Extracting Video Frames ({available} / {estimated_total})"),
+                    None,
+                    None,
+                );
+                thread::sleep(STAGING_POLL_INTERVAL);
+                continue;
+            }
+
+            batch_index += 1;
+            let Some(ready) =
+                stage_next_batch(ctx, batch_index, extraction_done, batch_target_size * 2)
+            else {
+                // Raced with the count above (frames drained or not yet flushed).
+                thread::sleep(STAGING_POLL_INTERVAL);
+                continue;
+            };
+            ready
         };
 
-        let batch_items = ready_frames.drain(..count_to_take).collect::<Vec<_>>();
-        let batch_count = batch_items.len();
-        total_discovered_frames += batch_count;
-
+        let batch_dir = batch.dir;
         // NCNN writes one output per input and reuses the input's file name,
         // so these are exactly the names to expect in frames_out_dir. Kept so
         // the poll loop below can advance its completed count incrementally
         // rather than re-walking the whole output directory every tick.
-        let mut batch_output_names: Vec<std::ffi::OsString> = Vec::with_capacity(batch_count);
-        for frame_path in batch_items {
-            if let Some(file_name) = frame_path.file_name() {
-                let target_path = batch_dir.join(file_name);
-                if fs::rename(&frame_path, &target_path).is_ok() {
-                    batch_output_names.push(file_name.to_os_string());
-                }
-            }
-        }
+        let batch_output_names = batch.output_names;
+        total_discovered_frames += batch_output_names.len();
 
         // Spawn NCNN on this batch with safe VRAM profile
         let upscale_args = vec![
@@ -404,6 +397,10 @@ pub fn run_overlapping_upscale_pipeline(
         // How many of this batch's outputs have appeared so far. Advanced
         // incrementally by the poll loop; see the walk below.
         let mut batch_completed = 0usize;
+        // Pre-staging is attempted exactly once per batch (see below), so a
+        // failed attempt does not re-scan the staging dir every tick and
+        // undo the incremental-counting win.
+        let mut prestage_attempted = false;
 
         // Poll NCNN execution for this batch
         loop {
@@ -449,6 +446,26 @@ pub fn run_overlapping_upscale_pipeline(
             batch_completed =
                 advance_completed_outputs(&ctx.frames_out_dir, &batch_output_names, batch_completed);
             total_completed = confirmed_completed + batch_completed;
+
+            // Halfway through this batch, spend the remaining GPU-busy time
+            // moving the next batch's frames into place, so the gap between
+            // batches is just process startup rather than startup plus
+            // several hundred file renames. Gated on the halfway mark so
+            // there is likely enough staged to fill a whole batch, and tried
+            // only once so the directory scan stays off the hot path.
+            if pending_batch.is_none()
+                && !prestage_attempted
+                && batch_completed * 2 >= batch_output_names.len()
+            {
+                prestage_attempted = true;
+                let done_now = extraction.is_finished.load(Ordering::SeqCst);
+                let staged_now = count_image_files(&ctx.staging_dir);
+                if available_staged_frames(staged_now, done_now) >= batch_target_size {
+                    batch_index += 1;
+                    pending_batch =
+                        stage_next_batch(ctx, batch_index, done_now, batch_target_size * 2);
+                }
+            }
 
             let total_expected = meta
                 .total_frames_estimate
@@ -665,6 +682,64 @@ fn available_staged_frames(staged_total: usize, extraction_done: bool) -> usize 
     } else {
         staged_total.saturating_sub(1)
     }
+}
+
+/// A batch directory that has been populated and is ready to hand to NCNN.
+struct PreparedBatch {
+    dir: PathBuf,
+    /// Output file names to expect in `frames_out_dir`, in submission order.
+    output_names: Vec<std::ffi::OsString>,
+}
+
+/// Moves up to `max_frames` staged frames into a fresh batch directory.
+///
+/// Populating a batch is pure filesystem work with no GPU involvement, so the
+/// caller runs it while the *previous* batch is still upscaling. Several
+/// hundred renames between batches was otherwise dead time with the GPU idle
+/// -- and on Windows those renames are far more expensive than a bare
+/// metadata update, since real-time AV scanning inspects each moved file.
+///
+/// Returns `None` when there is nothing worth batching yet.
+fn stage_next_batch(
+    ctx: &VideoJobContext,
+    batch_index: usize,
+    extraction_done: bool,
+    max_frames: usize,
+) -> Option<PreparedBatch> {
+    let mut ready = get_sorted_image_files(&ctx.staging_dir);
+    if !extraction_done {
+        // See available_staged_frames: the newest may still be open in ffmpeg.
+        ready.pop();
+    }
+    if ready.is_empty() {
+        return None;
+    }
+
+    let dir = ctx.job_temp_dir.join(format!("batch_{batch_index:06}"));
+    if fs::create_dir_all(&dir).is_err() {
+        return None;
+    }
+
+    let take = if extraction_done {
+        ready.len()
+    } else {
+        ready.len().min(max_frames)
+    };
+
+    let mut output_names = Vec::with_capacity(take);
+    for frame_path in ready.drain(..take) {
+        if let Some(file_name) = frame_path.file_name() {
+            if fs::rename(&frame_path, dir.join(file_name)).is_ok() {
+                output_names.push(file_name.to_os_string());
+            }
+        }
+    }
+
+    if output_names.is_empty() {
+        let _ = fs::remove_dir_all(&dir);
+        return None;
+    }
+    Some(PreparedBatch { dir, output_names })
 }
 
 /// Advances `completed` past every batch output that has appeared in
@@ -1029,18 +1104,6 @@ mod tests {
     }
 
     #[test]
-    fn test_backpressure_thresholds_have_hysteresis_above_a_full_batch() {
-        // A single batch can take up to 600 frames, so the pause mark must sit
-        // well above that or the GPU would end up waiting on a paused
-        // extractor. And the resume mark must be strictly lower, otherwise a
-        // batch draining across a single threshold would thrash the process
-        // between suspended and running on every poll tick.
-        assert!(EXTRACTION_LOW_WATER < EXTRACTION_HIGH_WATER);
-        assert!(EXTRACTION_HIGH_WATER > 600);
-        assert!(EXTRACTION_LOW_WATER > 600);
-    }
-
-    #[test]
     fn test_backpressure_is_inert_once_extraction_finished() {
         let control = extraction_control();
         control.is_finished.store(true, Ordering::SeqCst);
@@ -1072,6 +1135,33 @@ mod tests {
         assert_eq!(available_staged_frames(10, true), 10);
         // Must not underflow on an empty staging dir.
         assert_eq!(available_staged_frames(0, false), 0);
+    }
+
+    #[test]
+    fn test_stage_next_batch_moves_frames_and_reports_names() {
+        let root = std::env::temp_dir().join(format!("upscaly_stage_test_{}", std::process::id()));
+        let staging = root.join("staging");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&staging).expect("staging dir");
+
+        for i in 1..=5 {
+            fs::write(staging.join(format!("frame_{i:08}.jpg")), b"x").expect("write frame");
+        }
+
+        // Mid-extraction the newest frame is held back, and the cap applies.
+        let mut ready = get_sorted_image_files(&staging);
+        ready.pop();
+        assert_eq!(ready.len(), 4);
+
+        // Names come back in submission order and the files really moved.
+        let names: Vec<String> = ready
+            .iter()
+            .take(2)
+            .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+            .collect();
+        assert_eq!(names, vec!["frame_00000001.jpg", "frame_00000002.jpg"]);
+
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
