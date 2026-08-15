@@ -1,11 +1,11 @@
 import { useState, useCallback, useRef } from 'react';
 import { getRecentHistory, HistoryItem } from '../lib/history';
+import { MAX_VISIBLE_TOASTS } from '../lib/types';
 
 // How long a toast stays visible before it's automatically removed. Without
-// this, toasts never left the array: only the last 3 ever rendered
-// (ToastContainer.slice(-3)), so once 4+ built up, older ones became both
-// invisible and undismissable, and the dedupe check below (which reads the
-// whole array) would permanently block a future identical notification.
+// this, toasts never left the array: only the last few ever rendered, so once
+// they built up, older ones became both invisible and undismissable, and the
+// dedupe check below would permanently block a future identical notification.
 const TOAST_LIFETIME_MS = 5000;
 
 type Toast = { id: string; type: 'success' | 'error' | 'info' | 'warning'; message: string };
@@ -60,10 +60,20 @@ export function useStudioState() {
   const handleNotify = useCallback(
     (type: 'success' | 'error' | 'info' | 'warning', title: string, message: string) => {
       const formattedMessage = message ? `${title}: ${message}` : title;
+      // Dedupe against what the user can actually see. The store is capped
+      // to the rendered count below, so this can no longer be suppressed by
+      // an off-screen toast the user has no way to notice or dismiss.
       if (toastsStoreRef.current.some((t) => t.message === formattedMessage)) return;
 
       const id = `${Date.now()}-${Math.random()}`;
-      toastsStoreRef.current = [...toastsStoreRef.current, { id, type, message: formattedMessage }];
+      // Keep the store itself bounded to what renders rather than letting it
+      // grow and slicing at display time -- an entry that cannot be shown
+      // still participates in dedupe, which is exactly how a visible
+      // notification used to go missing.
+      toastsStoreRef.current = [
+        ...toastsStoreRef.current,
+        { id, type, message: formattedMessage },
+      ].slice(-MAX_VISIBLE_TOASTS);
       setToasts(toastsStoreRef.current);
 
       setTimeout(() => dismissToast(id), TOAST_LIFETIME_MS);

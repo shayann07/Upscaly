@@ -49,6 +49,15 @@ export interface Toast {
   message?: string;
 }
 
+/**
+ * How many toasts can be on screen at once. Shared by the toast store
+ * (useStudioState) and the renderer (ToastContainer) so the two can never
+ * disagree: when the store was allowed to grow past what renders, an
+ * off-screen toast still matched the dedupe check and silently suppressed
+ * an identical notification the user would otherwise have seen.
+ */
+export const MAX_VISIBLE_TOASTS = 3;
+
 export interface BatchItem {
   id: string;
   path?: string;
