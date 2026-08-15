@@ -61,6 +61,14 @@ export interface StudioState {
    */
   activeVramGb: string;
   isVramOverflowing: boolean;
+  /**
+   * The tile size that will actually run, after the VRAM governor has had
+   * its say -- which is not always `tileSize`. Selecting 512 at 4x on a 6GB
+   * card clamps to 384, and the progress overlay used to keep reporting
+   * "TILE 512px" throughout, describing a configuration that was never
+   * executed. Null until the backend has answered.
+   */
+  effectiveTileSize: number | null;
 }
 
 function createInitialState(): StudioState {
@@ -93,6 +101,7 @@ function createInitialState(): StudioState {
 
     activeVramGb: '—',
     isVramOverflowing: false,
+    effectiveTileSize: null,
   };
 }
 
@@ -338,11 +347,17 @@ export const studioActions = {
   setConfirmCancelOpen(confirmCancelOpen: boolean) {
     setState((prev) => ({ ...prev, confirmCancelOpen }));
   },
-  setTelemetry(activeVramGb: string, isVramOverflowing: boolean) {
+  setTelemetry(
+    activeVramGb: string,
+    isVramOverflowing: boolean,
+    effectiveTileSize: number | null
+  ) {
     setState((prev) =>
-      prev.activeVramGb === activeVramGb && prev.isVramOverflowing === isVramOverflowing
+      prev.activeVramGb === activeVramGb &&
+      prev.isVramOverflowing === isVramOverflowing &&
+      prev.effectiveTileSize === effectiveTileSize
         ? prev
-        : { ...prev, activeVramGb, isVramOverflowing }
+        : { ...prev, activeVramGb, isVramOverflowing, effectiveTileSize }
     );
   },
 
