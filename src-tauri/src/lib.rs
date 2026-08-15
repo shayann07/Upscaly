@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod engine;
 pub mod error;
+pub mod image_batch;
 pub mod job_queue;
 pub mod job_state;
 pub mod job_store;
@@ -51,7 +52,7 @@ pub fn run() {
             commands::models::list_installed_models,
             commands::models::get_model_catalog,
             commands::models::download_model,
-            commands::upscale::run_upscale,
+            commands::upscale::run_upscale_batch,
             commands::upscale::cancel_upscale,
             commands::upscale::get_jobs_snapshot,
             commands::settings::get_app_settings,

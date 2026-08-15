@@ -8,6 +8,7 @@ use std::thread;
 use tauri::AppHandle;
 
 use crate::error::AppError;
+use crate::image_batch::{can_group_with, run_image_batch, BatchMember, MAX_BATCH_SIZE};
 use crate::job_state::JobState;
 use crate::job_store::JobStore;
 use crate::model_manager::get_models_dir;
@@ -108,17 +109,42 @@ impl JobQueueService {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// Queues an already-named job. The output path is reserved by the
-    /// command layer before it gets here, so that the caller can be told
-    /// where its result will land.
-    pub fn enqueue(&self, app: AppHandle, job: Job) {
-        // Register before queueing: the store is what a snapshot reads, and
-        // a job that is already runnable but not yet recorded would be
-        // invisible to a frontend that asked in that window.
-        JobStore::global().register(&app, &job);
+    /// Takes the run of jobs at the head of the queue that can share one
+    /// NCNN process with `first`.
+    ///
+    /// Only a *contiguous* run is taken, never a scan for compatible jobs
+    /// further back: pulling a later job forward would silently reorder the
+    /// queue, and the settings that make jobs groupable are the same ones
+    /// that make them adjacent in practice (a batch is submitted with one
+    /// model, GPU, scale and tile size).
+    fn take_compatible_group(&self, first: Job) -> Vec<Job> {
+        let mut q = self.lock_queue();
+        drain_compatible_group(&mut q, first)
+    }
+
+    /// Queues already-named jobs. Output paths are reserved by the command
+    /// layer before they get here, so that the caller can be told where each
+    /// result will land.
+    ///
+    /// Takes the whole submission at once rather than one job per call. That
+    /// is not just convenience: `process_next` starts work the moment it is
+    /// called, so enqueueing a batch one job at a time would let the worker
+    /// pop and start the first before the second had even arrived, and
+    /// nothing would ever be adjacent enough to share a process.
+    pub fn enqueue_all(&self, app: AppHandle, jobs: Vec<Job>) {
+        if jobs.is_empty() {
+            return;
+        }
         {
             let mut q = self.lock_queue();
-            q.push_back(job);
+            for job in jobs {
+                // Register before queueing: the store is what a snapshot
+                // reads, and a job that is already runnable but not yet
+                // recorded would be invisible to a frontend that asked in
+                // that window.
+                JobStore::global().register(&app, &job);
+                q.push_back(job);
+            }
         }
         self.process_next(app);
     }
@@ -241,79 +267,134 @@ impl JobQueueService {
                     continue;
                 };
 
-                // A cancel() call that arrived in the window between this
-                // job leaving the queue (above) and being registered
-                // (below) recorded itself in pending_cancellations instead
-                // of being silently dropped. Consume it now so the
-                // existing cancel_requested check right after registration
-                // catches it, exactly as if cancel() had found this job
-                // already in the registry.
-                let already_cancelled = service.lock_pending_cancellations().remove(&job.id);
-                let cancel_requested = Arc::new(AtomicBool::new(already_cancelled));
-                let process_handle = Arc::new(Mutex::new(None));
+                // Compatible image jobs waiting behind this one join it in a
+                // single process rather than each paying Vulkan init and
+                // model load again. A video, or an image with nothing
+                // compatible behind it, yields a group of one -- the path
+                // below is the same either way.
+                let group = service.take_compatible_group(job);
+                let shared_handle: Arc<Mutex<Option<Box<dyn ProcessHandle>>>> =
+                    Arc::new(Mutex::new(None));
+                // A group's members share one process, so cancelling one of
+                // them must not be able to kill it out from under the
+                // others: their registry entries get a handle that is never
+                // populated, leaving cancel() to do nothing but raise the
+                // flag. The batch runner watches those flags and kills the
+                // process only once every member is cancelled. A group of
+                // one is the existing behaviour untouched -- its cancel
+                // reaches the process directly.
+                let is_group = group.len() > 1;
 
+                // A cancel() call that arrived in the window between a job
+                // leaving the queue (above) and being registered (below)
+                // recorded itself in pending_cancellations instead of being
+                // silently dropped. Consume it now so the cancel_requested
+                // check further down catches it, exactly as if cancel() had
+                // found the job already in the registry.
+                let members: Vec<BatchMember> = group
+                    .into_iter()
+                    .map(|job| {
+                        let already_cancelled =
+                            service.lock_pending_cancellations().remove(&job.id);
+                        let cancel_requested = Arc::new(AtomicBool::new(already_cancelled));
+
+                        let mut reg = service.lock_registry();
+                        reg.insert(
+                            job.id.clone(),
+                            JobControl {
+                                cancel_requested: Arc::clone(&cancel_requested),
+                                process_handle: if is_group {
+                                    Arc::new(Mutex::new(None))
+                                } else {
+                                    Arc::clone(&shared_handle)
+                                },
+                            },
+                        );
+                        BatchMember {
+                            job,
+                            cancel_requested,
+                        }
+                    })
+                    .collect();
+
+                if members
+                    .iter()
+                    .all(|m| m.cancel_requested.load(Ordering::SeqCst))
                 {
-                    let mut reg = service.lock_registry();
-                    reg.insert(
-                        job.id.clone(),
-                        JobControl {
-                            cancel_requested: Arc::clone(&cancel_requested),
-                            process_handle: Arc::clone(&process_handle),
-                        },
-                    );
-                }
-
-                if cancel_requested.load(Ordering::SeqCst) {
-                    service.cleanup_job(&job.id, &job.output_path);
-                    JobStore::global().transition(
-                        &app,
-                        &job.id,
-                        JobState::Cancelled,
-                        Some("Cancelled while queued"),
-                    );
+                    for member in &members {
+                        service.cleanup_job(&member.job.id, &member.job.output_path);
+                        JobStore::global().transition(
+                            &app,
+                            &member.job.id,
+                            JobState::Cancelled,
+                            Some("Cancelled while queued"),
+                        );
+                    }
                     continue;
                 }
 
-                JobStore::global().transition(
-                    &app,
-                    &job.id,
-                    JobState::Running,
-                    Some("Initializing GPU Pipeline..."),
-                );
-
-                let res = if job.is_video {
-                    run_video_job(
+                for member in &members {
+                    JobStore::global().transition(
                         &app,
-                        &job,
-                        Arc::clone(&cancel_requested),
-                        Arc::clone(&process_handle),
-                    )
-                } else {
-                    run_single_image_job(
-                        &app,
-                        &job,
-                        Arc::clone(&cancel_requested),
-                        Arc::clone(&process_handle),
-                    )
-                };
+                        &member.job.id,
+                        JobState::Running,
+                        Some("Initializing GPU Pipeline..."),
+                    );
+                }
 
-                // Cancellation is now carried by the error type rather than
-                // by a magic message: `AppError::Cancelled` says exactly
-                // this and cannot be confused with a failure that happens
-                // to mention the word.
-                let is_cancelled = cancel_requested.load(Ordering::SeqCst)
-                    || res.as_ref().err().is_some_and(AppError::is_cancellation);
-                service.cleanup_job(&job.id, &job.output_path);
-                let final_state = finalize_job_output(&job, is_cancelled, res);
-                let phase = match final_state {
-                    JobState::Succeeded => "Complete",
-                    JobState::Cancelled => "Cancelled by user",
-                    _ => "Failed",
-                };
-                JobStore::global().transition(&app, &job.id, final_state, Some(phase));
+                let results = run_group(&app, &members, &shared_handle);
+
+                for (member, res) in members.iter().zip(results) {
+                    let job = &member.job;
+                    // Cancellation is carried by the error type rather than
+                    // by a magic message: `AppError::Cancelled` says exactly
+                    // this and cannot be confused with a failure that
+                    // happens to mention the word.
+                    let is_cancelled = member.cancel_requested.load(Ordering::SeqCst)
+                        || res.as_ref().err().is_some_and(AppError::is_cancellation);
+                    service.cleanup_job(&job.id, &job.output_path);
+                    let final_state = finalize_job_output(job, is_cancelled, res);
+                    let phase = match final_state {
+                        JobState::Succeeded => "Complete",
+                        JobState::Cancelled => "Cancelled by user",
+                        _ => "Failed",
+                    };
+                    JobStore::global().transition(&app, &job.id, final_state, Some(phase));
+                }
             }
         });
     }
+}
+
+/// Dispatches a group to whichever runner fits it.
+///
+/// Returns one result per member, in the same order.
+fn run_group(
+    app: &AppHandle,
+    members: &[BatchMember],
+    shared_handle: &Arc<Mutex<Option<Box<dyn ProcessHandle>>>>,
+) -> Vec<Result<(), AppError>> {
+    if members.len() > 1 {
+        return run_image_batch(app, members, shared_handle);
+    }
+
+    let member = &members[0];
+    let result = if member.job.is_video {
+        run_video_job(
+            app,
+            &member.job,
+            Arc::clone(&member.cancel_requested),
+            Arc::clone(shared_handle),
+        )
+    } else {
+        run_single_image_job(
+            app,
+            &member.job,
+            Arc::clone(&member.cancel_requested),
+            Arc::clone(shared_handle),
+        )
+    };
+    vec![result]
 }
 
 /// Decides a finished job's terminal state and cleans up after it.
@@ -352,8 +433,35 @@ fn finalize_job_output(job: &Job, is_cancelled: bool, res: Result<(), AppError>)
     }
 }
 
-pub fn add_job_to_queue(app: AppHandle, job: Job) {
-    JobQueueService::global().enqueue(app, job);
+/// Takes the run of jobs at the head of `queue` that can share one NCNN
+/// process with `first`.
+///
+/// Only a *contiguous* run is taken, never a scan for compatible jobs
+/// further back: pulling a later job forward would silently reorder the
+/// queue, and the settings that make jobs groupable are the same ones that
+/// make them adjacent in practice (a batch is submitted with one model, GPU,
+/// scale and tile size).
+fn drain_compatible_group(queue: &mut VecDeque<Job>, first: Job) -> Vec<Job> {
+    let mut group = vec![first];
+    if group[0].is_video {
+        return group;
+    }
+
+    while group.len() < MAX_BATCH_SIZE {
+        let Some(next) = queue.front() else { break };
+        if !can_group_with(&group[0], next) {
+            break;
+        }
+        // front() said Some, so this cannot be None.
+        if let Some(job) = queue.pop_front() {
+            group.push(job);
+        }
+    }
+    group
+}
+
+pub fn add_jobs_to_queue(app: AppHandle, jobs: Vec<Job>) {
+    JobQueueService::global().enqueue_all(app, jobs);
 }
 
 pub fn cancel_job(app: &AppHandle, job_id: &str) -> Result<(), AppError> {
@@ -634,6 +742,78 @@ mod tests {
             tile_size: 256,
             is_video: false,
         }
+    }
+
+    fn queued_image(id: &str) -> Job {
+        let mut job = test_job("C:\\out\\x.png");
+        job.id = id.to_string();
+        job.input_path = format!("C:\\media\\{id}.png");
+        job.output_path = format!("C:\\media\\{id}_upscaled_4x.png");
+        job
+    }
+
+    #[test]
+    fn test_group_takes_the_compatible_run_at_the_head_of_the_queue() {
+        let mut queue: VecDeque<Job> = ["b", "c", "d"].iter().map(|id| queued_image(id)).collect();
+        let group = drain_compatible_group(&mut queue, queued_image("a"));
+
+        assert_eq!(
+            group.iter().map(|j| j.id.as_str()).collect::<Vec<_>>(),
+            ["a", "b", "c", "d"]
+        );
+        assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn test_group_stops_at_the_first_incompatible_job_and_leaves_the_rest_queued() {
+        let mut incompatible = queued_image("c");
+        incompatible.model_name = "realesrgan-x4plus-anime".to_string();
+
+        let mut queue: VecDeque<Job> = VecDeque::new();
+        queue.push_back(queued_image("b"));
+        queue.push_back(incompatible);
+        // Compatible again, but behind an incompatible job: taking it would
+        // reorder the queue, so it stays where it is.
+        queue.push_back(queued_image("d"));
+
+        let group = drain_compatible_group(&mut queue, queued_image("a"));
+
+        assert_eq!(
+            group.iter().map(|j| j.id.as_str()).collect::<Vec<_>>(),
+            ["a", "b"]
+        );
+        assert_eq!(
+            queue.iter().map(|j| j.id.as_str()).collect::<Vec<_>>(),
+            ["c", "d"]
+        );
+    }
+
+    #[test]
+    fn test_a_video_never_takes_anything_with_it() {
+        let mut video = queued_image("v");
+        video.is_video = true;
+
+        let mut queue: VecDeque<Job> = VecDeque::new();
+        queue.push_back(queued_image("a"));
+
+        let group = drain_compatible_group(&mut queue, video);
+
+        assert_eq!(group.len(), 1);
+        assert_eq!(queue.len(), 1);
+    }
+
+    #[test]
+    fn test_group_is_capped() {
+        let mut queue: VecDeque<Job> = (0..MAX_BATCH_SIZE + 10)
+            .map(|i| queued_image(&format!("j{i}")))
+            .collect();
+
+        let group = drain_compatible_group(&mut queue, queued_image("first"));
+
+        assert_eq!(group.len(), MAX_BATCH_SIZE);
+        // Everything over the cap stays queued for the next group rather
+        // than being dropped.
+        assert_eq!(queue.len(), 10 + 1);
     }
 
     #[test]

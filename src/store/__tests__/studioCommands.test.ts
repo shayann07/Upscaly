@@ -30,39 +30,67 @@ beforeEach(() => {
 });
 
 describe('startUpscale', () => {
-  it('submits every ready item and records the backend-assigned id and path', async () => {
+  it('submits the whole run in one call so the queue can group it', async () => {
     mockInvoke.mockImplementation((cmd, args) => {
-      if (cmd !== 'run_upscale') return Promise.resolve(null);
-      const input = (args as { request: { input_path: string } }).request.input_path;
-      const name = input.split('/').pop();
-      return Promise.resolve({ job_id: `job-${name}`, output_path: `C:/out/${name}` });
+      if (cmd !== 'run_upscale_batch') return Promise.resolve(null);
+      const requests = (args as { requests: { input_path: string }[] }).requests;
+      return Promise.resolve(
+        requests.map((r) => {
+          const name = r.input_path.split('/').pop();
+          return { job_id: `job-${name}`, output_path: `C:/out/${name}` };
+        })
+      );
     });
 
     studioActions.addFiles([staged('a'), staged('b')], true);
     await startUpscale();
 
-    // One submission path for one file or twenty -- a "single file" is a
-    // queue of one, which is what removed the second, divergent start path.
-    expect(mockInvoke).toHaveBeenCalledTimes(2);
+    // One call, not one per item: the backend starts the first job the
+    // instant it is enqueued, so submitting serially would mean no two
+    // images ever arrived close enough together to share a process.
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke.mock.calls[0][0]).toBe('run_upscale_batch');
     expect(state().items.map((i) => i.id)).toEqual(['job-a.png', 'job-b.png']);
     expect(state().items[0].outputPath).toBe('C:/out/a.png');
     expect(state().items.every((i) => i.status === 'queued')).toBe(true);
   });
 
   it('never sends an output file name -- only the directory', async () => {
-    mockInvoke.mockResolvedValue({ job_id: 'job-1', output_path: 'C:/out/a_upscaled_4x.png' });
+    mockInvoke.mockResolvedValue([{ job_id: 'job-1', output_path: 'C:/out/a_upscaled_4x.png' }]);
     studioActions.setCustomOutputPath('C:/out');
     studioActions.addFiles([staged('a')], true);
 
     await startUpscale();
 
-    const request = mockInvoke.mock.calls[0][1] as { request: Record<string, unknown> };
-    expect(request.request.output_dir).toBe('C:/out');
-    expect(Object.keys(request.request)).not.toContain('output_path');
+    const { requests } = mockInvoke.mock.calls[0][1] as { requests: Record<string, unknown>[] };
+    expect(requests[0].output_dir).toBe('C:/out');
+    expect(Object.keys(requests[0])).not.toContain('output_path');
+  });
+
+  it('sends compatible items together so the backend can share one process', async () => {
+    mockInvoke.mockResolvedValue([
+      { job_id: 'job-a', output_path: 'C:/out/a.png' },
+      { job_id: 'job-b', output_path: 'C:/out/b.png' },
+      { job_id: 'job-c', output_path: 'C:/out/c.png' },
+    ]);
+    studioActions.addFiles([staged('a'), staged('b'), staged('c')], true);
+
+    await startUpscale();
+
+    const { requests } = mockInvoke.mock.calls[0][1] as {
+      requests: { model_id: string; gpu_id: number; scale: number; tile_size: number }[];
+    };
+    expect(requests).toHaveLength(3);
+    // Everything in one submission shares the settings that decide
+    // groupability, so the backend can put them in one process.
+    expect(new Set(requests.map((r) => r.model_id)).size).toBe(1);
+    expect(new Set(requests.map((r) => r.scale)).size).toBe(1);
+    expect(new Set(requests.map((r) => r.tile_size)).size).toBe(1);
+    expect(new Set(requests.map((r) => r.gpu_id)).size).toBe(1);
   });
 
   it('retries a previously failed item but leaves finished ones alone', async () => {
-    mockInvoke.mockResolvedValue({ job_id: 'retry-1', output_path: 'C:/out/a.png' });
+    mockInvoke.mockResolvedValue([{ job_id: 'retry-1', output_path: 'C:/out/a.png' }]);
     studioActions.addFiles([staged('a'), staged('b')], true);
     studioStore.setState((prev) => ({
       ...prev,
@@ -74,7 +102,8 @@ describe('startUpscale', () => {
 
     await startUpscale();
 
-    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    const { requests } = mockInvoke.mock.calls[0][1] as { requests: unknown[] };
+    expect(requests).toHaveLength(1);
     expect(state().items[1].status).toBe('succeeded');
   });
 

@@ -160,30 +160,39 @@ export async function startUpscale(): Promise<void> {
     `Processing ${pending.length} item${pending.length > 1 ? 's' : ''}...`
   );
 
-  for (const item of pending) {
-    try {
-      // The backend names and reserves the output and reports back where it
-      // landed. It is the only thing that can guarantee two queued items
-      // resolving to the same name each get a distinct one, so guessing the
-      // path here could only ever disagree with reality.
-      const handle = await invoke<UpscaleJobHandle>('run_upscale', {
-        request: {
-          job_id: null,
-          input_path: item.filePath,
-          output_dir: snapshot.customOutputPath || null,
-          model_id: snapshot.selectedModel,
-          gpu_id: snapshot.selectedGpu,
-          scale: snapshot.scale,
-          tile_size: snapshot.tileSize,
-          is_video: item.isVideo,
-        },
-      });
-      studioActions.markSubmitted(item.id, handle.job_id, handle.output_path);
-    } catch (err) {
-      console.error('Failed to start job:', err);
-      studioActions.markSubmitFailed(item.id, formatIpcError(err));
-      studioActions.notify('error', 'Error Starting Upscale', formatIpcError(err));
-    }
+  try {
+    // Submitted as one call, not one call per item. The queue starts the
+    // first job the instant it is enqueued, so submitting serially would
+    // mean no two images ever arrived close enough together to share an
+    // NCNN process -- which is where the batch speedup comes from.
+    //
+    // The backend names and reserves each output and reports back where it
+    // landed. It is the only thing that can guarantee two items resolving
+    // to the same name each get a distinct one, so guessing the path here
+    // could only ever disagree with reality.
+    const handles = await invoke<UpscaleJobHandle[]>('run_upscale_batch', {
+      requests: pending.map((item) => ({
+        job_id: null,
+        input_path: item.filePath,
+        output_dir: snapshot.customOutputPath || null,
+        model_id: snapshot.selectedModel,
+        gpu_id: snapshot.selectedGpu,
+        scale: snapshot.scale,
+        tile_size: snapshot.tileSize,
+        is_video: item.isVideo,
+      })),
+    });
+
+    // Handles come back in the order they were sent.
+    pending.forEach((item, index) => {
+      const handle = handles[index];
+      if (handle) studioActions.markSubmitted(item.id, handle.job_id, handle.output_path);
+    });
+  } catch (err) {
+    console.error('Failed to start jobs:', err);
+    const message = formatIpcError(err);
+    for (const item of pending) studioActions.markSubmitFailed(item.id, message);
+    studioActions.notify('error', 'Error Starting Upscale', message);
   }
 }
 

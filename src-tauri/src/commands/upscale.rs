@@ -1,10 +1,10 @@
 use crate::error::AppError;
-use crate::job_queue::{add_job_to_queue, cancel_job, generate_job_id, sanitize_job_id, Job};
+use crate::job_queue::{add_jobs_to_queue, cancel_job, generate_job_id, sanitize_job_id, Job};
 use crate::job_store::{JobSnapshot, JobStore};
 use crate::output_paths::{build_output_path, reserve_output_path};
 use crate::{UpscaleJobHandle, UpscaleRequest};
 
-fn upscale_image(app_handle: tauri::AppHandle, request: UpscaleRequest) -> UpscaleJobHandle {
+fn build_job(request: UpscaleRequest) -> (Job, UpscaleJobHandle) {
     let job_id = request
         .job_id
         .map_or_else(generate_job_id, |id| sanitize_job_id(&id));
@@ -31,19 +31,32 @@ fn upscale_image(app_handle: tauri::AppHandle, request: UpscaleRequest) -> Upsca
         is_video: request.is_video,
     };
 
-    add_job_to_queue(app_handle, job);
-    UpscaleJobHandle {
-        job_id,
-        output_path,
-    }
+    (
+        job,
+        UpscaleJobHandle {
+            job_id,
+            output_path,
+        },
+    )
 }
 
+/// Submits a whole run at once and reports where each result will land.
+///
+/// One command for one file or twenty. Submitting them one call at a time
+/// would also work, but the queue starts the first job the instant it is
+/// enqueued, so nothing after it would ever arrive in time to share a
+/// process -- and sharing one process across compatible images is where the
+/// batch speedup comes from. Handles come back in the order they were sent.
 #[tauri::command]
-pub async fn run_upscale(
+pub async fn run_upscale_batch(
     app_handle: tauri::AppHandle,
-    request: UpscaleRequest,
-) -> Result<UpscaleJobHandle, AppError> {
-    Ok(upscale_image(app_handle, request))
+    requests: Vec<UpscaleRequest>,
+) -> Result<Vec<UpscaleJobHandle>, AppError> {
+    let (jobs, handles): (Vec<Job>, Vec<UpscaleJobHandle>) =
+        requests.into_iter().map(build_job).unzip();
+
+    add_jobs_to_queue(app_handle, jobs);
+    Ok(handles)
 }
 
 #[tauri::command]
