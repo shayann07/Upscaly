@@ -268,17 +268,20 @@ fn member_phase(index: usize, produced: usize, total: usize) -> String {
     }
 }
 
-fn build_args(job: &Job, dirs: &BatchDirs, app: &AppHandle) -> Vec<String> {
+/// Builds the shared process's argument list, and reports the tile size the
+/// governor actually settled on so a VRAM failure can name it.
+fn build_args(job: &Job, dirs: &BatchDirs, app: &AppHandle) -> (Vec<String>, i32) {
     let models_dir = get_models_dir(app);
     let gpu_vram_mb = crate::job_queue::get_gpu_vram_mb_for_id(app, job.gpu_id);
+    let effective_scale = resolve_effective_scale(&job.model_name, job.scale, Some(&models_dir));
     let exec_profile = crate::engine::vram_governor::calculate_safe_execution_profile(
         gpu_vram_mb,
         job.tile_size,
+        effective_scale,
         false,
     );
-    let effective_scale = resolve_effective_scale(&job.model_name, job.scale, Some(&models_dir));
 
-    vec![
+    let args = vec![
         "-i".to_string(),
         dirs.input.to_string_lossy().to_string(),
         "-o".to_string(),
@@ -301,7 +304,9 @@ fn build_args(job: &Job, dirs: &BatchDirs, app: &AppHandle) -> Vec<String> {
         "-f".to_string(),
         "png".to_string(),
         "-v".to_string(),
-    ]
+    ];
+
+    (args, exec_profile.tile_size)
 }
 
 /// Runs a group of image jobs as one process and reports each member's fate.
@@ -355,7 +360,7 @@ fn run_image_batch_inner(
         stage_input(Path::new(&member.job.input_path), &destination)?;
     }
 
-    let args = build_args(&members[0].job, &dirs, app);
+    let (args, effective_tile) = build_args(&members[0].job, &dirs, app);
     let handle = StdProcessRunner::new().spawn(&sidecar_path, &args)?;
     {
         let mut guard = shared_handle
@@ -379,6 +384,7 @@ fn run_image_batch_inner(
     // already paid for.
     let mut delivered = vec![false; members.len()];
     let mut stderr_log = String::new();
+    let mut vram_exhausted = false;
 
     loop {
         let all_cancelled = members
@@ -407,6 +413,16 @@ fn run_image_batch_inner(
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let Some(ref mut child) = *guard else { break };
+            // Checked while the process is alive, not after it exits: NCNN
+            // keeps submitting work to a device it has already failed to
+            // allocate on, and on a laptop driving its display from that
+            // same GPU the result is a frozen desktop rather than an error.
+            // Killing here turns a machine lockup into a failed job.
+            if crate::engine::vram_governor::is_vram_exhaustion(&child.get_stderr_log()) {
+                let _ = child.kill();
+                vram_exhausted = true;
+                break;
+            }
             match child.try_wait() {
                 Ok(Some(0)) => {
                     stderr_log = child.get_stderr_log();
@@ -497,15 +513,22 @@ fn run_image_batch_inner(
         &dirs.output,
         &stderr_log,
         &delivered,
+        vram_exhausted.then_some(effective_tile),
     ))
 }
 
 /// Decides each member's fate from what is actually on disk.
+///
+/// `vram_exhausted_tile` carries the effective tile size when the run was
+/// stopped for GPU memory exhaustion. Members that never produced an image
+/// are then reported against that cause rather than the generic "no output
+/// was produced", which would leave the user with no idea what to change.
 fn collect_outcomes(
     members: &[BatchMember],
     output_dir: &Path,
     stderr_log: &str,
     delivered: &[bool],
+    vram_exhausted_tile: Option<i32>,
 ) -> Vec<Result<(), AppError>> {
     members
         .iter()
@@ -532,6 +555,9 @@ fn collect_outcomes(
                 // Either nothing was written, or the process died partway
                 // through writing it. A half-written image is not a result.
                 let _ = fs::remove_file(&produced);
+                if let Some(tile) = vram_exhausted_tile {
+                    return Err(crate::engine::vram_governor::vram_exhausted_error(tile));
+                }
                 return Err(AppError::exec(format!(
                     "No output was produced for this image by the shared batch process. {stderr_log}"
                 )));
@@ -758,7 +784,7 @@ mod tests {
             cancel_requested: Arc::new(AtomicBool::new(true)),
         }];
 
-        let outcomes = collect_outcomes(&members, &dir, "", &[false]);
+        let outcomes = collect_outcomes(&members, &dir, "", &[false], None);
         assert!(outcomes[0].as_ref().is_err_and(AppError::is_cancellation));
         // The engine can finish an image between the cancel landing and the
         // process stopping. That one was never handed over, so it goes.
@@ -780,7 +806,7 @@ mod tests {
             cancel_requested: Arc::new(AtomicBool::new(true)),
         }];
 
-        let outcomes = collect_outcomes(&members, &dir, "", &[true]);
+        let outcomes = collect_outcomes(&members, &dir, "", &[true], None);
 
         // Cancelling after the fact cannot undo work that is already done
         // and already in the user's hands.
@@ -808,7 +834,7 @@ mod tests {
             job,
             cancel_requested: Arc::new(AtomicBool::new(false)),
         }];
-        let outcomes = collect_outcomes(&members, &dir, "killed", &[false]);
+        let outcomes = collect_outcomes(&members, &dir, "killed", &[false], None);
 
         assert!(outcomes[0].is_err());
         // A truncated image must never reach the user's output path.
@@ -849,6 +875,7 @@ mod tests {
             &dir,
             "Engine exited with code 1: vk error",
             &[false, false],
+            None,
         );
 
         // One failure in a shared process must not fail its neighbours.

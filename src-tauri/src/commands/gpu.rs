@@ -13,7 +13,12 @@ pub async fn get_vram_profile(
     app_handle: tauri::AppHandle,
     gpu_id: i32,
     tile_size: i32,
+    scale: i32,
 ) -> Result<VramProfile, AppError> {
     let gpu_vram_mb = get_gpu_vram_mb_for_id(&app_handle, gpu_id);
-    Ok(build_vram_profile(gpu_vram_mb, tile_size))
+    // Scale is part of the question, not a detail: the same tile costs four
+    // times as much at 4x as at 2x, so a profile computed without it can
+    // report a comfortable projection for a configuration that will exhaust
+    // the card.
+    Ok(build_vram_profile(gpu_vram_mb, tile_size, scale))
 }

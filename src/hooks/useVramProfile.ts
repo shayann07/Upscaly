@@ -12,7 +12,13 @@ export interface VramProfile {
   status_message: string;
 }
 
-export function useVramProfile(gpuId: number = 0, tileSize: number = 0) {
+/**
+ * `scale` is not optional in spirit: the backend's projection is dominated by
+ * the upsampling tail, which runs at `tile * scale`. Asking for a profile
+ * without it would report the 2x cost for a 4x run -- a comfortable-looking
+ * number for a configuration that exhausts the card.
+ */
+export function useVramProfile(gpuId: number = 0, tileSize: number = 0, scale: number = 4) {
   const [profile, setProfile] = useState<VramProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -28,7 +34,7 @@ export function useVramProfile(gpuId: number = 0, tileSize: number = 0) {
     let isCancelled = false;
     setIsLoading(true);
 
-    invoke<VramProfile>('get_vram_profile', { gpuId, tileSize })
+    invoke<VramProfile>('get_vram_profile', { gpuId, tileSize, scale })
       .then((data) => {
         if (!isCancelled && data) {
           setProfile(data);
@@ -46,7 +52,7 @@ export function useVramProfile(gpuId: number = 0, tileSize: number = 0) {
     return () => {
       isCancelled = true;
     };
-  }, [gpuId, tileSize]);
+  }, [gpuId, tileSize, scale]);
 
   return {
     profile,

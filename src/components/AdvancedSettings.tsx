@@ -18,6 +18,8 @@ export interface AdvancedSettingsProps {
   tileSize?: number;
   onSetTileSize?: (size: number) => void;
   onSelectTileSize?: (size: number) => void;
+  /** The output factor the VRAM projection is sized against; see useVramProfile. */
+  scale?: number;
   outputDir?: string;
   customOutputPath?: string;
   onSetOutputDir?: (dir: string) => void;
@@ -36,6 +38,7 @@ export function AdvancedSettings({
   tileSize = 0,
   onSetTileSize,
   onSelectTileSize,
+  scale = 4,
   outputDir = '~/Pictures/Upscaled',
   customOutputPath,
   onSetOutputDir,
@@ -67,7 +70,8 @@ export function AdvancedSettings({
   // Query authoritative hardware profile and memory metrics from Rust engine
   const { totalVramGb, usedVramGb, autoTileSize, isOverflowing, statusMessage } = useVramProfile(
     currentGpu ? currentGpu.id : selectedGpu,
-    tileSize
+    tileSize,
+    scale
   );
 
   // null until the backend reports real numbers -- the meter renders an

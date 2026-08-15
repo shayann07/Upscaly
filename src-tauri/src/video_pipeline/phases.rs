@@ -256,6 +256,7 @@ pub fn run_overlapping_upscale_pipeline(
     let mut exec_profile = crate::engine::vram_governor::calculate_safe_execution_profile(
         gpu_vram_mb,
         ctx.job.tile_size,
+        effective_scale,
         true,
     );
 
@@ -419,7 +420,23 @@ pub fn run_overlapping_upscale_pipeline(
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 if let Some(pos) = list.iter().position(|h| h.id() == ncnn_handle_id) {
-                    match list[pos].try_wait() {
+                    // Tested before try_wait, on every poll, while the
+                    // process is still running. NCNN does not abort on a
+                    // failed allocation -- it keeps submitting to a device
+                    // it can no longer feed until the driver is lost, and a
+                    // check gated on the exit code never fires because the
+                    // process never exits. Killing it here is what turns a
+                    // frozen desktop back into a retryable job, and this
+                    // loop already knows how to retry at a smaller tile.
+                    if crate::engine::vram_governor::is_vram_exhaustion(&list[pos].get_stderr_log())
+                    {
+                        let _ = list[pos].kill();
+                        list.remove(pos);
+                        Some(Err(crate::engine::vram_governor::vram_exhausted_error(
+                            exec_profile.tile_size,
+                        )))
+                    } else {
+                        match list[pos].try_wait() {
                         Ok(Some(0)) => {
                             list.remove(pos);
                             Some(Ok(()))
@@ -427,22 +444,13 @@ pub fn run_overlapping_upscale_pipeline(
                         Ok(Some(code)) => {
                             let stderr_log = list[pos].get_stderr_log();
                             list.remove(pos);
-                            if stderr_log.contains("vkAllocateMemory failed")
-                                || stderr_log.contains("vkQueueSubmit failed")
-                            {
-                                // The one condition this loop retries
-                                // rather than aborts on, so it gets its own
-                                // variant instead of being recognised by a
-                                // substring of its own message below.
-                                Some(Err(AppError::GpuError { message: "GPU VRAM allocation failed (Vulkan memory overflow). Try selecting a smaller tile size (e.g. 256px or 128px).".to_string() }))
-                            } else {
-                                Some(Err(AppError::exec(format!("NCNN upscale engine failed with exit code {code}: {stderr_log}"))))
-                            }
+                            Some(Err(AppError::exec(format!("NCNN upscale engine failed with exit code {code}: {stderr_log}"))))
                         }
                         Ok(None) => None,
                         Err(e) => {
                             list.remove(pos);
                             Some(Err(e))
+                        }
                         }
                     }
                 } else {

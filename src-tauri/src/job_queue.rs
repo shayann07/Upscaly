@@ -575,12 +575,16 @@ fn run_single_image_job(
     let models_dir = get_models_dir(app);
 
     let gpu_vram_mb = get_gpu_vram_mb_for_id(app, job.gpu_id);
+    let effective_scale = resolve_effective_scale(&job.model_name, job.scale, Some(&models_dir));
+    // The governor is sized against the scale that will actually run, not
+    // the one that was requested -- a model whose native factor differs
+    // changes the upsampling cost by the square of the difference.
     let exec_profile = crate::engine::vram_governor::calculate_safe_execution_profile(
         gpu_vram_mb,
         job.tile_size,
+        effective_scale,
         job.is_video,
     );
-    let effective_scale = resolve_effective_scale(&job.model_name, job.scale, Some(&models_dir));
 
     let args = vec![
         "-i".to_string(),
@@ -635,13 +639,25 @@ fn run_single_image_job(
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(ref mut child) = *handle_guard {
+                // Checked before try_wait, every tick, while the process is
+                // still alive. NCNN logs a failed allocation and carries on
+                // submitting to a device it can no longer feed; waiting for
+                // an exit code meant waiting for an exit that never came,
+                // while the driver was thrashed into VK_ERROR_DEVICE_LOST
+                // and took the desktop with it.
+                if crate::engine::vram_governor::is_vram_exhaustion(&child.get_stderr_log()) {
+                    let _ = child.kill();
+                    return Err(crate::engine::vram_governor::vram_exhausted_error(
+                        exec_profile.tile_size,
+                    ));
+                }
                 match child.try_wait() {
                     Ok(Some(0)) => {
                         let stderr_log = child.get_stderr_log();
-                        if stderr_log.contains("vkAllocateMemory failed")
-                            || stderr_log.contains("vkQueueSubmit failed")
-                        {
-                            return Err(AppError::GpuError { message: "GPU VRAM allocation failed (Vulkan memory overflow). Try selecting a smaller tile size (e.g. 256px or 128px).".to_string() });
+                        if crate::engine::vram_governor::is_vram_exhaustion(&stderr_log) {
+                            return Err(crate::engine::vram_governor::vram_exhausted_error(
+                                exec_profile.tile_size,
+                            ));
                         }
                         break;
                     }
