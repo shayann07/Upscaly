@@ -1,4 +1,4 @@
-import { JobProgress } from './types';
+import { JobSnapshot } from './types';
 import { addHistoryItem, HistoryItem } from './history';
 import { playCompleteSound, playErrorSound } from './sound';
 import { allowMediaPath } from './assetScope';
@@ -121,7 +121,7 @@ function handleCancelledStatus(state: StudioJobState, isActiveJob: boolean) {
   }
 }
 
-export function handleStudioJobStatus(progress: JobProgress, state: StudioJobState) {
+export function handleStudioJobStatus(progress: JobSnapshot, state: StudioJobState) {
   const {
     job_id,
     percentage,

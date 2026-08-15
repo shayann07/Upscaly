@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { BatchItem, JobProgress, UpscaleJobHandle } from '../lib/types';
+import { BatchItem, JobSnapshot, UpscaleJobHandle } from '../lib/types';
 import { normalizeJobStatus, isValidStateTransition, isTerminalState } from '../lib/jobState';
 
 export interface UseUpscaleQueueOptions {
@@ -140,7 +140,7 @@ export function useUpscaleQueue(options: UseUpscaleQueueOptions) {
   }, [batchItems, scale, tileSize, selectedGpu, selectedModel, customOutputPath, onNotify]);
 
   const handleJobProgress = useCallback(
-    (progress: JobProgress) => {
+    (progress: JobSnapshot) => {
       const { job_id, percentage, status, error, output_path } = progress;
 
       // A job that already reached a terminal state can still have an

@@ -4,6 +4,7 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { playErrorSound } from '../lib/sound';
 import { ModelInfo, BatchItem, HistoryEntry, UpscaleJobHandle } from '../lib/types';
 import { allowMediaPath } from '../lib/assetScope';
+import { formatIpcError } from '../lib/appError';
 import { JobInputSnapshot } from '../lib/studioJobHandler';
 import { JobState } from '../lib/jobState';
 
@@ -227,7 +228,7 @@ export function useStudioActions({
       setActiveJobId(null);
       setJobStatus('ready');
       playErrorSound(isMuted);
-      onNotify('error', 'Error Starting Upscale', String(err));
+      onNotify('error', 'Error Starting Upscale', formatIpcError(err));
     }
   };
 

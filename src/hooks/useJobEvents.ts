@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { JobProgress } from '../lib/types';
+import { JobSnapshot, JobsDelta } from '../lib/types';
 
 export interface DownloadProgressPayload {
   model_id: string;
@@ -8,17 +8,17 @@ export interface DownloadProgressPayload {
 }
 
 export function useJobEvents(
-  onJobStatusChanged?: (progress: JobProgress) => void,
+  onJobsChanged?: (jobs: JobSnapshot[]) => void,
   onDownloadProgress?: (payload: DownloadProgressPayload) => void,
   onModelCatalogUpdated?: () => void
 ) {
-  const onJobStatusChangedRef = useRef(onJobStatusChanged);
+  const onJobsChangedRef = useRef(onJobsChanged);
   const onDownloadProgressRef = useRef(onDownloadProgress);
   const onModelCatalogUpdatedRef = useRef(onModelCatalogUpdated);
 
   useEffect(() => {
-    onJobStatusChangedRef.current = onJobStatusChanged;
-  }, [onJobStatusChanged]);
+    onJobsChangedRef.current = onJobsChanged;
+  }, [onJobsChanged]);
 
   useEffect(() => {
     onDownloadProgressRef.current = onDownloadProgress;
@@ -49,8 +49,12 @@ export function useJobEvents(
         .catch(() => {});
     };
 
-    register<JobProgress>('job-status-changed', (payload) => {
-      onJobStatusChangedRef.current?.(payload);
+    // One event per flush window carrying every job that changed in it,
+    // rather than one event per job per progress tick. The backend decides
+    // what a "change" is and coalesces the stream; this side just applies
+    // whatever arrived.
+    register<JobsDelta>('jobs-delta', (payload) => {
+      if (payload?.jobs?.length) onJobsChangedRef.current?.(payload.jobs);
     });
 
     register<DownloadProgressPayload>('download-progress', (payload) => {

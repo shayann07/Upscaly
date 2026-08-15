@@ -1,10 +1,10 @@
 import { useCallback, useRef, useEffect } from 'react';
 import { useJobEvents } from './useJobEvents';
-import { JobProgress } from '../lib/types';
+import { JobSnapshot } from '../lib/types';
 import { handleStudioJobStatus, StudioJobState } from '../lib/studioJobHandler';
 
 interface StudioEventsOptions {
-  handleQueueJobProgress: (progress: JobProgress) => void;
+  handleQueueJobProgress: (progress: JobSnapshot) => void;
   studioJobState: StudioJobState;
   setDownloadingModelId?: (id: string | null) => void;
   setDownloadProgress?: (progress: number) => void;
@@ -23,10 +23,12 @@ export function useStudioEvents({
     studioJobStateRef.current = studioJobState;
   }, [studioJobState]);
 
-  const handleJobStatusChanged = useCallback(
-    (progress: JobProgress) => {
-      handleQueueJobProgress(progress);
-      handleStudioJobStatus(progress, studioJobStateRef.current);
+  const handleJobsChanged = useCallback(
+    (jobs: JobSnapshot[]) => {
+      for (const job of jobs) {
+        handleQueueJobProgress(job);
+        handleStudioJobStatus(job, studioJobStateRef.current);
+      }
     },
     [handleQueueJobProgress]
   );
@@ -53,5 +55,5 @@ export function useStudioEvents({
     refreshInstalledModels?.();
   }, [refreshInstalledModels]);
 
-  useJobEvents(handleJobStatusChanged, handleDownloadProgress, handleModelCatalogUpdated);
+  useJobEvents(handleJobsChanged, handleDownloadProgress, handleModelCatalogUpdated);
 }

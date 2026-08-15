@@ -60,10 +60,12 @@ export interface Toast {
  * keep working, but the shapes themselves now have exactly one author.
  */
 export type {
+  AppErrorPayload,
   AppSettings,
   FullModelInfo,
   GpuDevice,
-  JobProgress,
+  JobSnapshot,
+  JobsDelta,
   UpscaleJobHandle,
   UpscaleRequest,
   VramProfile,

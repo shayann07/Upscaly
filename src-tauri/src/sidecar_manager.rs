@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{path::BaseDirectory, AppHandle, Manager};
 
+use crate::error::AppError;
+
 #[derive(Debug, Serialize, Deserialize, Clone, ts_rs::TS)]
 #[ts(export, export_to = "../../src/lib/ipc/")]
 pub struct GpuDevice {
@@ -38,7 +40,7 @@ fn get_active_processes() -> &'static Mutex<Vec<TrackedChild>> {
 }
 
 /// Resolves the path to a sidecar binary, supporting dev, resources, and exe-relative directory layouts.
-pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBuf, String> {
+pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBuf, AppError> {
     let target_triple = if cfg!(target_os = "windows") {
         "x86_64-pc-windows-msvc"
     } else if cfg!(target_os = "macos") {
@@ -127,7 +129,7 @@ pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBu
         return Ok(plain_local2);
     }
 
-    Err(format!("Could not find sidecar binary '{filename}'"))
+    Err(AppError::SidecarNotFound { path: filename })
 }
 
 #[cfg(target_os = "windows")]
@@ -197,7 +199,7 @@ static EMPTY_PROBE_AT: std::sync::Mutex<Option<u64>> = std::sync::Mutex::new(Non
 const EMPTY_PROBE_TTL_SECS: u64 = 60;
 
 /// Discovers Vulkan GPU devices with 24-hour cache lifecycle and instant in-memory lookup.
-pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
+pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
     if let Ok(guard) = IN_MEMORY_GPU_CACHE.lock() {
         if let Some(ref cached) = *guard {
             if !cached.is_empty() {
@@ -291,7 +293,7 @@ fn cmp_by_discrete(a: &GpuDevice, b: &GpuDevice) -> std::cmp::Ordering {
 // function was rewritten to fix -- splitting it up would scatter that
 // invariant across functions rather than simplify anything.
 #[allow(clippy::too_many_lines, clippy::cast_precision_loss)]
-fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
+fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
     let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan")?;
     let models_dir = crate::model_manager::get_models_dir(app);
 
@@ -309,9 +311,9 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, String> {
     .stderr(Stdio::piped());
     crate::process_runner::suppress_console_window(&mut cmd);
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to spawn GPU probe process: {e}"))?;
+    let mut child = cmd.spawn().map_err(|e| AppError::GpuError {
+        message: format!("Failed to spawn GPU probe process: {e}"),
+    })?;
 
     // Drain stdout/stderr on background threads instead of only polling
     // try_wait() below. A GPU probe verbose enough to exceed the OS pipe

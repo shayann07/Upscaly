@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useUpscaleQueue } from '../useUpscaleQueue';
-import { JobProgress } from '../../lib/types';
+import { jobSnapshot } from '../../test/jobSnapshot';
 
 vi.mock('@tauri-apps/api/core', () => ({
   // run_upscale returns the job id together with the output path the backend
@@ -18,21 +18,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   }),
 }));
 
-// JobProgress is generated from the Rust struct, where every optional field
-// is an explicit null rather than an absent key. This mirrors what actually
-// arrives over IPC instead of hand-writing partial payloads.
-function progress(
-  over: Partial<JobProgress> & Pick<JobProgress, 'job_id' | 'percentage' | 'status'>
-): JobProgress {
-  return {
-    error: null,
-    phase: null,
-    eta_seconds: null,
-    fps: null,
-    output_path: null,
-    ...over,
-  };
-}
+const progress = jobSnapshot;
 
 describe('useUpscaleQueue hook', () => {
   it('initializes with empty queue state', () => {
