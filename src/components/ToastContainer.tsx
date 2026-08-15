@@ -1,4 +1,4 @@
-import { Toast } from '../lib/types';
+import { Toast, MAX_VISIBLE_TOASTS } from '../lib/types';
 
 export interface ToastItem {
   id: string;
@@ -16,7 +16,9 @@ interface ToastContainerProps {
 
 export function ToastContainer({ toasts, onDismiss, settingsOpen = false }: ToastContainerProps) {
   const EASE = 'var(--ease-spring)';
-  const visible = toasts.slice(-3);
+  // The store is already capped to this length; slicing here is a safety net
+  // for any other caller passing an unbounded list, not the primary bound.
+  const visible = toasts.slice(-MAX_VISIBLE_TOASTS);
 
   const getToastColors = (type?: string, kind?: string) => {
     const k = (kind || type || '').toLowerCase();
