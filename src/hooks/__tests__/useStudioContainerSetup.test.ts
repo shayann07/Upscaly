@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useStudioContainerSetup } from '../useStudioContainerSetup';
 import type { BatchItem } from '../../lib/types';
+import { jobSnapshot } from '../../test/jobSnapshot';
 
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
@@ -64,16 +65,9 @@ describe('useStudioContainerSetup composition root', () => {
     });
 
     act(() => {
-      result.current.handleQueueJobProgress({
-        job_id: 'job-1',
-        percentage: 50,
-        status: 'running',
-        error: null,
-        phase: null,
-        eta_seconds: null,
-        fps: null,
-        output_path: null,
-      });
+      result.current.handleQueueJobProgress(
+        jobSnapshot({ job_id: 'job-1', percentage: 50, status: 'running' })
+      );
     });
 
     expect(result.current.batchItems[0].status).toBe('running');

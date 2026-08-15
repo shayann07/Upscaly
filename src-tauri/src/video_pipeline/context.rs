@@ -1,11 +1,13 @@
-use crate::job_queue::{sanitize_job_id, Job, JobProgress};
+use crate::error::AppError;
+use crate::job_queue::{sanitize_job_id, Job};
+use crate::job_store::JobStore;
 use crate::process_runner::{MultiProcessHandle, ProcessHandle};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
 /// RAII Guard for temporary job directories to guarantee cleanup on success, failure, or cancellation.
 pub struct TempFolderGuard(pub PathBuf);
@@ -35,7 +37,7 @@ impl<'a> VideoJobContext<'a> {
         job: &'a Job,
         cancel_requested: Arc<AtomicBool>,
         process_handle: Arc<Mutex<Option<Box<dyn ProcessHandle>>>>,
-    ) -> Result<(Self, TempFolderGuard), String> {
+    ) -> Result<(Self, TempFolderGuard), AppError> {
         let cache_dir = app
             .path()
             .app_cache_dir()
@@ -50,7 +52,9 @@ impl<'a> VideoJobContext<'a> {
         // direct child of cache_dir, but verify that invariant explicitly
         // before anything gets deleted.
         if job_temp_dir.parent() != Some(cache_dir.as_path()) {
-            return Err("Invalid job id: refusing to build an unsafe temp path".to_string());
+            return Err(AppError::exec(
+                "Invalid job id: refusing to build an unsafe temp path",
+            ));
         }
 
         let guard = TempFolderGuard(job_temp_dir.clone());
@@ -60,9 +64,9 @@ impl<'a> VideoJobContext<'a> {
 
         let _ = fs::remove_dir_all(&job_temp_dir);
         fs::create_dir_all(&staging_dir)
-            .map_err(|e| format!("Failed to create staging frames folder: {e}"))?;
+            .map_err(|e| AppError::exec(format!("Failed to create staging frames folder: {e}")))?;
         fs::create_dir_all(&frames_out_dir)
-            .map_err(|e| format!("Failed to create output frames folder: {e}"))?;
+            .map_err(|e| AppError::exec(format!("Failed to create output frames folder: {e}")))?;
 
         let active_handles = Arc::new(Mutex::new(Vec::new()));
 
@@ -114,6 +118,12 @@ impl<'a> VideoJobContext<'a> {
         self.emit_progress_with_meta(percentage, phase_text, None, None);
     }
 
+    /// Reports pipeline progress into the job store.
+    ///
+    /// This used to emit a `job-status-changed` event per call, restating
+    /// the job's whole status (including a hardcoded `"running"`) on every
+    /// tick. The store owns the state now; this only contributes the
+    /// measurements, and the store decides when they reach the webview.
     pub fn emit_progress_with_meta(
         &self,
         percentage: f64,
@@ -121,18 +131,13 @@ impl<'a> VideoJobContext<'a> {
         eta_seconds: Option<u64>,
         fps: Option<f64>,
     ) {
-        let _ = self.app.emit(
-            "job-status-changed",
-            JobProgress {
-                job_id: self.job.id.clone(),
-                percentage,
-                status: "running".to_string(),
-                error: None,
-                phase: Some(phase_text.to_string()),
-                eta_seconds,
-                fps,
-                output_path: Some(self.job.output_path.clone()),
-            },
+        JobStore::global().update_progress(
+            self.app,
+            &self.job.id,
+            percentage,
+            Some(phase_text),
+            eta_seconds,
+            fps,
         );
     }
 }

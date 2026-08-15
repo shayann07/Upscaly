@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use crate::error::AppError;
 use crate::process_runner::{ProcessHandle, ProcessRunner, StdProcessRunner};
 use crate::video_pipeline::context::VideoJobContext;
 
@@ -332,13 +333,15 @@ pub fn reassemble_streaming(
     ffmpeg_binary: &str,
     fps_string: &str,
     frames: Vec<PathBuf>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let Some(sample_frame) = frames.first().cloned() else {
-        return Err("No upscaled frames to reassemble.".to_string());
+        return Err(AppError::exec("No upscaled frames to reassemble."));
     };
 
     let (encoder, audio_mode) = probe_combination(ctx, ffmpeg_binary, fps_string, &sample_frame)
-        .ok_or_else(|| "All hardware and software video encoders failed to start.".to_string())?;
+        .ok_or_else(|| {
+            AppError::exec("All hardware and software video encoders failed to start.")
+        })?;
     encoder.record_success();
 
     let args = encoder.to_streaming_args(
@@ -351,7 +354,7 @@ pub fn reassemble_streaming(
     let runner = StdProcessRunner::new();
     let (handle, mut stdin) = runner
         .spawn_with_stdin(&PathBuf::from(ffmpeg_binary), &args)
-        .map_err(|e| format!("Failed to launch FFmpeg encoder {encoder:?}: {e}"))?;
+        .map_err(|e| AppError::exec(format!("Failed to launch FFmpeg encoder {encoder:?}: {e}")))?;
 
     {
         let mut guard = ctx
@@ -396,7 +399,7 @@ pub fn reassemble_streaming(
             if let Some(ref mut h) = *guard {
                 let _ = h.kill();
             }
-            break Err("cancelled".to_string());
+            break Err(AppError::Cancelled);
         }
 
         let status = {
@@ -413,9 +416,15 @@ pub fn reassemble_streaming(
         match status {
             Ok(Some(0)) => break Ok(()),
             Ok(Some(code)) => {
-                break Err(format!("Encoder {encoder:?} exited with code {code}"));
+                break Err(AppError::exec(format!(
+                    "Encoder {encoder:?} exited with code {code}"
+                )));
             }
-            Err(e) => break Err(format!("Error waiting for encoder {encoder:?}: {e}")),
+            Err(e) => {
+                break Err(AppError::exec(format!(
+                    "Error waiting for encoder {encoder:?}: {e}"
+                )))
+            }
             Ok(None) => {}
         }
 
@@ -437,7 +446,7 @@ pub fn reassemble_with_encoders(
     ffmpeg_binary: &str,
     fps_string: &str,
     normalized_pattern: &str,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let mut last_err = String::new();
     let candidates = EncoderStrategy::candidates();
 
@@ -449,7 +458,7 @@ pub fn reassemble_with_encoders(
     for audio_mode in [AudioMode::Copy, AudioMode::Transcode] {
         for &encoder in &candidates {
             if ctx.is_cancelled() {
-                return Err("cancelled".to_string());
+                return Err(AppError::Cancelled);
             }
 
             let args = encoder.to_args(
@@ -489,7 +498,7 @@ pub fn reassemble_with_encoders(
                     if let Some(ref mut h) = *handle_guard {
                         let _ = h.kill();
                     }
-                    return Err("cancelled".to_string());
+                    return Err(AppError::Cancelled);
                 }
 
                 let mut handle_guard = ctx
@@ -526,9 +535,9 @@ pub fn reassemble_with_encoders(
         }
     }
 
-    Err(format!(
+    Err(AppError::exec(format!(
         "All hardware and software video encoders failed. Last error: {last_err}"
-    ))
+    )))
 }
 
 #[cfg(test)]

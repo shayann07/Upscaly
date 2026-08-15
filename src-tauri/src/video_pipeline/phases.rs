@@ -8,6 +8,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
+use crate::error::AppError;
 use crate::model_manager::get_models_dir;
 use crate::process_runner::{ProcessRunner, StdProcessRunner};
 use crate::sidecar_manager::resolve_sidecar_path;
@@ -103,7 +104,7 @@ pub fn spawn_background_extraction(
     ctx: &VideoJobContext,
     ffmpeg_binary: &str,
     fps_string: &str,
-) -> Result<ExtractionControl, String> {
+) -> Result<ExtractionControl, AppError> {
     let input_frame_pattern = ctx.staging_dir.join("frame_%08d.jpg");
     let extract_args = vec![
         "-y".to_string(),
@@ -138,7 +139,7 @@ pub fn spawn_background_extraction(
     let runner = StdProcessRunner::new();
     let extract_handle = runner
         .spawn(&PathBuf::from(ffmpeg_binary), &extract_args)
-        .map_err(|e| format!("Failed to spawn FFmpeg extractor: {e}"))?;
+        .map_err(|e| AppError::exec(format!("Failed to spawn FFmpeg extractor: {e}")))?;
 
     let handle_id = extract_handle.id();
     ctx.register_handle(extract_handle);
@@ -227,7 +228,7 @@ pub fn run_overlapping_upscale_pipeline(
     ctx: &VideoJobContext,
     ffmpeg_binary: &str,
     meta: &VideoMetadata,
-) -> Result<usize, String> {
+) -> Result<usize, AppError> {
     // get_sorted_image_files does a full directory read + sort of
     // staging_dir, and count_image_files a full directory read of
     // frames_out_dir, on every loop tick -- for a long video these can
@@ -286,7 +287,7 @@ pub fn run_overlapping_upscale_pipeline(
 
     loop {
         if ctx.is_cancelled() {
-            return Err("cancelled".to_string());
+            return Err(AppError::Cancelled);
         }
 
         // If the extractor died partway through (disk full, corrupt stream,
@@ -295,9 +296,9 @@ pub fn run_overlapping_upscale_pipeline(
         // it out and reporting "Succeeded" -- a truncated video with no
         // error is worse than an explicit failure.
         if let Some(err) = extraction.failure() {
-            return Err(format!(
+            return Err(AppError::exec(format!(
                 "Video frame extraction failed partway through: {err}"
-            ));
+            )));
         }
 
         let extraction_done = extraction.is_finished.load(Ordering::SeqCst);
@@ -391,7 +392,7 @@ pub fn run_overlapping_upscale_pipeline(
         let runner = StdProcessRunner::new();
         let upscale_handle = runner
             .spawn(&sidecar_path, &upscale_args)
-            .map_err(|e| format!("Failed to spawn NCNN engine: {e}"))?;
+            .map_err(|e| AppError::exec(format!("Failed to spawn NCNN engine: {e}")))?;
 
         let ncnn_handle_id = upscale_handle.id();
         ctx.register_handle(upscale_handle);
@@ -409,7 +410,7 @@ pub fn run_overlapping_upscale_pipeline(
             if ctx.is_cancelled() {
                 ctx.unregister_handle(ncnn_handle_id);
                 let _ = fs::remove_dir_all(&batch_dir);
-                return Err("cancelled".to_string());
+                return Err(AppError::Cancelled);
             }
 
             let is_batch_done = {
@@ -429,15 +430,19 @@ pub fn run_overlapping_upscale_pipeline(
                             if stderr_log.contains("vkAllocateMemory failed")
                                 || stderr_log.contains("vkQueueSubmit failed")
                             {
-                                Some(Err("GPU VRAM allocation failed (Vulkan memory overflow). Try selecting a smaller tile size (e.g. 256px or 128px).".to_string()))
+                                // The one condition this loop retries
+                                // rather than aborts on, so it gets its own
+                                // variant instead of being recognised by a
+                                // substring of its own message below.
+                                Some(Err(AppError::GpuError { message: "GPU VRAM allocation failed (Vulkan memory overflow). Try selecting a smaller tile size (e.g. 256px or 128px).".to_string() }))
                             } else {
-                                Some(Err(format!("NCNN upscale engine failed with exit code {code}: {stderr_log}")))
+                                Some(Err(AppError::exec(format!("NCNN upscale engine failed with exit code {code}: {stderr_log}"))))
                             }
                         }
                         Ok(None) => None,
                         Err(e) => {
                             list.remove(pos);
-                            Some(Err(e.to_string()))
+                            Some(Err(e))
                         }
                     }
                 } else {
@@ -530,10 +535,12 @@ pub fn run_overlapping_upscale_pipeline(
                         let _ = fs::remove_dir_all(&batch_dir);
                         break;
                     }
-                    Err(err)
-                        if err.contains("Vulkan memory overflow")
-                            || err.contains("vkAllocateMemory") =>
-                    {
+                    // Only the VRAM-overflow branch above constructs a
+                    // GpuError here, so matching the variant identifies it
+                    // exactly -- where the previous substring test on the
+                    // message would have stopped retrying the moment anyone
+                    // reworded it.
+                    Err(err @ AppError::GpuError { .. }) => {
                         // AUTO delegates tiling to NCNN's own heap heuristic
                         // via tile_size == 0. The old guard required
                         // tile_size > 64, which AUTO can never satisfy (0 is
@@ -603,7 +610,7 @@ pub fn run_overlapping_upscale_pipeline(
     extraction.resume_if_suspended();
 
     if ctx.is_cancelled() {
-        return Err("cancelled".to_string());
+        return Err(AppError::Cancelled);
     }
 
     // Final gate before declaring success: the loop can exit via the
@@ -614,16 +621,16 @@ pub fn run_overlapping_upscale_pipeline(
     // short, and shipping it silently is exactly the truncated-video-as-
     // success bug this guards against.
     if let Some(err) = extraction.failure() {
-        return Err(format!(
+        return Err(AppError::exec(format!(
             "Video frame extraction failed partway through: {err}"
-        ));
+        )));
     }
 
     let final_completed = count_image_files(&ctx.frames_out_dir);
     if final_completed == 0 {
-        return Err(
-            "No video frames were upscaled. Please verify GPU drivers and input file.".to_string(),
-        );
+        return Err(AppError::exec(
+            "No video frames were upscaled. Please verify GPU drivers and input file.",
+        ));
     }
 
     Ok(final_completed)
@@ -643,7 +650,7 @@ fn check_available_disk_space(
     ctx: &VideoJobContext,
     meta: &VideoMetadata,
     effective_scale: i32,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     // Conservative per-frame estimate for a q:v2 JPEG source frame; the
     // upscaled output frame is estimated to grow with the scaled pixel
     // area (scale^2), which is intentionally generous since JPEG tends to
@@ -665,7 +672,7 @@ fn check_available_disk_space(
     match crate::model_manager::get_available_disk_space(&ctx.job_temp_dir) {
         Ok(available_bytes) if available_bytes < required_bytes => {
             let required_mb = required_bytes / 1_000_000;
-            Err(crate::error::AppError::InsufficientStorage { required_mb }.to_string())
+            Err(AppError::InsufficientStorage { required_mb })
         }
         // If the query itself fails, don't block the job on an unreliable
         // check -- proceed and let the actual pipeline surface any real
@@ -811,7 +818,7 @@ pub fn reassemble_video(
     ctx: &VideoJobContext,
     ffmpeg_binary: &str,
     fps_string: &str,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let sample_ext = fs::read_dir(&ctx.frames_out_dir)
         .ok()
         .and_then(|mut entries| {
@@ -865,7 +872,7 @@ pub fn reassemble_video(
     clippy::cast_sign_loss,
     clippy::too_many_lines
 )]
-pub fn probe_video_metadata(app: &AppHandle, video_path: &str) -> Result<VideoMetadata, String> {
+pub fn probe_video_metadata(app: &AppHandle, video_path: &str) -> Result<VideoMetadata, AppError> {
     let ffprobe_bin = resolve_ffprobe_binary(app)?;
 
     // Command::output() blocks with no timeout, and the pipeline's single
@@ -895,7 +902,7 @@ pub fn probe_video_metadata(app: &AppHandle, video_path: &str) -> Result<VideoMe
 
     let mut child = cmd
         .spawn()
-        .map_err(|e| format!("Failed to run ffprobe: {e}"))?;
+        .map_err(|e| AppError::exec(format!("Failed to run ffprobe: {e}")))?;
 
     let stdout_buf: std::sync::Arc<std::sync::Mutex<String>> = std::sync::Arc::default();
     let stdout_handle = child.stdout.take().map(|mut out| {
@@ -1037,7 +1044,7 @@ fn parse_fps_fraction(s: &str) -> Option<f64> {
     None
 }
 
-pub fn resolve_ffmpeg_binary(app: &AppHandle) -> Result<String, String> {
+pub fn resolve_ffmpeg_binary(app: &AppHandle) -> Result<String, AppError> {
     if let Ok(path) = resolve_sidecar_path(app, "ffmpeg") {
         if path.exists() {
             return Ok(path.to_string_lossy().to_string());
@@ -1058,10 +1065,12 @@ pub fn resolve_ffmpeg_binary(app: &AppHandle) -> Result<String, String> {
         }
     }
 
-    Err("FFmpeg binary was not found. Bundled sidecar missing and no system PATH installation present.".to_string())
+    Err(AppError::SidecarNotFound {
+        path: "ffmpeg (bundled sidecar missing and not on PATH)".to_string(),
+    })
 }
 
-pub fn resolve_ffprobe_binary(app: &AppHandle) -> Result<String, String> {
+pub fn resolve_ffprobe_binary(app: &AppHandle) -> Result<String, AppError> {
     if let Ok(path) = resolve_sidecar_path(app, "ffprobe") {
         if path.exists() {
             return Ok(path.to_string_lossy().to_string());
@@ -1082,7 +1091,9 @@ pub fn resolve_ffprobe_binary(app: &AppHandle) -> Result<String, String> {
         }
     }
 
-    Err("FFprobe binary was not found. Bundled sidecar missing and no system PATH installation present.".to_string())
+    Err(AppError::SidecarNotFound {
+        path: "ffprobe (bundled sidecar missing and not on PATH)".to_string(),
+    })
 }
 
 #[cfg(test)]

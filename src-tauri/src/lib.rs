@@ -3,6 +3,7 @@ pub mod engine;
 pub mod error;
 pub mod job_queue;
 pub mod job_state;
+pub mod job_store;
 mod model_manager;
 pub mod output_paths;
 pub mod process_runner;
@@ -52,6 +53,7 @@ pub fn run() {
             commands::models::download_model,
             commands::upscale::run_upscale,
             commands::upscale::cancel_upscale,
+            commands::upscale::get_jobs_snapshot,
             commands::settings::get_app_settings,
             commands::settings::update_app_settings,
             commands::settings::get_default_output_dir,

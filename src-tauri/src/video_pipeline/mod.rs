@@ -2,6 +2,7 @@ pub mod context;
 pub mod encoder;
 pub mod phases;
 
+use crate::error::AppError;
 use crate::job_queue::Job;
 use crate::process_runner::ProcessHandle;
 use context::VideoJobContext;
@@ -19,7 +20,7 @@ pub fn run_video_job(
     job: &Job,
     cancel_requested: Arc<AtomicBool>,
     process_handle: Arc<Mutex<Option<Box<dyn ProcessHandle>>>>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let (ctx, _guard) = VideoJobContext::new(app, job, cancel_requested, process_handle)?;
 
     let result = run_video_job_inner(&ctx, app, job);
@@ -41,15 +42,15 @@ pub fn run_video_job(
     result
 }
 
-fn run_video_job_inner(ctx: &VideoJobContext, app: &AppHandle, job: &Job) -> Result<(), String> {
+fn run_video_job_inner(ctx: &VideoJobContext, app: &AppHandle, job: &Job) -> Result<(), AppError> {
     if ctx.is_cancelled() {
-        return Err("cancelled".to_string());
+        return Err(AppError::Cancelled);
     }
 
     let meta = probe_video_metadata(app, &job.input_path)?;
 
     if ctx.is_cancelled() {
-        return Err("cancelled".to_string());
+        return Err(AppError::Cancelled);
     }
 
     let ffmpeg_binary = resolve_ffmpeg_binary(app)?;
@@ -58,7 +59,7 @@ fn run_video_job_inner(ctx: &VideoJobContext, app: &AppHandle, job: &Job) -> Res
     run_overlapping_upscale_pipeline(ctx, &ffmpeg_binary, &meta)?;
 
     if ctx.is_cancelled() {
-        return Err("cancelled".to_string());
+        return Err(AppError::Cancelled);
     }
 
     // Reassemble upscaled frames and merge audio stream

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useJobEvents } from '../useJobEvents';
+import { jobSnapshot } from '../../test/jobSnapshot';
 
 const mockListeners: Record<string, (event: { payload: unknown }) => void> = {};
 const mockUnlisten = vi.fn();
@@ -13,34 +14,31 @@ vi.mock('@tauri-apps/api/event', () => ({
 }));
 
 describe('useJobEvents hook', () => {
-  it('registers job status and download progress listeners', async () => {
-    const onJobStatusChanged = vi.fn();
+  it('registers job delta and download progress listeners', async () => {
+    const onJobsChanged = vi.fn();
     const onDownloadProgress = vi.fn();
 
     await act(async () => {
-      renderHook(() => useJobEvents(onJobStatusChanged, onDownloadProgress));
+      renderHook(() => useJobEvents(onJobsChanged, onDownloadProgress));
     });
 
-    expect(mockListeners['job-status-changed']).toBeDefined();
+    expect(mockListeners['jobs-delta']).toBeDefined();
     expect(mockListeners['download-progress']).toBeDefined();
 
+    // One event carries every job that changed inside the backend's flush
+    // window, so the handler is called once with the whole batch rather than
+    // once per job.
+    const jobs = [
+      jobSnapshot({ job_id: 'test-1', percentage: 50, status: 'running' }),
+      jobSnapshot({ job_id: 'test-2', status: 'queued' }),
+    ];
+
     act(() => {
-      mockListeners['job-status-changed']({
-        payload: {
-          job_id: 'test-1',
-          percentage: 50,
-          status: 'processing',
-          output_path: 'C:/out/test-1.png',
-        },
-      });
+      mockListeners['jobs-delta']({ payload: { jobs } });
     });
 
-    expect(onJobStatusChanged).toHaveBeenCalledWith({
-      job_id: 'test-1',
-      percentage: 50,
-      status: 'processing',
-      output_path: 'C:/out/test-1.png',
-    });
+    expect(onJobsChanged).toHaveBeenCalledTimes(1);
+    expect(onJobsChanged).toHaveBeenCalledWith(jobs);
 
     act(() => {
       mockListeners['download-progress']({
@@ -74,11 +72,11 @@ describe('useJobEvents hook', () => {
   });
 
   it('unsubscribes listeners on unmount', async () => {
-    const onJobStatusChanged = vi.fn();
+    const onJobsChanged = vi.fn();
     let unmountFn: () => void = () => {};
 
     await act(async () => {
-      const { unmount } = renderHook(() => useJobEvents(onJobStatusChanged));
+      const { unmount } = renderHook(() => useJobEvents(onJobsChanged));
       unmountFn = unmount;
     });
 

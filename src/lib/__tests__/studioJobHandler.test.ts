@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleStudioJobStatus, StudioJobState, JobInputSnapshot } from '../studioJobHandler';
-import { JobProgress } from '../types';
+import { JobSnapshot } from '../types';
+import { jobSnapshot } from '../../test/jobSnapshot';
 import { getRecentHistory, clearHistory } from '../history';
 
 vi.mock('../assetScope', () => ({
@@ -40,13 +41,8 @@ function buildState(overrides: Partial<StudioJobState> = {}): StudioJobState {
   };
 }
 
-function progressFor(jobId: string, overrides: Partial<JobProgress> = {}): JobProgress {
-  return {
-    job_id: jobId,
-    percentage: 100,
-    status: 'succeeded',
-    ...overrides,
-  } as JobProgress;
+function progressFor(jobId: string, overrides: Partial<JobSnapshot> = {}): JobSnapshot {
+  return jobSnapshot({ job_id: jobId, percentage: 100, status: 'succeeded', ...overrides });
 }
 
 describe('handleStudioJobStatus', () => {

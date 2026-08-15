@@ -5,9 +5,11 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
+use crate::error::AppError;
 use crate::job_state::JobState;
+use crate::job_store::JobStore;
 use crate::model_manager::get_models_dir;
 use crate::output_paths::release_output_path;
 use crate::process_runner::{ProcessHandle, ProcessRunner, StdProcessRunner};
@@ -52,23 +54,6 @@ pub fn generate_job_id() -> String {
         .unwrap_or_default()
         .as_nanos();
     format!("job_{nanos:x}")
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, ts_rs::TS)]
-#[ts(export, export_to = "../../src/lib/ipc/")]
-pub struct JobProgress {
-    pub job_id: String,
-    pub percentage: f64,
-    pub status: String, // "queued" | "running" | "succeeded" | "failed" | "cancelled"
-    pub error: Option<String>,
-    pub phase: Option<String>,
-    // ts-rs maps u64 to bigint, which is technically right for the full range
-    // but wrong in practice here: this is a duration in seconds, serde_json
-    // emits it as a plain JSON number, and the webview receives a JS number.
-    #[ts(type = "number | null")]
-    pub eta_seconds: Option<u64>,
-    pub fps: Option<f64>,
-    pub output_path: Option<String>,
 }
 
 pub struct JobControl {
@@ -127,27 +112,18 @@ impl JobQueueService {
     /// command layer before it gets here, so that the caller can be told
     /// where its result will land.
     pub fn enqueue(&self, app: AppHandle, job: Job) {
-        let job_id = job.id.clone();
-        let output_path = job.output_path.clone();
+        // Register before queueing: the store is what a snapshot reads, and
+        // a job that is already runnable but not yet recorded would be
+        // invisible to a frontend that asked in that window.
+        JobStore::global().register(&app, &job);
         {
             let mut q = self.lock_queue();
             q.push_back(job);
         }
-
-        self.emit_progress(
-            &app,
-            &job_id,
-            0.0,
-            JobState::Queued,
-            Some("Queued in GPU worker pool"),
-            None,
-            None,
-            Some(&output_path),
-        );
         self.process_next(app);
     }
 
-    pub fn cancel(&self, app: &AppHandle, job_id: &str) -> Result<(), String> {
+    pub fn cancel(&self, app: &AppHandle, job_id: &str) -> Result<(), AppError> {
         let mut was_queued = false;
         let mut output_path = String::new();
         {
@@ -161,15 +137,11 @@ impl JobQueueService {
 
         if was_queued {
             release_output_path(&output_path);
-            self.emit_progress(
+            JobStore::global().transition(
                 app,
                 job_id,
-                0.0,
                 JobState::Cancelled,
                 Some("Cancelled while queued"),
-                None,
-                None,
-                Some(&output_path),
             );
             return Ok(());
         }
@@ -293,28 +265,20 @@ impl JobQueueService {
 
                 if cancel_requested.load(Ordering::SeqCst) {
                     service.cleanup_job(&job.id, &job.output_path);
-                    service.emit_progress(
+                    JobStore::global().transition(
                         &app,
                         &job.id,
-                        0.0,
                         JobState::Cancelled,
                         Some("Cancelled while queued"),
-                        None,
-                        None,
-                        Some(&job.output_path),
                     );
                     continue;
                 }
 
-                service.emit_progress(
+                JobStore::global().transition(
                     &app,
                     &job.id,
-                    0.0,
                     JobState::Running,
                     Some("Initializing GPU Pipeline..."),
-                    None,
-                    None,
-                    Some(&job.output_path),
                 );
 
                 let res = if job.is_video {
@@ -333,116 +297,58 @@ impl JobQueueService {
                     )
                 };
 
+                // Cancellation is now carried by the error type rather than
+                // by a magic message: `AppError::Cancelled` says exactly
+                // this and cannot be confused with a failure that happens
+                // to mention the word.
                 let is_cancelled = cancel_requested.load(Ordering::SeqCst)
-                    || res.as_ref().err().is_some_and(|e| e == "cancelled");
+                    || res.as_ref().err().is_some_and(AppError::is_cancellation);
                 service.cleanup_job(&job.id, &job.output_path);
-
-                if is_cancelled {
-                    let out_path = Path::new(&job.output_path);
-                    if out_path.exists() {
-                        let _ = fs::remove_file(out_path);
-                    }
-                    service.emit_progress(
-                        &app,
-                        &job.id,
-                        0.0,
-                        JobState::Cancelled,
-                        Some("Cancelled by user"),
-                        None,
-                        None,
-                        Some(&job.output_path),
-                    );
-                } else {
-                    match res {
-                        Ok(()) => {
-                            let out_path = Path::new(&job.output_path);
-                            if out_path.exists()
-                                && fs::metadata(out_path).is_ok_and(|m| m.len() > 0)
-                            {
-                                service.emit_progress(
-                                    &app,
-                                    &job.id,
-                                    100.0,
-                                    JobState::Succeeded,
-                                    Some("Complete"),
-                                    Some(0),
-                                    None,
-                                    Some(&job.output_path),
-                                );
-                            } else {
-                                if out_path.exists() {
-                                    let _ = fs::remove_file(out_path);
-                                }
-                                service.emit_progress(
-                                    &app,
-                                    &job.id,
-                                    0.0,
-                                    JobState::Failed(
-                                        "Output file missing or empty after upscale".to_string(),
-                                    ),
-                                    Some("Failed"),
-                                    None,
-                                    None,
-                                    Some(&job.output_path),
-                                );
-                            }
-                        }
-                        Err(err) => {
-                            let out_path = Path::new(&job.output_path);
-                            if out_path.exists() {
-                                let _ = fs::remove_file(out_path);
-                            }
-                            service.emit_progress(
-                                &app,
-                                &job.id,
-                                0.0,
-                                JobState::Failed(err),
-                                Some("Failed"),
-                                None,
-                                None,
-                                Some(&job.output_path),
-                            );
-                        }
-                    }
-                }
+                let final_state = finalize_job_output(&job, is_cancelled, res);
+                let phase = match final_state {
+                    JobState::Succeeded => "Complete",
+                    JobState::Cancelled => "Cancelled by user",
+                    _ => "Failed",
+                };
+                JobStore::global().transition(&app, &job.id, final_state, Some(phase));
             }
         });
     }
+}
 
-    // Deliberately mirrors JobProgress's field set 1:1 (this is its only
-    // constructor) -- splitting the params into a struct would just move the
-    // "too many fields" shape one level down without reducing it. Kept as a
-    // &self method for consistency with the rest of JobQueueService's API,
-    // even though the body itself doesn't touch self.
-    #[allow(
-        clippy::too_many_arguments,
-        clippy::unused_self,
-        clippy::needless_pass_by_value
-    )]
-    fn emit_progress(
-        &self,
-        app: &AppHandle,
-        job_id: &str,
-        percentage: f64,
-        state: JobState,
-        phase: Option<&str>,
-        eta_seconds: Option<u64>,
-        fps: Option<f64>,
-        output_path: Option<&str>,
-    ) {
-        let _ = app.emit(
-            "job-status-changed",
-            JobProgress {
-                job_id: job_id.to_string(),
-                percentage,
-                status: state.as_str().to_string(),
-                error: state.error_message(),
-                phase: phase.map(ToString::to_string),
-                eta_seconds,
-                fps,
-                output_path: output_path.map(ToString::to_string),
-            },
-        );
+/// Decides a finished job's terminal state and cleans up after it.
+///
+/// A cancelled or failed job leaves a partial file behind; deleting it is
+/// what keeps "the output path exists" a reliable signal rather than a maybe.
+/// A run that reported success but produced nothing (or an empty file) is a
+/// failure regardless of what the engine's exit code claimed.
+fn finalize_job_output(job: &Job, is_cancelled: bool, res: Result<(), AppError>) -> JobState {
+    let out_path = Path::new(&job.output_path);
+
+    if is_cancelled {
+        if out_path.exists() {
+            let _ = fs::remove_file(out_path);
+        }
+        return JobState::Cancelled;
+    }
+
+    match res {
+        Ok(()) => {
+            if out_path.exists() && fs::metadata(out_path).is_ok_and(|m| m.len() > 0) {
+                JobState::Succeeded
+            } else {
+                if out_path.exists() {
+                    let _ = fs::remove_file(out_path);
+                }
+                JobState::Failed("Output file missing or empty after upscale".to_string())
+            }
+        }
+        Err(err) => {
+            if out_path.exists() {
+                let _ = fs::remove_file(out_path);
+            }
+            JobState::Failed(err.to_payload().message)
+        }
     }
 }
 
@@ -450,7 +356,7 @@ pub fn add_job_to_queue(app: AppHandle, job: Job) {
     JobQueueService::global().enqueue(app, job);
 }
 
-pub fn cancel_job(app: &AppHandle, job_id: &str) -> Result<(), String> {
+pub fn cancel_job(app: &AppHandle, job_id: &str) -> Result<(), AppError> {
     JobQueueService::global().cancel(app, job_id)
 }
 
@@ -534,17 +440,14 @@ fn run_single_image_job(
     job: &Job,
     cancel_requested: Arc<AtomicBool>,
     process_handle: Arc<Mutex<Option<Box<dyn ProcessHandle>>>>,
-) -> Result<(), String> {
-    // Cancellation is detected by the poll loop below, so it keeps polling
-    // briskly. Emitting is decoupled from it: every job-status-changed event
-    // drives a React render pass across the studio tree, and firing ~17 of
-    // those a second for a bar that moves in tenths of a percent burned CPU
-    // in the webview for no visible benefit. Emit when the displayed value
-    // actually changes (rate-limited), plus a slow heartbeat so a stalled job
-    // still refreshes its ETA.
+) -> Result<(), AppError> {
+    // Cancellation is detected by this loop, so it keeps polling briskly.
+    // Reporting is decoupled from it and now handled by the job store, which
+    // coalesces whatever arrives inside its flush window into a single
+    // event -- so this can simply report every tick rather than
+    // rate-limiting by hand, and several concurrent jobs ticking together
+    // still cost the webview one render rather than one each.
     const IMAGE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(60);
-    const EMIT_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(200);
-    const EMIT_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(1);
 
     let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan")?;
     let models_dir = get_models_dir(app);
@@ -578,9 +481,7 @@ fn run_single_image_job(
     ];
 
     let runner = StdProcessRunner::new();
-    let handle = runner
-        .spawn(&sidecar_path, &args)
-        .map_err(|e| e.to_string())?;
+    let handle = runner.spawn(&sidecar_path, &args)?;
 
     {
         let mut handle_guard = process_handle
@@ -591,26 +492,20 @@ fn run_single_image_job(
 
     let start_time = std::time::Instant::now();
     let mut current_pct = 0.0f64;
-    let mut last_emit: Option<std::time::Instant> = None;
-    let mut last_emitted_pct = 0.0f64;
 
-    let _ = app.emit(
-        "job-status-changed",
-        JobProgress {
-            job_id: job.id.clone(),
-            percentage: current_pct,
-            status: JobState::Running.as_str().to_string(),
-            error: None,
-            phase: Some("GPU Accelerated Upscaling (0.0%)".to_string()),
-            eta_seconds: None,
-            fps: None,
-            output_path: Some(job.output_path.clone()),
-        },
+    let store = JobStore::global();
+    store.update_progress(
+        app,
+        &job.id,
+        current_pct,
+        Some("GPU Accelerated Upscaling (0.0%)"),
+        None,
+        None,
     );
 
     loop {
         if cancel_requested.load(Ordering::SeqCst) {
-            return Err("cancelled".to_string());
+            return Err(AppError::Cancelled);
         }
 
         let latest_pct = {
@@ -624,21 +519,23 @@ fn run_single_image_job(
                         if stderr_log.contains("vkAllocateMemory failed")
                             || stderr_log.contains("vkQueueSubmit failed")
                         {
-                            return Err("GPU VRAM allocation failed (Vulkan memory overflow). Try selecting a smaller tile size (e.g. 256px or 128px).".to_string());
+                            return Err(AppError::GpuError { message: "GPU VRAM allocation failed (Vulkan memory overflow). Try selecting a smaller tile size (e.g. 256px or 128px).".to_string() });
                         }
                         break;
                     }
                     Ok(Some(code)) => {
                         let stderr_log = child.get_stderr_log();
                         if stderr_log.trim().is_empty() {
-                            return Err(format!("Engine exited with non-zero exit code: {code}"));
+                            return Err(AppError::exec(format!(
+                                "Engine exited with non-zero exit code: {code}"
+                            )));
                         }
-                        return Err(format!(
+                        return Err(AppError::exec(format!(
                             "Engine exited with non-zero exit code {code}: {stderr_log}"
-                        ));
+                        )));
                     }
                     Ok(None) => child.latest_progress(),
-                    Err(e) => return Err(e.to_string()),
+                    Err(e) => return Err(e),
                 }
             } else {
                 break;
@@ -665,32 +562,14 @@ fn run_single_image_job(
             None
         };
 
-        let now = std::time::Instant::now();
-        // 0.1 is the granularity the phase string actually renders at, so a
-        // smaller delta than that could not change anything on screen.
-        let pct_changed = (current_pct - last_emitted_pct).abs() >= 0.1;
-        let should_emit = last_emit.is_none_or(|prev| {
-            let since = now.duration_since(prev);
-            (pct_changed && since >= EMIT_MIN_INTERVAL) || since >= EMIT_HEARTBEAT
-        });
-
-        if should_emit {
-            let _ = app.emit(
-                "job-status-changed",
-                JobProgress {
-                    job_id: job.id.clone(),
-                    percentage: current_pct,
-                    status: JobState::Running.as_str().to_string(),
-                    error: None,
-                    phase: Some(format!("GPU Accelerated Upscaling ({current_pct:.1}%)")),
-                    eta_seconds: eta_secs,
-                    fps: None,
-                    output_path: Some(job.output_path.clone()),
-                },
-            );
-            last_emit = Some(now);
-            last_emitted_pct = current_pct;
-        }
+        store.update_progress(
+            app,
+            &job.id,
+            current_pct,
+            Some(&format!("GPU Accelerated Upscaling ({current_pct:.1}%)")),
+            eta_secs,
+            None,
+        );
 
         thread::sleep(IMAGE_POLL_INTERVAL);
     }
@@ -744,19 +623,77 @@ mod tests {
         assert_eq!(compute_workload_threads("nonexistent.png", false), "1:2:2");
     }
 
-    #[test]
-    fn test_job_state_as_str_and_terminal() {
-        assert_eq!(JobState::Queued.as_str(), "queued");
-        assert_eq!(JobState::Running.as_str(), "running");
-        assert_eq!(JobState::Succeeded.as_str(), "succeeded");
-        assert_eq!(JobState::Cancelled.as_str(), "cancelled");
-        assert_eq!(JobState::Failed("err".into()).as_str(), "failed");
+    fn test_job(output_path: &str) -> Job {
+        Job {
+            id: "job_test".to_string(),
+            input_path: "C:\\media\\in.png".to_string(),
+            output_path: output_path.to_string(),
+            model_name: "realesrgan-x4plus".to_string(),
+            gpu_id: 0,
+            scale: 4,
+            tile_size: 256,
+            is_video: false,
+        }
+    }
 
-        assert!(!JobState::Queued.is_terminal());
-        assert!(!JobState::Running.is_terminal());
-        assert!(JobState::Succeeded.is_terminal());
-        assert!(JobState::Cancelled.is_terminal());
-        assert!(JobState::Failed("err".into()).is_terminal());
+    #[test]
+    fn test_finalize_treats_a_cancelled_run_as_cancelled_and_removes_its_output() {
+        let dir = std::env::temp_dir().join("upscaly_finalize_cancel");
+        let _ = fs::create_dir_all(&dir);
+        let out = dir.join("partial.png");
+        fs::write(&out, b"partial bytes").unwrap();
+
+        let state = finalize_job_output(
+            &test_job(out.to_str().unwrap()),
+            true,
+            Err(AppError::Cancelled),
+        );
+
+        assert_eq!(state.as_str(), "cancelled");
+        assert!(!out.exists(), "a cancelled job must not leave a half file");
+    }
+
+    #[test]
+    fn test_finalize_reports_success_only_when_a_non_empty_output_exists() {
+        let dir = std::env::temp_dir().join("upscaly_finalize_ok");
+        let _ = fs::create_dir_all(&dir);
+        let out = dir.join("done.png");
+        fs::write(&out, b"real output").unwrap();
+
+        let state = finalize_job_output(&test_job(out.to_str().unwrap()), false, Ok(()));
+        assert_eq!(state.as_str(), "succeeded");
+        assert!(out.exists());
+        let _ = fs::remove_file(&out);
+    }
+
+    #[test]
+    fn test_finalize_rejects_a_success_that_produced_nothing() {
+        let dir = std::env::temp_dir().join("upscaly_finalize_empty");
+        let _ = fs::create_dir_all(&dir);
+        let out = dir.join("empty.png");
+        fs::write(&out, b"").unwrap();
+
+        // The engine can exit 0 having written a zero-byte file; reporting
+        // that as a success is how a "completed" job ends up with no result.
+        let state = finalize_job_output(&test_job(out.to_str().unwrap()), false, Ok(()));
+        assert_eq!(state.as_str(), "failed");
+        assert!(!out.exists());
+    }
+
+    #[test]
+    fn test_finalize_carries_the_engine_message_into_the_failed_state() {
+        let missing = std::env::temp_dir().join("upscaly_never_written.png");
+        let _ = fs::remove_file(&missing);
+
+        let state = finalize_job_output(
+            &test_job(missing.to_str().unwrap()),
+            false,
+            Err(AppError::exec("engine exited with code 3")),
+        );
+        assert_eq!(state.as_str(), "failed");
+        assert!(state
+            .error_message()
+            .is_some_and(|m| m.contains("engine exited with code 3")));
     }
 
     #[test]

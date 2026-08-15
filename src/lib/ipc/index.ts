@@ -11,10 +11,12 @@
  * duplicated model catalogs, the two output-path schemes and the two status
  * vocabularies were all instances of it).
  */
+export type { AppErrorPayload } from './AppErrorPayload';
 export type { AppSettings } from './AppSettings';
 export type { FullModelInfo } from './FullModelInfo';
 export type { GpuDevice } from './GpuDevice';
-export type { JobProgress } from './JobProgress';
+export type { JobSnapshot } from './JobSnapshot';
+export type { JobsDelta } from './JobsDelta';
 export type { UpscaleJobHandle } from './UpscaleJobHandle';
 export type { UpscaleRequest } from './UpscaleRequest';
 export type { VramProfile } from './VramProfile';
