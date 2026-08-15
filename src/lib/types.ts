@@ -36,6 +36,9 @@ export interface HistoryEntry {
   fileName?: string;
   originalPath?: string;
   upscaledPath?: string;
+  /** Stable model identifier -- see HistoryItem.modelId. */
+  modelId?: string;
+  /** Display name on entries written before modelId existed. */
   modelName?: string;
   isVideo?: boolean;
   timestamp?: number;

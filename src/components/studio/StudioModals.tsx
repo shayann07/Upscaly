@@ -107,6 +107,7 @@ export function StudioModals({
           {activeNavTab === 'history' && (
             <RecentHistoryDrawer
               history={historyItems}
+              supportedModels={supportedModels}
               onSelectHistoryItem={(item: HistoryEntry) => {
                 handleLoadHistoryItem(item);
               }}

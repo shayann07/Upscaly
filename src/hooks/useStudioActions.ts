@@ -392,14 +392,15 @@ export function useStudioActions({
     if (item.scale) {
       setScale(item.scale);
     }
-    // Match against the live (backend-sourced) catalog, not the static
-    // fallback list -- history entries record display names, and matching
-    // against a catalog that can disagree with the one actually in use
-    // (e.g. a user-imported custom model) silently failed to restore the
-    // model selection.
-    const matchingModel = supportedModels.find(
-      (m) => item.modelName && m.name.toLowerCase() === item.modelName.toLowerCase()
-    );
+    // Entries record the model id, so restoring is an exact lookup rather
+    // than a case-insensitive comparison of display strings that the live
+    // catalog could word differently. Entries written before the id was
+    // stored still carry a name, so fall back to the old match for those.
+    const matchingModel =
+      supportedModels.find((m) => item.modelId && m.id === item.modelId) ||
+      supportedModels.find(
+        (m) => item.modelName && m.name.toLowerCase() === item.modelName.toLowerCase()
+      );
     if (matchingModel) {
       setSelectedModel(matchingModel.id);
     }

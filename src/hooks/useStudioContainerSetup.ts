@@ -32,7 +32,6 @@ export function useStudioContainerSetup() {
   const batch = useBatchSetup({
     selectedGpu: settings.selectedGpu,
     selectedModel: catalog.selectedModel,
-    supportedModels: catalog.supportedModels,
     scale: settings.scale,
     tileSize: settings.tileSize,
     customOutputPath: settings.customOutputPath,

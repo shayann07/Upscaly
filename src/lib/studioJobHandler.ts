@@ -1,4 +1,4 @@
-import { JobProgress, SUPPORTED_MODELS } from './types';
+import { JobProgress } from './types';
 import { addHistoryItem, HistoryItem } from './history';
 import { playCompleteSound, playErrorSound } from './sound';
 import { allowMediaPath } from './assetScope';
@@ -54,17 +54,15 @@ function handleCompletedStatus(
   const finalPath = eventOutPath || state.pendingOutputPath.current || state.upscaledPath;
   if (finalPath) {
     allowMediaPath(finalPath);
-    // Matches the same lookup useStudioActions/useBatchSetup use when
-    // writing their own history entries, instead of a second hardcoded
-    // catalog (lib/models.ts) with different display names for the same
-    // model ids -- history entries from different job paths previously
-    // could end up with inconsistent modelName strings for the same model.
-    const meta = SUPPORTED_MODELS.find((m) => m.id === state.selectedModel) || SUPPORTED_MODELS[0];
+    // Store the model id, not its display name. Every job path writes the
+    // same identifier for the same model, so entries can no longer disagree
+    // with each other, and restoring one matches exactly instead of
+    // comparing display strings that catalogs can word differently.
     const newHist = addHistoryItem({
       fileName: snapshot.fileName,
       originalPath: snapshot.filePath,
       upscaledPath: finalPath,
-      modelName: meta.name,
+      modelId: state.selectedModel,
       scale: state.scale,
       isVideo: snapshot.isVideo,
     });
