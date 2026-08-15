@@ -444,7 +444,14 @@ pub fn run_overlapping_upscale_pipeline(
                         } else {
                             (exec_profile.tile_size / 2).max(64)
                         };
-                        exec_profile.thread_arg = "1:1:1".to_string();
+                        // Drop proc (the middle number) to 1 -- that's the
+                        // actual VRAM-reducing measure. Save threads (the
+                        // last number) handle CPU-bound JPEG encoding and
+                        // don't touch GPU memory at all; forcing them to 1
+                        // too (the previous "1:1:1") permanently serialized
+                        // output encoding for the rest of the job after a
+                        // single VRAM hiccup, for no VRAM benefit.
+                        exec_profile.thread_arg = "1:1:2".to_string();
                         ctx.emit_progress_with_meta(
                             current_progress.min(92.0),
                             &format!("VRAM Limit Reached: Automatically Downscaling Tile to {}px & Retrying...", exec_profile.tile_size),
