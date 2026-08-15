@@ -149,6 +149,7 @@ export function useStudioContainerSetup() {
     studioJobState,
     setDownloadingModelId: catalog.setDownloadingModelId,
     setDownloadProgress: catalog.setDownloadProgress,
+    refreshInstalledModels: catalog.refreshInstalledModels,
   });
 
   const telemetry = useTelemetry({

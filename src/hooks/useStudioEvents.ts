@@ -8,6 +8,7 @@ interface StudioEventsOptions {
   studioJobState: StudioJobState;
   setDownloadingModelId?: (id: string | null) => void;
   setDownloadProgress?: (progress: number) => void;
+  refreshInstalledModels?: () => void;
 }
 
 export function useStudioEvents({
@@ -15,6 +16,7 @@ export function useStudioEvents({
   studioJobState,
   setDownloadingModelId,
   setDownloadProgress,
+  refreshInstalledModels,
 }: StudioEventsOptions) {
   const studioJobStateRef = useRef(studioJobState);
   useEffect(() => {
@@ -44,5 +46,12 @@ export function useStudioEvents({
     [setDownloadingModelId, setDownloadProgress]
   );
 
-  useJobEvents(handleJobStatusChanged, handleDownloadProgress);
+  // Backend-driven catalog invalidation. Keeps the model list correct for
+  // any on-disk change the backend reports, including ones this frontend
+  // did not initiate and therefore would never have refreshed itself.
+  const handleModelCatalogUpdated = useCallback(() => {
+    refreshInstalledModels?.();
+  }, [refreshInstalledModels]);
+
+  useJobEvents(handleJobStatusChanged, handleDownloadProgress, handleModelCatalogUpdated);
 }
