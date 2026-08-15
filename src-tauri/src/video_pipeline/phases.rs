@@ -206,6 +206,11 @@ pub fn run_overlapping_upscale_pipeline(
     let mut history_window: VecDeque<(Instant, usize)> = VecDeque::with_capacity(32);
     #[allow(unused_assignments)]
     let mut total_completed = 0usize;
+    // Authoritative frames-out count as of the last batch boundary. The poll
+    // loop adds its in-flight batch's incremental progress on top of this,
+    // and one real directory scan per batch (~300 frames) re-anchors it --
+    // instead of one scan per poll tick.
+    let mut confirmed_completed = 0usize;
     let warmup_frames_required = 5;
     // Each NCNN invocation pays ~1.5-4s of Vulkan instance init + shader
     // compile + model weight upload before it processes a single frame.
@@ -233,23 +238,19 @@ pub fn run_overlapping_upscale_pipeline(
             return Err(format!("Video frame extraction failed partway through: {err}"));
         }
 
-        // Collect ready frames from staging_dir
-        let mut ready_frames = get_sorted_image_files(&ctx.staging_dir);
         let extraction_done = extraction.is_finished.load(Ordering::SeqCst);
 
-        // While extraction is still running, the lexicographically-last
-        // frame may still be the one ffmpeg is actively writing -- a
-        // directory listing can show a file before all its bytes are
-        // flushed and the handle closed. Taking it risked NCNN decoding a
-        // partially-written JPEG, and the rename below could hit a sharing
-        // violation on Windows while ffmpeg still had it open. Leave it in
-        // staging for one more tick; once a newer frame appears after it,
-        // that proves this one is fully written.
-        if !extraction_done {
-            ready_frames.pop();
-        }
+        // Count before listing. On the overwhelming majority of ticks the
+        // answer is "not enough frames staged yet", which only needs a
+        // number -- building the sorted Vec<PathBuf> is deferred until we
+        // have actually committed to forming a batch, so the waiting path no
+        // longer sorts and allocates a PathBuf per frame across a staging
+        // directory that can hold thousands of them.
+        let staged_total = count_image_files(&ctx.staging_dir);
 
-        if ready_frames.is_empty() {
+        let available = available_staged_frames(staged_total, extraction_done);
+
+        if available == 0 {
             if extraction_done {
                 // All extraction is complete and no more frames to process
                 break;
@@ -260,17 +261,25 @@ pub fn run_overlapping_upscale_pipeline(
         }
 
         // Only start NCNN if we have enough frames for a batch, OR if extraction has finished
-        if ready_frames.len() < batch_target_size && !extraction_done {
-            let current_staging_count = ready_frames.len();
-            let estimated_total = meta
-                .total_frames_estimate
-                .unwrap_or(current_staging_count.max(1));
+        if available < batch_target_size && !extraction_done {
+            let estimated_total = meta.total_frames_estimate.unwrap_or(available.max(1));
             ctx.emit_progress_with_meta(
-                2.0 + ((current_staging_count as f64 / estimated_total as f64) * 6.0).min(6.0),
-                &format!("Extracting Video Frames ({current_staging_count} / {estimated_total})"),
+                2.0 + ((available as f64 / estimated_total as f64) * 6.0).min(6.0),
+                &format!("Extracting Video Frames ({available} / {estimated_total})"),
                 None,
                 None,
             );
+            thread::sleep(STAGING_POLL_INTERVAL);
+            continue;
+        }
+
+        // Committed to a batch -- only now pay for the sorted listing.
+        let mut ready_frames = get_sorted_image_files(&ctx.staging_dir);
+        if !extraction_done {
+            ready_frames.pop();
+        }
+        if ready_frames.is_empty() {
+            // Raced with the count above (frames drained or not yet flushed).
             thread::sleep(STAGING_POLL_INTERVAL);
             continue;
         }
@@ -292,10 +301,17 @@ pub fn run_overlapping_upscale_pipeline(
         let batch_count = batch_items.len();
         total_discovered_frames += batch_count;
 
+        // NCNN writes one output per input and reuses the input's file name,
+        // so these are exactly the names to expect in frames_out_dir. Kept so
+        // the poll loop below can advance its completed count incrementally
+        // rather than re-walking the whole output directory every tick.
+        let mut batch_output_names: Vec<std::ffi::OsString> = Vec::with_capacity(batch_count);
         for frame_path in batch_items {
             if let Some(file_name) = frame_path.file_name() {
                 let target_path = batch_dir.join(file_name);
-                let _ = fs::rename(&frame_path, &target_path);
+                if fs::rename(&frame_path, &target_path).is_ok() {
+                    batch_output_names.push(file_name.to_os_string());
+                }
             }
         }
 
@@ -329,6 +345,10 @@ pub fn run_overlapping_upscale_pipeline(
 
         let ncnn_handle_id = upscale_handle.id();
         ctx.register_handle(upscale_handle);
+
+        // How many of this batch's outputs have appeared so far. Advanced
+        // incrementally by the poll loop; see the walk below.
+        let mut batch_completed = 0usize;
 
         // Poll NCNN execution for this batch
         loop {
@@ -371,7 +391,10 @@ pub fn run_overlapping_upscale_pipeline(
                 }
             };
 
-            total_completed = count_image_files(&ctx.frames_out_dir);
+            batch_completed =
+                advance_completed_outputs(&ctx.frames_out_dir, &batch_output_names, batch_completed);
+            total_completed = confirmed_completed + batch_completed;
+
             let total_expected = meta
                 .total_frames_estimate
                 .unwrap_or(total_discovered_frames.max(total_completed).max(1));
@@ -489,6 +512,13 @@ pub fn run_overlapping_upscale_pipeline(
 
             thread::sleep(NCNN_POLL_INTERVAL);
         }
+
+        // Re-anchor the incremental counter once per batch. This is the only
+        // full scan of frames_out_dir in the hot path, and it absorbs
+        // anything the per-frame walk above could not see: out-of-order
+        // completions, frames NCNN skipped, and the VRAM-retry path that
+        // moves a whole batch back to staging to be redone.
+        confirmed_completed = count_image_files(&ctx.frames_out_dir);
     }
 
     if ctx.is_cancelled() {
@@ -559,6 +589,51 @@ fn check_available_disk_space(
         // disk-full error.
         _ => Ok(()),
     }
+}
+
+/// How many staged frames are safe to hand to NCNN right now.
+///
+/// While extraction is still running, the lexicographically-last staged
+/// frame may be the one ffmpeg currently has open -- a directory listing can
+/// show a file before all its bytes are flushed and the handle closed.
+/// Taking it risks NCNN decoding a partially-written JPEG, and moving it can
+/// hit a sharing violation on Windows while ffmpeg still holds it. Hold it
+/// back one tick; once a newer frame appears after it, that proves it is
+/// fully written.
+fn available_staged_frames(staged_total: usize, extraction_done: bool) -> usize {
+    if extraction_done {
+        staged_total
+    } else {
+        staged_total.saturating_sub(1)
+    }
+}
+
+/// Advances `completed` past every batch output that has appeared in
+/// `frames_out_dir`, returning the new count.
+///
+/// Replaces a full `read_dir` of `frames_out_dir` on every poll tick. That
+/// directory only grows -- by the end of a long video it holds every
+/// upscaled frame -- so rescanning it per tick made progress reporting
+/// O(frames) each time and O(frames^2) across the job, burning a core purely
+/// to redraw a progress bar. Walking forward from the last position instead
+/// costs one stat per newly finished frame plus one for the frame still in
+/// flight.
+///
+/// Multi-threaded NCNN can finish slightly out of order, so this can briefly
+/// lag while an earlier frame is still pending. It catches up as soon as the
+/// gap fills, and the caller's authoritative rescan at each batch boundary
+/// corrects any residual drift.
+fn advance_completed_outputs(
+    frames_out_dir: &Path,
+    output_names: &[std::ffi::OsString],
+    mut completed: usize,
+) -> usize {
+    while completed < output_names.len()
+        && frames_out_dir.join(&output_names[completed]).exists()
+    {
+        completed += 1;
+    }
+    completed
 }
 
 fn count_image_files(dir: &Path) -> usize {
@@ -888,6 +963,51 @@ mod tests {
 
         assert!(!control.is_finished.load(Ordering::SeqCst));
         assert_eq!(control.failure().as_deref(), Some("disk full"));
+    }
+
+    #[test]
+    fn test_available_staged_frames_holds_back_the_in_flight_frame() {
+        // Mid-extraction the newest staged frame may still be open in ffmpeg.
+        assert_eq!(available_staged_frames(10, false), 9);
+        // Once extraction is done every staged frame is fully written.
+        assert_eq!(available_staged_frames(10, true), 10);
+        // Must not underflow on an empty staging dir.
+        assert_eq!(available_staged_frames(0, false), 0);
+    }
+
+    #[test]
+    fn test_advance_completed_outputs_counts_only_contiguous_arrivals() {
+        let dir = std::env::temp_dir().join(format!(
+            "upscaly_advance_test_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("temp dir");
+
+        let names: Vec<std::ffi::OsString> = ["a.jpg", "b.jpg", "c.jpg"]
+            .iter()
+            .map(std::ffi::OsString::from)
+            .collect();
+
+        // Nothing written yet.
+        assert_eq!(advance_completed_outputs(&dir, &names, 0), 0);
+
+        fs::write(dir.join("a.jpg"), b"x").expect("write a");
+        assert_eq!(advance_completed_outputs(&dir, &names, 0), 1);
+
+        // Out-of-order arrival: "c" exists but "b" does not, so the walk
+        // stops at the gap rather than over-reporting. It resumes once the
+        // gap fills -- the batch-boundary rescan corrects any residual drift.
+        fs::write(dir.join("c.jpg"), b"x").expect("write c");
+        assert_eq!(advance_completed_outputs(&dir, &names, 1), 1);
+
+        fs::write(dir.join("b.jpg"), b"x").expect("write b");
+        assert_eq!(advance_completed_outputs(&dir, &names, 1), 3);
+
+        // Resuming from an already-complete count must not run past the end.
+        assert_eq!(advance_completed_outputs(&dir, &names, 3), 3);
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
