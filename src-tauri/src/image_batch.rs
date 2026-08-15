@@ -193,6 +193,24 @@ fn member_percentages(member_count: usize, produced: usize, current_pct: Option<
         .collect()
 }
 
+/// What to say about one member while the shared run is in progress.
+///
+/// Each row describes its own situation rather than restating the group's.
+/// The engine's percentage is deliberately not quoted here: in directory
+/// mode it describes only the image in front of it, and for anything smaller
+/// than a single tile it never leaves 0.00 -- a figure that reads as a
+/// measurement of the row it is printed on when it is nothing of the kind.
+/// The row's own progress bar already carries what is known.
+fn member_phase(index: usize, produced: usize, total: usize) -> String {
+    match index.cmp(&produced) {
+        std::cmp::Ordering::Less => "Upscaled — waiting for the batch to finish".to_string(),
+        std::cmp::Ordering::Equal => {
+            format!("Upscaling in shared batch ({} of {total})", produced + 1)
+        }
+        std::cmp::Ordering::Greater => format!("Queued in shared batch ({} of {total})", index + 1),
+    }
+}
+
 fn build_args(job: &Job, dirs: &BatchDirs, app: &AppHandle) -> Vec<String> {
     let models_dir = get_models_dir(app);
     let gpu_vram_mb = crate::job_queue::get_gpu_vram_mb_for_id(app, job.gpu_id);
@@ -363,12 +381,7 @@ fn run_image_batch_inner(
                 app,
                 &member.job.id,
                 percentages[index],
-                Some(&format!(
-                    "Batch upscaling ({} of {}) — {:.1}%",
-                    (produced + 1).min(members.len()),
-                    members.len(),
-                    percentages[index]
-                )),
+                Some(&member_phase(index, produced, members.len())),
                 None,
                 None,
             );
@@ -515,6 +528,21 @@ mod tests {
             member_percentages(3, 3, Some(99.0)),
             vec![100.0, 100.0, 100.0]
         );
+    }
+
+    #[test]
+    fn test_member_phase_describes_that_member_not_the_group() {
+        // Three members, the first already produced, the second in flight.
+        assert!(member_phase(0, 1, 3).starts_with("Upscaled"));
+        assert_eq!(member_phase(1, 1, 3), "Upscaling in shared batch (2 of 3)");
+        assert_eq!(member_phase(2, 1, 3), "Queued in shared batch (3 of 3)");
+
+        // Nothing engine-reported is quoted as this row's own figure: in
+        // directory mode the percentage belongs to whichever image the
+        // engine is on, and never leaves 0.00 for sub-tile images.
+        for index in 0..3 {
+            assert!(!member_phase(index, 1, 3).contains('%'));
+        }
     }
 
     #[test]
