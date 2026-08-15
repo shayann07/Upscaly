@@ -32,6 +32,71 @@ pub fn suppress_console_window(cmd: &mut Command) {
 #[cfg(not(windows))]
 pub fn suppress_console_window(_cmd: &mut Command) {}
 
+/// Suspends or resumes a child process by pid, returning whether it worked.
+///
+/// Used to apply backpressure to the frame extractor: ffmpeg will happily
+/// decode a whole video onto disk far faster than the GPU can consume it,
+/// and there is no ffmpeg-side flag to make it wait. Pausing the process
+/// itself is the only way to bound staging growth without re-seeking the
+/// input (which is either keyframe-inexact, and so risks the A/V drift the
+/// CFR extraction fix exists to prevent, or requires re-decoding from the
+/// start for every segment).
+///
+/// Implemented with ntdll's `NtSuspendProcess`/`NtResumeProcess`, which is
+/// what every Windows process-suspend tool uses -- Win32 exposes no
+/// documented whole-process equivalent, only per-thread `SuspendThread`.
+/// Returns false on non-Windows, where the caller falls back to running the
+/// extractor unthrottled (see the disk pre-flight check for that path's
+/// protection).
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn set_process_suspended(pid: u32, suspend: bool) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SUSPEND_RESUME};
+
+    type NtProcessFn = unsafe extern "system" fn(HANDLE) -> i32;
+
+    unsafe {
+        let ntdll = LoadLibraryA(c"ntdll.dll".as_ptr().cast());
+        if ntdll == 0 {
+            return false;
+        }
+        let symbol = if suspend {
+            c"NtSuspendProcess"
+        } else {
+            c"NtResumeProcess"
+        };
+        let Some(proc_addr) = GetProcAddress(ntdll, symbol.as_ptr().cast()) else {
+            return false;
+        };
+        let nt_call: NtProcessFn = std::mem::transmute(proc_addr);
+
+        let handle = OpenProcess(PROCESS_SUSPEND_RESUME, 0, pid);
+        if handle == 0 {
+            return false;
+        }
+        let status = nt_call(handle);
+        CloseHandle(handle);
+        status >= 0
+    }
+}
+
+#[cfg(not(windows))]
+fn set_process_suspended(_pid: u32, _suspend: bool) -> bool {
+    false
+}
+
+/// Pauses a running child. See [`set_process_suspended`].
+pub fn suspend_process(pid: u32) -> bool {
+    set_process_suspended(pid, true)
+}
+
+/// Resumes a child paused by [`suspend_process`].
+pub fn resume_process(pid: u32) -> bool {
+    set_process_suspended(pid, false)
+}
+
 pub trait ProcessHandle: Send + Sync {
     fn try_wait(&mut self) -> Result<Option<i32>, AppError>;
     fn kill(&mut self) -> Result<(), AppError>;
