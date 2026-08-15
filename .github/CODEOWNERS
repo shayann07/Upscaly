@@ -1,0 +1,8 @@
+# Every pull request automatically requests a review from the owner.
+#
+# This is what stops a PR sitting unnoticed: GitHub assigns the reviewer
+# the moment the PR opens, rather than waiting for someone to remember.
+#
+# The last matching pattern wins, so more specific rules go below this one.
+
+* @shayann07
