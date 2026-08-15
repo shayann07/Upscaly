@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useVramProfile } from './useVramProfile';
 import { studioActions } from '../store/studioStore';
-import { useSelectedGpu, useTileSize } from '../store/selectors';
+import { useScale, useSelectedGpu, useTileSize } from '../store/selectors';
 
 // selectedGpu === -1 is the "system RAM" pseudo-GPU choice (CPU fallback),
 // which has no VRAM profile to query.
@@ -23,7 +23,8 @@ const SYSTEM_RAM_GPU_ID = -1;
 export function useTelemetrySync() {
   const selectedGpu = useSelectedGpu();
   const tileSize = useTileSize();
-  const { usedVramGb, isOverflowing } = useVramProfile(selectedGpu, tileSize);
+  const scale = useScale();
+  const { usedVramGb, isOverflowing } = useVramProfile(selectedGpu, tileSize, scale);
 
   const isSystemRam = selectedGpu === SYSTEM_RAM_GPU_ID;
   // A placeholder while the profile is in flight, rather than a
