@@ -25,6 +25,24 @@ pub struct ExtractionControl {
     pub error_msg: Arc<Mutex<Option<String>>>,
 }
 
+impl ExtractionControl {
+    /// The extractor's recorded failure, if it died partway through.
+    ///
+    /// Must be consulted both inside the pipeline loop and once more after
+    /// it exits. The extractor writes `error_msg` and then sets
+    /// `is_finished`, so a failure landing between the loop's in-flight
+    /// check and its own `is_finished` read reaches the
+    /// "staging empty + extraction done" branch, which breaks out of the
+    /// loop -- every frame that *was* extracted upscales fine, and the job
+    /// would report success over a silently truncated video.
+    pub fn failure(&self) -> Option<String> {
+        self.error_msg
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
 /// Spawns multi-threaded fast frame extraction in a background thread writing to `staging_dir`.
 pub fn spawn_background_extraction(
     ctx: &VideoJobContext,
@@ -211,12 +229,8 @@ pub fn run_overlapping_upscale_pipeline(
         // immediately instead of quietly reassembling whatever frames made
         // it out and reporting "Succeeded" -- a truncated video with no
         // error is worse than an explicit failure.
-        if extraction.is_finished.load(Ordering::SeqCst) {
-            if let Ok(err_lock) = extraction.error_msg.lock() {
-                if let Some(ref err) = *err_lock {
-                    return Err(format!("Video frame extraction failed partway through: {err}"));
-                }
-            }
+        if let Some(err) = extraction.failure() {
+            return Err(format!("Video frame extraction failed partway through: {err}"));
         }
 
         // Collect ready frames from staging_dir
@@ -479,6 +493,17 @@ pub fn run_overlapping_upscale_pipeline(
 
     if ctx.is_cancelled() {
         return Err("cancelled".to_string());
+    }
+
+    // Final gate before declaring success: the loop can exit via the
+    // "staging empty + extraction done" break without ever having observed
+    // an extractor failure recorded in the intervening window (see
+    // ExtractionControl::failure). Everything upscaled cleanly in that
+    // case, so nothing below would catch it -- the frame set is simply
+    // short, and shipping it silently is exactly the truncated-video-as-
+    // success bug this guards against.
+    if let Some(err) = extraction.failure() {
+        return Err(format!("Video frame extraction failed partway through: {err}"));
     }
 
     let final_completed = count_image_files(&ctx.frames_out_dir);
@@ -807,4 +832,51 @@ pub fn resolve_ffprobe_binary(app: &AppHandle) -> Result<String, String> {
     }
 
     Err("FFprobe binary was not found. Bundled sidecar missing and no system PATH installation present.".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn extraction_control() -> ExtractionControl {
+        ExtractionControl {
+            is_finished: Arc::new(AtomicBool::new(false)),
+            error_msg: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    #[test]
+    fn test_extraction_failure_is_visible_without_waiting_for_is_finished() {
+        // The extractor records error_msg *before* flipping is_finished.
+        // Gating the failure read on is_finished (the old behavior) meant a
+        // failure landing in that window was invisible to the pipeline loop,
+        // which then broke out on an empty staging dir and reported success
+        // over a truncated video.
+        let control = extraction_control();
+        assert_eq!(control.failure(), None);
+
+        *control
+            .error_msg
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some("disk full".to_string());
+
+        assert!(!control.is_finished.load(Ordering::SeqCst));
+        assert_eq!(control.failure().as_deref(), Some("disk full"));
+    }
+
+    #[test]
+    fn test_extraction_failure_persists_for_the_post_loop_check() {
+        // failure() must not consume the error -- the pipeline reads it both
+        // inside the loop and once more after it exits.
+        let control = extraction_control();
+        *control
+            .error_msg
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some("decoder crash".to_string());
+        control.is_finished.store(true, Ordering::SeqCst);
+
+        assert_eq!(control.failure().as_deref(), Some("decoder crash"));
+        assert_eq!(control.failure().as_deref(), Some("decoder crash"));
+    }
 }
