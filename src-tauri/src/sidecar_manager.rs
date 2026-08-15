@@ -5,11 +5,13 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{path::BaseDirectory, AppHandle, Manager};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, ts_rs::TS)]
+#[ts(export, export_to = "../src/lib/ipc/")]
 pub struct GpuDevice {
     pub id: i32,
     pub name: String,
     pub detail: String,
+    #[ts(type = "number")]
     pub vram_mb: u64,
     pub fp16_storage_supported: bool,
     pub fp16_arithmetic_supported: bool,

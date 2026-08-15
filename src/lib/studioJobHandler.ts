@@ -176,7 +176,11 @@ export function handleStudioJobStatus(progress: JobProgress, state: StudioJobSta
     state.setJobStatus(jobState);
     if (phase) state.setJobPhase(phase);
 
-    if (eta_seconds !== undefined && eta_seconds > 0) {
+    // Rust's Option<u64> arrives as null, never undefined. The old
+    // `!== undefined` test therefore never matched, so a backend-supplied ETA
+    // was always thrown away in favour of the local estimate below -- a bug
+    // the generated types surfaced by making the real nullability explicit.
+    if (eta_seconds != null && eta_seconds > 0) {
       state.setEtaSeconds(eta_seconds);
     } else if (state.jobStartTimeRef?.current && percentage >= 15) {
       const elapsedSec = (Date.now() - state.jobStartTimeRef.current) / 1000;
@@ -188,7 +192,8 @@ export function handleStudioJobStatus(progress: JobProgress, state: StudioJobSta
       }
     }
 
-    if (jobFps !== undefined && jobFps > 0) {
+    // Same nullability as eta_seconds above.
+    if (jobFps != null && jobFps > 0) {
       state.setFps(jobFps);
       if (state.setRateStr) {
         state.setRateStr(`${jobFps.toFixed(1)} FPS`);
@@ -215,9 +220,9 @@ export function handleStudioJobStatus(progress: JobProgress, state: StudioJobSta
   }
 
   if (isDone) {
-    handleCompletedStatus(eventOutPath, state, snapshot, isActiveJob);
+    handleCompletedStatus(eventOutPath ?? undefined, state, snapshot, isActiveJob);
   } else if (isErr) {
-    handleFailedStatus(error, state, snapshot, isActiveJob);
+    handleFailedStatus(error ?? undefined, state, snapshot, isActiveJob);
   } else if (isCancelled) {
     handleCancelledStatus(state, isActiveJob);
   }

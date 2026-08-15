@@ -55,14 +55,19 @@ export interface Toast {
 }
 
 /**
- * What `run_upscale` returns. The backend owns output naming and collision
- * handling, so the path it reserved is reported back rather than guessed
- * here -- see `output_paths.rs`.
+ * IPC payloads are generated from the Rust definitions rather than restated
+ * here -- see src/lib/ipc. Re-exported so existing imports from this module
+ * keep working, but the shapes themselves now have exactly one author.
  */
-export interface UpscaleJobHandle {
-  job_id: string;
-  output_path: string;
-}
+export type {
+  AppSettings,
+  FullModelInfo,
+  GpuDevice,
+  JobProgress,
+  UpscaleJobHandle,
+  UpscaleRequest,
+  VramProfile,
+} from './ipc';
 
 /**
  * How many toasts can be on screen at once. Shared by the toast store
@@ -150,17 +155,6 @@ export const SUPPORTED_MODELS: ModelInfo[] = [
 ];
 
 export const SUPPORTED_SCALES = [2, 3, 4];
-
-export interface JobProgress {
-  job_id: string;
-  percentage: number;
-  status: string;
-  error?: string;
-  phase?: string;
-  eta_seconds?: number;
-  fps?: number;
-  output_path?: string;
-}
 
 export type { JobState } from './jobState';
 export { isTerminalState, isValidStateTransition, normalizeJobStatus } from './jobState';

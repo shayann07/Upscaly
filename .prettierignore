@@ -1,0 +1,5 @@
+# Generated from the Rust IPC structs by ts-rs (npm run gen:types).
+# Formatting these would be undone on every regeneration, which would then
+# fail the CI drift check for a purely cosmetic difference.
+src/lib/ipc/*.ts
+!src/lib/ipc/index.ts

@@ -8,9 +8,12 @@ pub struct ExecutionProfile {
     pub proc_threads: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../src/lib/ipc/")]
 pub struct VramProfile {
+    #[ts(type = "number")]
     pub total_vram_mb: u64,
+    #[ts(type = "number")]
     pub used_vram_mb: u64,
     pub safe_tile_size: i32,
     pub auto_tile_size: i32,
