@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { resetStudioStore, studioActions, studioStore } from '../studioStore';
-import { cancelAll, refreshCatalog, selectScale, startUpscale } from '../studioCommands';
+import {
+  cancelAll,
+  confirmSlowRunAndStart,
+  refreshCatalog,
+  selectScale,
+  startUpscale,
+} from '../studioCommands';
 import { StagedFile } from '../queueItem';
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -101,6 +107,46 @@ describe('startUpscale', () => {
     // ignores the preset the user picked -- succeeding, with no TTA and no
     // sign that anything was dropped.
     expect(requests[0].preset).toBe('quality');
+  });
+
+  it('will not start a Quality video run without confirming the cost first', async () => {
+    // TTA runs every tile 8 times. On a 294-frame clip that is hours rather
+    // than minutes, and the previous warning was a progress-line write that
+    // the poll loop overwrote within 300ms -- so the user saw a job that was
+    // inexplicably slow and nothing explaining why.
+    mockInvoke.mockResolvedValue([{ job_id: 'job-v', output_path: 'C:/out/v.mp4' }]);
+    studioActions.setPreset('quality');
+    studioActions.addFiles([{ ...staged('v'), isVideo: true }], true);
+
+    await startUpscale();
+
+    expect(mockInvoke).not.toHaveBeenCalledWith('run_upscale_batch', expect.anything());
+    expect(state().confirmSlowRunOpen).toBe(true);
+
+    await confirmSlowRunAndStart();
+
+    expect(mockInvoke).toHaveBeenCalledWith('run_upscale_batch', expect.anything());
+    expect(state().confirmSlowRunOpen).toBe(false);
+  });
+
+  it('does not interrupt a Quality run on images, or a video run on Balanced', async () => {
+    // The cost only bites on video. Asking every time would train the user
+    // to click through the one case that matters.
+    mockInvoke.mockResolvedValue([{ job_id: 'job-a', output_path: 'C:/out/a.png' }]);
+    studioActions.setPreset('quality');
+    studioActions.addFiles([staged('a')], true);
+    await startUpscale();
+    expect(state().confirmSlowRunOpen).toBe(false);
+    expect(mockInvoke).toHaveBeenCalledWith('run_upscale_batch', expect.anything());
+
+    resetStudioStore();
+    mockInvoke.mockClear();
+    studioActions.setGpus([{ id: 0, name: 'Test GPU', detail: 'Vulkan' }]);
+    studioActions.setPreset('balanced');
+    studioActions.addFiles([{ ...staged('v'), isVideo: true }], true);
+    await startUpscale();
+    expect(state().confirmSlowRunOpen).toBe(false);
+    expect(mockInvoke).toHaveBeenCalledWith('run_upscale_batch', expect.anything());
   });
 
   it('retries a previously failed item but leaves finished ones alone', async () => {

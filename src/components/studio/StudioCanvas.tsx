@@ -7,6 +7,7 @@ import { StudioControlsSection } from './StudioControlsSection';
 import {
   useActiveNavTab,
   useConfirmCancelOpen,
+  useConfirmSlowRunOpen,
   useGpus,
   useIsProcessing,
   useIsVramOverflowing,
@@ -22,13 +23,16 @@ import {
   cancelItem,
   clearFile,
   confirmCancelAndClear,
+  confirmSlowRunAndStart,
   dismissCancelConfirmation,
+  dismissSlowRunConfirmation,
   openFiles,
 } from '../../store/studioCommands';
 
 const handleOpenFile = () => void openFiles();
 const handleCancelItem = (id: string) => void cancelItem(id);
 const handleConfirmCancel = () => void confirmCancelAndClear();
+const handleConfirmSlowRun = () => void confirmSlowRunAndStart();
 
 export const StudioCanvas = memo(function StudioCanvas({ isDragOver }: { isDragOver: boolean }) {
   const items = useItems();
@@ -41,6 +45,7 @@ export const StudioCanvas = memo(function StudioCanvas({ isDragOver }: { isDragO
   const selectedGpu = useSelectedGpu();
   const activeNavTab = useActiveNavTab();
   const confirmCancelOpen = useConfirmCancelOpen();
+  const confirmSlowRunOpen = useConfirmSlowRunOpen();
 
   const isVramOverflowing = useIsVramOverflowing();
 
@@ -105,6 +110,22 @@ export const StudioCanvas = memo(function StudioCanvas({ isDragOver }: { isDragO
         isOpen={confirmCancelOpen}
         onConfirm={handleConfirmCancel}
         onDismiss={dismissCancelConfirmation}
+      />
+
+      {/*
+        Quality enables TTA, which runs every tile eight times. On a video
+        that turns a job measured in minutes into one measured in hours, and
+        a progress bar cannot distinguish that from something being broken.
+        Confirmed before the run rather than explained afterwards.
+      */}
+      <ConfirmCancelDialog
+        isOpen={confirmSlowRunOpen}
+        title="This will take a long time"
+        message="The Quality preset runs every tile 8 times (TTA), which is far slower on video than on a single image — expect hours rather than minutes for a full clip. Switch to Balanced for the same model at normal speed."
+        confirmText="Run anyway"
+        cancelText="Go back"
+        onConfirm={handleConfirmSlowRun}
+        onDismiss={dismissSlowRunConfirmation}
       />
     </>
   );

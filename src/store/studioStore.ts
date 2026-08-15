@@ -69,6 +69,11 @@ export interface StudioState {
   comparisonViewMode: ComparisonViewMode;
   zoomLevel: number;
   confirmCancelOpen: boolean;
+  /**
+   * Set when a video run is about to start under a preset that enables
+   * TTA. Blocks the submission until the user has seen the cost.
+   */
+  confirmSlowRunOpen: boolean;
   toasts: Toast[];
   historyItems: HistoryItem[];
 
@@ -116,6 +121,7 @@ function createInitialState(): StudioState {
     comparisonViewMode: 'split',
     zoomLevel: 1,
     confirmCancelOpen: false,
+    confirmSlowRunOpen: false,
     toasts: [],
     historyItems: getRecentHistory(),
 
@@ -372,6 +378,9 @@ export const studioActions = {
       ...prev,
       zoomLevel: prev.zoomLevel === 1 ? 2 : prev.zoomLevel === 2 ? 4 : prev.zoomLevel === 4 ? 8 : 1,
     }));
+  },
+  setConfirmSlowRunOpen(confirmSlowRunOpen: boolean) {
+    setState((prev) => ({ ...prev, confirmSlowRunOpen }));
   },
   setConfirmCancelOpen(confirmCancelOpen: boolean) {
     setState((prev) => ({ ...prev, confirmCancelOpen }));
