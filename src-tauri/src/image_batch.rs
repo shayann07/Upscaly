@@ -74,6 +74,10 @@ pub fn can_group_with(first: &Job, other: &Job) -> bool {
         && first.gpu_id == other.gpu_id
         && first.scale == other.scale
         && first.tile_size == other.tile_size
+        // The preset decides both the tile the governor is asked for and
+        // whether -x is passed, so two jobs on different presets are simply
+        // not the same invocation.
+        && first.preset == other.preset
 }
 
 /// One job's participation in a shared run.
@@ -274,14 +278,15 @@ fn build_args(job: &Job, dirs: &BatchDirs, app: &AppHandle) -> (Vec<String>, i32
     let models_dir = get_models_dir(app);
     let gpu_vram_mb = crate::job_queue::get_gpu_vram_mb_for_id(app, job.gpu_id);
     let effective_scale = resolve_effective_scale(&job.model_name, job.scale, Some(&models_dir));
+    let requested_tile = crate::engine::preset::effective_requested_tile(job.tile_size, job.preset);
     let exec_profile = crate::engine::vram_governor::calculate_safe_execution_profile(
         gpu_vram_mb,
-        job.tile_size,
+        requested_tile,
         effective_scale,
         false,
     );
 
-    let args = vec![
+    let mut args = vec![
         "-i".to_string(),
         dirs.input.to_string_lossy().to_string(),
         "-o".to_string(),
@@ -297,7 +302,7 @@ fn build_args(job: &Job, dirs: &BatchDirs, app: &AppHandle) -> (Vec<String>, i32
         "-t".to_string(),
         exec_profile.tile_size.to_string(),
         "-j".to_string(),
-        exec_profile.thread_arg.clone(),
+        crate::engine::preset::apply_io_threads(&exec_profile.thread_arg, job.preset),
         // Pin the output extension so the produced file name is derivable
         // from the staged one. build_output_path already settles on PNG for
         // every image job, so this is not a second opinion about format.
@@ -305,6 +310,9 @@ fn build_args(job: &Job, dirs: &BatchDirs, app: &AppHandle) -> (Vec<String>, i32
         "png".to_string(),
         "-v".to_string(),
     ];
+    if job.preset.profile().tta {
+        args.push("-x".to_string());
+    }
 
     (args, exec_profile.tile_size)
 }
@@ -582,6 +590,7 @@ mod tests {
             scale: 4,
             tile_size: 256,
             is_video: false,
+            preset: crate::engine::preset::QualityPreset::Balanced,
         }
     }
 
@@ -609,6 +618,14 @@ mod tests {
         let mut other_tile = image_job("b");
         other_tile.tile_size = 128;
         assert!(!can_group_with(&base, &other_tile));
+
+        // The preset decides whether -x is on the command line and which
+        // tile the governor is asked for. Grouping across it would run one
+        // of the two images at settings its row never asked for -- and the
+        // difference is invisible, because both would still succeed.
+        let mut other_preset = image_job("b");
+        other_preset.preset = crate::engine::preset::QualityPreset::Quality;
+        assert!(!can_group_with(&base, &other_preset));
     }
 
     #[test]

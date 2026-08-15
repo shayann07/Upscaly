@@ -179,6 +179,7 @@ export async function startUpscale(): Promise<void> {
         gpu_id: snapshot.selectedGpu,
         scale: snapshot.scale,
         tile_size: snapshot.tileSize,
+        preset: snapshot.preset,
         is_video: item.isVideo,
       })),
     });

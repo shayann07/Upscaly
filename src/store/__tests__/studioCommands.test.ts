@@ -89,6 +89,20 @@ describe('startUpscale', () => {
     expect(new Set(requests.map((r) => r.gpu_id)).size).toBe(1);
   });
 
+  it('sends the chosen preset so the backend knows whether to pass -x', async () => {
+    mockInvoke.mockResolvedValue([{ job_id: 'job-a', output_path: 'C:/out/a.png' }]);
+    studioActions.setPreset('quality');
+    studioActions.addFiles([staged('a')], true);
+
+    await startUpscale();
+
+    const { requests } = mockInvoke.mock.calls[0][1] as { requests: { preset: string }[] };
+    // Without this the backend falls back to Balanced and the run silently
+    // ignores the preset the user picked -- succeeding, with no TTA and no
+    // sign that anything was dropped.
+    expect(requests[0].preset).toBe('quality');
+  });
+
   it('retries a previously failed item but leaves finished ones alone', async () => {
     mockInvoke.mockResolvedValue([{ job_id: 'retry-1', output_path: 'C:/out/a.png' }]);
     studioActions.addFiles([staged('a'), staged('b')], true);

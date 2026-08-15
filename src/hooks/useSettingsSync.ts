@@ -15,6 +15,7 @@ const selectPersisted = (s: StudioState) =>
     s.selectedGpu,
     s.scale,
     s.tileSize,
+    s.preset,
     s.customOutputPath,
     s.isMuted,
     s.autoCheckUpdates,
@@ -24,6 +25,7 @@ const selectPersisted = (s: StudioState) =>
 async function restoreNonGpuSettings(saved: AppSettings): Promise<void> {
   if (saved.default_scale != null) studioActions.setScale(saved.default_scale);
   if (saved.default_tile_size != null) studioActions.setTileSize(saved.default_tile_size);
+  if (saved.default_preset != null) studioActions.setPreset(saved.default_preset);
   if (saved.auto_check_updates != null) {
     studioActions.setAutoCheckUpdates(saved.auto_check_updates);
   }
@@ -125,6 +127,7 @@ export function useSettingsSync() {
         default_gpu_name: s.gpus.find((g) => g.id === s.selectedGpu)?.name ?? null,
         default_scale: s.scale,
         default_tile_size: s.tileSize,
+        default_preset: s.preset,
         output_directory: s.customOutputPath || null,
         sound_muted: s.isMuted,
         auto_check_updates: s.autoCheckUpdates,

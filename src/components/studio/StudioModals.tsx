@@ -14,6 +14,7 @@ import {
   useHistoryItems,
   useInstalledModels,
   useIsProcessing,
+  usePreset,
   useScale,
   useSelectedGpu,
   useSupportedModels,
@@ -33,6 +34,7 @@ export const StudioModals = memo(function StudioModals() {
   const selectedGpu = useSelectedGpu();
   const tileSize = useTileSize();
   const scale = useScale();
+  const preset = usePreset();
   const customOutputPath = useCustomOutputPath();
   const isProcessing = useIsProcessing();
   const supportedModels = useSupportedModels();
@@ -77,6 +79,8 @@ export const StudioModals = memo(function StudioModals() {
               tileSize={tileSize}
               onSelectTileSize={studioActions.setTileSize}
               scale={scale}
+              preset={preset}
+              onSelectPreset={studioActions.setPreset}
               customOutputPath={customOutputPath}
               onSetOutputDir={studioActions.setCustomOutputPath}
               onSelectOutputPath={handleSelectOutputDir}

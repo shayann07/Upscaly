@@ -30,6 +30,11 @@ pub struct UpscaleRequest {
     pub scale: i32,
     pub tile_size: i32,
     pub is_video: bool,
+    /// Absent for callers written before presets existed; those get
+    /// [`QualityPreset::Balanced`], which behaves exactly as the engine did
+    /// before this field.
+    #[serde(default)]
+    pub preset: engine::preset::QualityPreset,
 }
 
 /// What `run_upscale` hands back: the job to track, and the path its output

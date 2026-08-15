@@ -40,6 +40,7 @@ fn build_job(app_handle: &tauri::AppHandle, request: UpscaleRequest) -> (Job, Up
         scale: request.scale,
         tile_size: request.tile_size,
         is_video: request.is_video,
+        preset: request.preset,
     };
 
     (

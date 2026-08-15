@@ -23,6 +23,8 @@ pub struct AppSettings {
     pub default_gpu_name: Option<String>,
     pub default_scale: i32,
     pub default_tile_size: u32,
+    #[serde(default)]
+    pub default_preset: crate::engine::preset::QualityPreset,
     pub output_directory: Option<String>,
     pub sound_muted: bool,
     pub auto_check_updates: bool,
@@ -35,6 +37,7 @@ impl Default for AppSettings {
             default_gpu_name: None,
             default_scale: 4,
             default_tile_size: 0,
+            default_preset: crate::engine::preset::QualityPreset::Balanced,
             output_directory: None,
             sound_muted: false,
             auto_check_updates: true,
@@ -114,6 +117,12 @@ mod tests {
 
         let parsed: AppSettings = serde_json::from_str(legacy).unwrap();
         assert_eq!(parsed.default_gpu_name, None);
+        // Never the 8x preset by default -- an upgrade must not silently
+        // make every job eight times slower.
+        assert_eq!(
+            parsed.default_preset,
+            crate::engine::preset::QualityPreset::Balanced
+        );
         assert_eq!(parsed.default_scale, 2);
         assert_eq!(parsed.output_directory.as_deref(), Some("D:/out"));
     }

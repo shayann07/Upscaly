@@ -1,4 +1,4 @@
-import { JobSnapshot } from '../lib/ipc';
+import { JobSnapshot, QualityPreset } from '../lib/ipc';
 import { GpuInfo, ModelInfo, MAX_VISIBLE_TOASTS, SUPPORTED_MODELS } from '../lib/types';
 import { getRecentHistory, HistoryItem } from '../lib/history';
 import { isTerminalState } from '../lib/jobState';
@@ -36,6 +36,12 @@ export interface StudioState {
   scale: number;
   /** 0 = AUTO; the backend decides the real tile size. */
   tileSize: number;
+  /**
+   * Quality/Balanced/Speed. Proposes a tile size and decides whether TTA is
+   * used; the backend's VRAM governor still has the last word on the tile,
+   * and an explicit `tileSize` above still overrides the proposal.
+   */
+  preset: QualityPreset;
   customOutputPath: string;
   isMuted: boolean;
   autoCheckUpdates: boolean;
@@ -80,6 +86,7 @@ function createInitialState(): StudioState {
     selectedGpu: 0,
     scale: 4,
     tileSize: 0,
+    preset: 'balanced',
     customOutputPath: '',
     isMuted: localStorage.getItem('upscaly_sound_muted') === 'true',
     autoCheckUpdates: true,
@@ -283,6 +290,9 @@ export const studioActions = {
   setScale(scale: number) {
     setState((prev) => ({ ...prev, scale }));
   },
+  setPreset(preset: QualityPreset) {
+    setState((prev) => ({ ...prev, preset }));
+  },
   setTileSize(tileSize: number) {
     setState((prev) => ({ ...prev, tileSize }));
   },
@@ -347,11 +357,7 @@ export const studioActions = {
   setConfirmCancelOpen(confirmCancelOpen: boolean) {
     setState((prev) => ({ ...prev, confirmCancelOpen }));
   },
-  setTelemetry(
-    activeVramGb: string,
-    isVramOverflowing: boolean,
-    effectiveTileSize: number | null
-  ) {
+  setTelemetry(activeVramGb: string, isVramOverflowing: boolean, effectiveTileSize: number | null) {
     setState((prev) =>
       prev.activeVramGb === activeVramGb &&
       prev.isVramOverflowing === isVramOverflowing &&
