@@ -34,6 +34,17 @@ enum AudioMode {
 // pure waste, repeated every single job.
 static LAST_SUCCESSFUL_ENCODER: Mutex<Option<EncoderStrategy>> = Mutex::new(None);
 
+// Every strategy below encodes 4:2:0 chroma (yuv420p, or nv12 for QSV),
+// which cannot represent an odd frame width or height. Any source whose
+// upscaled dimensions land odd -- e.g. a 3x model on 853x480 giving
+// 2559x1440 -- made *every* encoder in the candidate list fail with
+// "width not divisible by 2", killing the job only after the entire
+// (potentially hour-long) upscale had already completed. Pad up to the
+// next even dimension instead of scaling or cropping, so the fix costs
+// at most a single row/column of black edge pixels and never resamples
+// or discards real image data.
+const EVEN_DIMENSION_PAD: &str = "pad=ceil(iw/2)*2:ceil(ih/2)*2";
+
 impl EncoderStrategy {
     pub fn all() -> &'static [EncoderStrategy] {
         &[
@@ -164,6 +175,8 @@ impl EncoderStrategy {
             "0:v:0".to_string(),
             "-map".to_string(),
             "1:a?".to_string(),
+            "-vf".to_string(),
+            EVEN_DIMENSION_PAD.to_string(),
         ];
 
         args.extend(self.video_args());
@@ -344,5 +357,29 @@ mod tests {
 
         assert!(transcode_args.windows(2).any(|w| w == ["-c:a", "aac"]));
         assert!(transcode_args.windows(2).any(|w| w == ["-b:a", "256k"]));
+    }
+
+    #[test]
+    fn test_every_encoder_pads_to_even_dimensions() {
+        // All strategies encode 4:2:0 chroma, which cannot represent odd
+        // frame dimensions -- without this filter an odd-sized upscale
+        // (e.g. 3x on 853x480) fails every encoder in the list after the
+        // full upscale has already run.
+        for &encoder in EncoderStrategy::all() {
+            for audio_mode in [AudioMode::Copy, AudioMode::Transcode] {
+                let args =
+                    encoder.to_args("30/1", "frame_%08d.jpg", "in.mp4", "out.mp4", audio_mode);
+                assert!(
+                    args.windows(2).any(|w| w[0] == "-vf" && w[1] == EVEN_DIMENSION_PAD),
+                    "{encoder:?} with {audio_mode:?} audio is missing the even-dimension pad filter"
+                );
+                // Exactly one -vf: a second would silently override the first.
+                assert_eq!(
+                    args.iter().filter(|a| *a == "-vf").count(),
+                    1,
+                    "{encoder:?} should pass exactly one -vf filter chain"
+                );
+            }
+        }
     }
 }
