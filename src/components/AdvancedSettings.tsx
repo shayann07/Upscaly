@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import { DeviceSelectorSection } from './settings/DeviceSelectorSection';
 import { TileSizeSection } from './settings/TileSizeSection';
+import { PresetSection } from './settings/PresetSection';
 import { useVramProfile } from '../hooks/useVramProfile';
+import { QualityPreset } from '../lib/types';
 
 export interface GpuInfo {
   id: number;
@@ -20,6 +22,8 @@ export interface AdvancedSettingsProps {
   onSelectTileSize?: (size: number) => void;
   /** The output factor the VRAM projection is sized against; see useVramProfile. */
   scale?: number;
+  preset?: QualityPreset;
+  onSelectPreset?: (preset: QualityPreset) => void;
   outputDir?: string;
   customOutputPath?: string;
   onSetOutputDir?: (dir: string) => void;
@@ -39,6 +43,8 @@ export function AdvancedSettings({
   onSetTileSize,
   onSelectTileSize,
   scale = 4,
+  preset = 'balanced',
+  onSelectPreset = () => {},
   outputDir = '~/Pictures/Upscaled',
   customOutputPath,
   onSetOutputDir,
@@ -119,6 +125,8 @@ export function AdvancedSettings({
           vramPct={vramPct}
           EASE={EASE}
         />
+
+        <PresetSection preset={preset} onSelectPreset={onSelectPreset} accentColor={accentColor} />
 
         <TileSizeSection
           tileSize={tileSize}

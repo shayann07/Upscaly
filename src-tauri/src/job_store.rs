@@ -464,6 +464,7 @@ mod tests {
             scale: 4,
             tile_size: 256,
             is_video: false,
+            preset: crate::engine::preset::QualityPreset::Balanced,
         }
     }
 

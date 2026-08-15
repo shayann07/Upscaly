@@ -253,12 +253,24 @@ pub fn run_overlapping_upscale_pipeline(
     let extraction = spawn_background_extraction(ctx, ffmpeg_binary, &meta.fps_string)?;
     let sidecar_path = resolve_sidecar_path(ctx.app, "realesrgan-ncnn-vulkan")?;
     let gpu_vram_mb = crate::job_queue::get_gpu_vram_mb_for_id(ctx.app, ctx.job.gpu_id);
+    let requested_tile =
+        crate::engine::preset::effective_requested_tile(ctx.job.tile_size, ctx.job.preset);
     let mut exec_profile = crate::engine::vram_governor::calculate_safe_execution_profile(
         gpu_vram_mb,
-        ctx.job.tile_size,
+        requested_tile,
         effective_scale,
         true,
     );
+
+    // TTA multiplies GPU work per frame by eight. On a clip of any length
+    // that is the difference between minutes and hours, so it is said out
+    // loud before the first frame rather than discovered from the ETA.
+    if ctx.job.preset.profile().tta {
+        ctx.emit_progress(
+            1.0,
+            "Quality preset: TTA is on, which runs each frame 8 times. This will take far longer than Balanced.",
+        );
+    }
 
     let mut total_discovered_frames = 0usize;
     let mut batch_index = 0usize;
@@ -368,7 +380,7 @@ pub fn run_overlapping_upscale_pipeline(
         total_discovered_frames += batch_output_names.len();
 
         // Spawn NCNN on this batch with safe VRAM profile
-        let upscale_args = vec![
+        let mut upscale_args = vec![
             "-i".to_string(),
             batch_dir.to_string_lossy().to_string(),
             "-o".to_string(),
@@ -386,9 +398,12 @@ pub fn run_overlapping_upscale_pipeline(
             "-f".to_string(),
             "jpg".to_string(),
             "-j".to_string(),
-            exec_profile.thread_arg.clone(),
+            crate::engine::preset::apply_io_threads(&exec_profile.thread_arg, ctx.job.preset),
             "-v".to_string(),
         ];
+        if ctx.job.preset.profile().tta {
+            upscale_args.push("-x".to_string());
+        }
 
         let runner = StdProcessRunner::new();
         let upscale_handle = runner

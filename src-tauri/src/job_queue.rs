@@ -27,6 +27,8 @@ pub struct Job {
     pub scale: i32,
     pub tile_size: i32,
     pub is_video: bool,
+    #[serde(default)]
+    pub preset: crate::engine::preset::QualityPreset,
 }
 
 /// Restricts a job id to a safe filesystem path component. The id is used to
@@ -576,17 +578,19 @@ fn run_single_image_job(
 
     let gpu_vram_mb = get_gpu_vram_mb_for_id(app, job.gpu_id);
     let effective_scale = resolve_effective_scale(&job.model_name, job.scale, Some(&models_dir));
+    let requested_tile =
+        crate::engine::preset::effective_requested_tile(job.tile_size, job.preset);
     // The governor is sized against the scale that will actually run, not
     // the one that was requested -- a model whose native factor differs
     // changes the upsampling cost by the square of the difference.
     let exec_profile = crate::engine::vram_governor::calculate_safe_execution_profile(
         gpu_vram_mb,
-        job.tile_size,
+        requested_tile,
         effective_scale,
         job.is_video,
     );
 
-    let args = vec![
+    let mut args = vec![
         "-i".to_string(),
         job.input_path.clone(),
         "-o".to_string(),
@@ -602,9 +606,12 @@ fn run_single_image_job(
         "-t".to_string(),
         exec_profile.tile_size.to_string(),
         "-j".to_string(),
-        exec_profile.thread_arg.clone(),
+        crate::engine::preset::apply_io_threads(&exec_profile.thread_arg, job.preset),
         "-v".to_string(),
     ];
+    if job.preset.profile().tta {
+        args.push("-x".to_string());
+    }
 
     let runner = StdProcessRunner::new();
     let handle = runner.spawn(&sidecar_path, &args)?;
@@ -771,6 +778,7 @@ mod tests {
             scale: 4,
             tile_size: 256,
             is_video: false,
+            preset: crate::engine::preset::QualityPreset::Balanced,
         }
     }
 
