@@ -1,3 +1,5 @@
+import { usePanelA11y } from '../hooks/usePanelA11y';
+
 interface AboutModalProps {
   onClose: () => void;
   isOpen?: boolean;
@@ -14,20 +16,34 @@ const HOTKEYS = [
 ];
 
 export function AboutModal({ onClose, isOpen = true }: AboutModalProps) {
+  // Above the early return: hook order must not depend on isOpen.
+  const panelRef = usePanelA11y<HTMLDivElement>(isOpen);
+
   if (isOpen === false) return null;
 
   return (
-    <div className="w-full h-full flex flex-col border border-[#34312D] rounded-[14px] bg-[rgba(13,12,11,.97)] shadow-[0_20px_50px_rgba(0,0,0,.6)] overflow-hidden">
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-labelledby="about-panel-title"
+      tabIndex={-1}
+      className="w-full h-full flex flex-col border border-[#34312D] rounded-[14px] bg-[rgba(13,12,11,.97)] shadow-[0_20px_50px_rgba(0,0,0,.6)] overflow-hidden outline-none"
+    >
       {/* Header */}
       <div className="flex-none h-[38px] flex items-center justify-between px-3 border-b border-[#232120]">
-        <span className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.1em] text-[#6B655E]">
+        <span
+          id="about-panel-title"
+          className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.1em] text-[#6B655E]"
+        >
           SHORTCUTS & INFO
         </span>
         <button
+          type="button"
           onClick={onClose}
-          className="w-5 h-5 flex items-center justify-center border-none rounded-md bg-transparent text-[#6B655E] text-sm cursor-pointer transition-all duration-150 hover:bg-[#1C1B19] hover:text-[#F2F0ED]"
+          aria-label="Close shortcuts and info"
+          className="w-5 h-5 flex items-center justify-center border-none rounded-md bg-transparent text-[#6B655E] text-sm cursor-pointer transition-all duration-150 hover:bg-[#1C1B19] hover:text-[#F2F0ED] focus-visible:ring-1 focus-visible:ring-[var(--border-hover)]"
         >
-          ×
+          <span aria-hidden="true">×</span>
         </button>
       </div>
 
