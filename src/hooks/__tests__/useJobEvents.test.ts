@@ -57,6 +57,22 @@ describe('useJobEvents hook', () => {
     });
   });
 
+  it('refreshes the catalog when the backend reports it changed', async () => {
+    const onModelCatalogUpdated = vi.fn();
+
+    await act(async () => {
+      renderHook(() => useJobEvents(undefined, undefined, onModelCatalogUpdated));
+    });
+
+    expect(mockListeners['model-catalog-updated']).toBeDefined();
+
+    act(() => {
+      mockListeners['model-catalog-updated']({ payload: undefined });
+    });
+
+    expect(onModelCatalogUpdated).toHaveBeenCalledTimes(1);
+  });
+
   it('unsubscribes listeners on unmount', async () => {
     const onJobStatusChanged = vi.fn();
     let unmountFn: () => void = () => {};
