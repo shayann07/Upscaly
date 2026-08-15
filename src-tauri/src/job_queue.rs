@@ -578,8 +578,7 @@ fn run_single_image_job(
 
     let gpu_vram_mb = get_gpu_vram_mb_for_id(app, job.gpu_id);
     let effective_scale = resolve_effective_scale(&job.model_name, job.scale, Some(&models_dir));
-    let requested_tile =
-        crate::engine::preset::effective_requested_tile(job.tile_size, job.preset);
+    let requested_tile = crate::engine::preset::effective_requested_tile(job.tile_size, job.preset);
     // The governor is sized against the scale that will actually run, not
     // the one that was requested -- a model whose native factor differs
     // changes the upsampling cost by the square of the difference.
