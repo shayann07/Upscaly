@@ -39,11 +39,19 @@ use crate::video_pipeline::context::TempFolderGuard;
 
 /// How many images one process may be given.
 ///
-/// The cap is about blast radius, not throughput: everything in a group
-/// shares one process, so a group that is killed outright (every member
-/// cancelled) throws away that much work, and the startup cost being
-/// amortised is already almost entirely recovered by the first handful of
-/// images.
+/// The cap is about blast radius, not throughput. Measured on an RTX 3050
+/// with 640x480 sources, process startup is ~3.0s against ~4.3s of GPU work
+/// per image, which puts the ceiling at `1 + startup/work` -- about 1.70x --
+/// and a group of 8 already reaches 92% of it, 16 reaches 96%. Going from 16
+/// to 32 buys ~2%.
+///
+/// What that 2% costs is the other half of the trade. Members are finalised
+/// only when the shared run ends, so a member whose output was produced
+/// early still reads as running, is still cancellable, and has its output
+/// discarded if the whole group is then cancelled. The bigger the group, the
+/// more finished-but-unfinalised work a single "cancel all" can throw away.
+/// 32 is the outer bound of that exposure; delivering members as their
+/// outputs appear would remove it, and is the obvious next move here.
 pub const MAX_BATCH_SIZE: usize = 32;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(120);
@@ -102,9 +110,17 @@ fn staged_extension(input_path: &str) -> &'static str {
 
 /// Places a member's input into the shared input directory.
 ///
-/// Tries a hard link first so a batch of large images does not have to be
-/// duplicated on disk; falls back to a copy, which is what happens across
-/// volumes and on filesystems that will not link.
+/// Tries a hard link first, but expect the copy: the staging directory
+/// lives in the app cache (the system drive) and media usually does not, and
+/// a hard link cannot cross volumes. Measured on the development machine,
+/// media on `D:` and cache on `C:` fails with `ERROR_NOT_SAME_DEVICE` every
+/// time, so the copy is the normal path rather than the exception.
+///
+/// That is accepted rather than worked around. Staging next to the inputs
+/// instead would make the link succeed, but it means writing into the user's
+/// own media folders, which fails outright on read-only or network locations
+/// and needs this same fallback anyway. The copy is bounded by the group
+/// size and is noise next to a run measured in minutes.
 fn stage_input(source: &Path, destination: &Path) -> Result<(), AppError> {
     if fs::hard_link(source, destination).is_ok() {
         return Ok(());
