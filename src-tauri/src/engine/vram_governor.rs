@@ -54,6 +54,25 @@ pub fn estimate_total_vram_mb(tile_size: i32, proc_threads: u32) -> u64 {
     base_model_mb + single_buffer_mb * u64::from(proc_threads.max(1))
 }
 
+/// Usable VRAM budget for upscaling, reserving headroom for OS/DWM display
+/// compositing (25%, or a fixed slice on small cards).
+///
+/// Public so callers deciding whether *two* things can be resident at once --
+/// e.g. overlapping one batch's NCNN process with the next one's startup --
+/// can test against the same ceiling the profile itself was sized against,
+/// rather than inventing a second budget that could drift from this one.
+#[must_use]
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+pub fn safe_vram_ceiling_mb(gpu_vram_mb: u64) -> u64 {
+    if gpu_vram_mb <= 1024 {
+        gpu_vram_mb.saturating_sub(200).max(300)
+    } else if gpu_vram_mb <= 2048 {
+        gpu_vram_mb.saturating_sub(450).max(600)
+    } else {
+        (gpu_vram_mb as f64 * 0.75).round() as u64
+    }
+}
+
 /// Determine the maximum safe tile size and thread configuration for a given GPU VRAM budget.
 ///
 /// Ensures total VRAM stays strictly below `0.75 * gpu_vram_mb` to leave generous headroom for OS/DWM.
@@ -68,14 +87,7 @@ pub fn calculate_safe_execution_profile(
     requested_tile: i32,
     _is_video: bool,
 ) -> ExecutionProfile {
-    // Effective usable VRAM ceiling (reserve 25% or min 500MB for OS/DWM display compositing)
-    let safe_ceiling_mb = if gpu_vram_mb <= 1024 {
-        gpu_vram_mb.saturating_sub(200).max(300)
-    } else if gpu_vram_mb <= 2048 {
-        gpu_vram_mb.saturating_sub(450).max(600)
-    } else {
-        (gpu_vram_mb as f64 * 0.75).round() as u64
-    };
+    let safe_ceiling_mb = safe_vram_ceiling_mb(gpu_vram_mb);
 
     if requested_tile <= 0 {
         let (thread_arg, proc_threads, projected_vram_mb) = if gpu_vram_mb >= 10240 {
