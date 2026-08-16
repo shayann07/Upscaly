@@ -18,6 +18,7 @@ const selectPersisted = (s: StudioState) =>
     s.preset,
     s.outputFormat,
     s.customModelsDir,
+    s.gentleMode,
     s.customOutputPath,
     s.isMuted,
     s.autoCheckUpdates,
@@ -32,6 +33,7 @@ async function restoreNonGpuSettings(saved: AppSettings): Promise<void> {
     studioActions.setOutputFormat(saved.default_output_format);
   }
   if (saved.custom_models_dir) studioActions.setCustomModelsDir(saved.custom_models_dir);
+  if (saved.gentle_mode != null) studioActions.setGentleMode(saved.gentle_mode);
   if (saved.auto_check_updates != null) {
     studioActions.setAutoCheckUpdates(saved.auto_check_updates);
   }
@@ -136,6 +138,7 @@ export function useSettingsSync() {
         default_preset: s.preset,
         default_output_format: s.outputFormat,
         custom_models_dir: s.customModelsDir || null,
+        gentle_mode: s.gentleMode,
         output_directory: s.customOutputPath || null,
         sound_muted: s.isMuted,
         auto_check_updates: s.autoCheckUpdates,

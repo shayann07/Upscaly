@@ -4,6 +4,7 @@ import { TileSizeSection } from './settings/TileSizeSection';
 import { PresetSection } from './settings/PresetSection';
 import { OutputFormatSection } from './settings/OutputFormatSection';
 import { CustomModelsSection } from './settings/CustomModelsSection';
+import { GentleModeSection } from './settings/GentleModeSection';
 import { useVramProfile } from '../hooks/useVramProfile';
 import { OutputFormat, QualityPreset } from '../lib/types';
 
@@ -12,6 +13,14 @@ export interface CustomModelsConfig {
   onSelect: () => void;
   onClear: () => void;
 }
+
+export interface GentleModeConfig {
+  on: boolean;
+  onToggle: (on: boolean) => void;
+}
+
+/** Module scope so the default keeps a stable identity across renders. */
+const NO_GENTLE_MODE: GentleModeConfig = { on: false, onToggle: () => {} };
 
 /** Module scope so the default keeps a stable identity across renders. */
 const NO_CUSTOM_MODELS: CustomModelsConfig = {
@@ -28,15 +37,11 @@ export interface GpuInfo {
 }
 
 /**
- * The device list, from whichever of the two props supplied it.
- *
- * `availableGpus` arrives already shaped; `gpus` is the raw backend list and
- * needs a display fallback for `detail`. Lifted out of the component so this
- * branching does not count against its complexity budget alongside the
- * settings it actually renders.
+ * The raw backend GPU list with a display fallback for `detail`. Lifted out
+ * of the component so the branching does not count against its complexity
+ * budget alongside the settings it actually renders.
  */
-function toDeviceList(availableGpus?: GpuInfo[], gpus?: GpuInfo[]): GpuInfo[] {
-  if (availableGpus) return availableGpus;
+function toDeviceList(gpus?: GpuInfo[]): GpuInfo[] {
   if (!gpus) return [];
   return gpus.map((g) => ({
     id: g.id,
@@ -48,11 +53,9 @@ function toDeviceList(availableGpus?: GpuInfo[], gpus?: GpuInfo[]): GpuInfo[] {
 
 export interface AdvancedSettingsProps {
   selectedGpu?: number;
-  availableGpus?: GpuInfo[];
   gpus?: GpuInfo[];
   onSelectGpu?: (id: number) => void;
   tileSize?: number;
-  onSetTileSize?: (size: number) => void;
   onSelectTileSize?: (size: number) => void;
   /** The output factor the VRAM projection is sized against; see useVramProfile. */
   scale?: number;
@@ -66,7 +69,8 @@ export interface AdvancedSettingsProps {
    * past its complexity budget on their own.
    */
   customModels?: CustomModelsConfig;
-  outputDir?: string;
+  /** Grouped for the same complexity-budget reason as customModels. */
+  gentle?: GentleModeConfig;
   customOutputPath?: string;
   onSetOutputDir?: (dir: string) => void;
   onSelectOutputPath?: () => void;
@@ -78,20 +82,18 @@ export interface AdvancedSettingsProps {
 
 export function AdvancedSettings({
   selectedGpu = 0,
-  availableGpus,
   gpus,
   onSelectGpu = () => {},
   tileSize = 0,
-  onSetTileSize,
-  onSelectTileSize,
+  onSelectTileSize = () => {},
   scale = 4,
   preset = 'balanced',
   onSelectPreset = () => {},
   outputFormat = 'png',
   onSelectOutputFormat = () => {},
   customModels = NO_CUSTOM_MODELS,
-  outputDir = '~/Pictures/Upscaled',
-  customOutputPath,
+  gentle = NO_GENTLE_MODE,
+  customOutputPath = '',
   onSetOutputDir,
   onSelectOutputPath,
   accentColor = 'var(--accent)',
@@ -100,9 +102,8 @@ export function AdvancedSettings({
 }: AdvancedSettingsProps) {
   const EASE = 'var(--ease-spring)';
 
-  const devices = toDeviceList(availableGpus, gpus);
-  const handleTileSize = onSetTileSize || onSelectTileSize || (() => {});
-  const displayOutputDir = customOutputPath !== undefined ? customOutputPath : outputDir;
+  const devices = toDeviceList(gpus);
+  const handleTileSize = onSelectTileSize;
 
   const currentGpu = useMemo(() => {
     return devices.find((g) => g.id === selectedGpu) || devices[0];
@@ -186,6 +187,8 @@ export function AdvancedSettings({
           accentColor={accentColor}
         />
 
+        <GentleModeSection on={gentle.on} onToggle={gentle.onToggle} accentColor={accentColor} />
+
         <div className="p-3.5">
           <div className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.1em] text-[var(--text-dim)] mb-2.5">
             OUTPUT DIRECTORY
@@ -193,7 +196,7 @@ export function AdvancedSettings({
           <div className="flex gap-1.5">
             <input
               type="text"
-              value={displayOutputDir}
+              value={customOutputPath}
               onChange={(e) => onSetOutputDir && onSetOutputDir(e.target.value)}
               placeholder="System Default"
               className="flex-1 min-w-0 px-2.5 py-2 border border-[var(--border-default)] rounded-lg bg-[var(--bg-elevated)] font-['Martian_Mono',monospace] text-[10px] text-[var(--text-secondary)] outline-none transition-all duration-200 focus:border-[var(--border-hover)] focus:text-[var(--text-primary)]"

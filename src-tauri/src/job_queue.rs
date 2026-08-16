@@ -30,6 +30,13 @@ pub struct Job {
     pub preset: crate::engine::preset::QualityPreset,
     #[serde(default)]
     pub output_format: crate::engine::output_format::OutputFormat,
+    /// True when this run continues a crashed one: the context preserves
+    /// completed output frames instead of wiping the temp directory, and
+    /// staging skips frames whose upscaled output already exists. Never set
+    /// from an IPC request -- only `resume::load_for_resume` sets it, after
+    /// re-reading the on-disk manifest.
+    #[serde(default)]
+    pub resume: bool,
 }
 
 /// Restricts a job id to a safe filesystem path component. The id is used to
@@ -784,6 +791,7 @@ mod tests {
             is_video: false,
             preset: crate::engine::preset::QualityPreset::Balanced,
             output_format: crate::engine::output_format::OutputFormat::Png,
+            resume: false,
         }
     }
 

@@ -7,6 +7,16 @@ interface ConfirmCancelDialogProps {
   message?: string;
   confirmText?: string;
   cancelText?: string;
+  /**
+   * Optional third action, rendered as a quiet text button on the far left.
+   * Used by the resume offer for "delete partial work": destructive enough
+   * that it must exist, quiet enough that neither Enter nor Escape can ever
+   * reach it -- those stay bound to confirm/dismiss.
+   */
+  secondaryText?: string;
+  onSecondary?: () => void;
+  /** Confirm styled as the accent action instead of the danger action. */
+  confirmIsPositive?: boolean;
   onConfirm: () => void;
   onDismiss: () => void;
 }
@@ -17,6 +27,9 @@ export function ConfirmCancelDialog({
   message = 'An upscaling job is currently in progress. Removing this file will terminate the background engine and release all GPU VRAM resources.',
   confirmText = 'Cancel & Free GPU',
   cancelText = 'Keep Running',
+  secondaryText,
+  onSecondary,
+  confirmIsPositive = false,
   onConfirm,
   onDismiss,
 }: ConfirmCancelDialogProps) {
@@ -111,6 +124,15 @@ export function ConfirmCancelDialog({
 
             {/* Actions */}
             <div className="flex items-center justify-end gap-3">
+              {secondaryText && onSecondary && (
+                <button
+                  type="button"
+                  onClick={onSecondary}
+                  className="mr-auto px-2 py-2 text-[11px] font-semibold text-[var(--text-dim)] bg-transparent border-none cursor-pointer transition-colors duration-150 hover:text-[var(--danger-text)]"
+                >
+                  {secondaryText}
+                </button>
+              )}
               <button
                 ref={cancelButtonRef}
                 type="button"
@@ -124,7 +146,11 @@ export function ConfirmCancelDialog({
                 ref={confirmButtonRef}
                 type="button"
                 onClick={onConfirm}
-                className="px-4 py-2 text-xs font-semibold rounded-xl border border-[var(--border-danger)] bg-[var(--danger-bg)] text-[var(--danger-text)] transition-all duration-150 hover:bg-[var(--danger-hover)] hover:text-[#F2C4BE] shadow-lg shadow-red-950/30 cursor-pointer"
+                className={
+                  confirmIsPositive
+                    ? 'px-4 py-2 text-xs font-semibold rounded-xl border border-[var(--accent-border)] bg-[var(--accent-bg)] text-[var(--text-primary)] transition-all duration-150 hover:bg-[var(--bg-hover)] cursor-pointer'
+                    : 'px-4 py-2 text-xs font-semibold rounded-xl border border-[var(--border-danger)] bg-[var(--danger-bg)] text-[var(--danger-text)] transition-all duration-150 hover:bg-[var(--danger-hover)] hover:text-[#F2C4BE] shadow-lg shadow-red-950/30 cursor-pointer'
+                }
               >
                 {confirmText}
               </button>

@@ -62,11 +62,37 @@ impl<'a> VideoJobContext<'a> {
         let staging_dir = job_temp_dir.join("staging");
         let frames_out_dir = job_temp_dir.join("frames_out");
 
-        let _ = fs::remove_dir_all(&job_temp_dir);
+        if job.resume {
+            // A resume's whole value is the completed frames already in
+            // frames_out, so only the re-derivable state is discarded:
+            // staged source frames (extraction re-runs from the video and
+            // produces identical names) and any half-populated batch dirs.
+            // Partial outputs from the crash itself were already deleted by
+            // the resume scan, and are deleted again here in case the scan
+            // ran in an earlier app session.
+            let _ = fs::remove_dir_all(&staging_dir);
+            if let Ok(entries) = fs::read_dir(&job_temp_dir) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if name.starts_with("batch_") {
+                        let _ = fs::remove_dir_all(entry.path());
+                    }
+                }
+            }
+            crate::video_pipeline::resume::verified_frame_count(&frames_out_dir);
+        } else {
+            let _ = fs::remove_dir_all(&job_temp_dir);
+        }
         fs::create_dir_all(&staging_dir)
             .map_err(|e| AppError::exec(format!("Failed to create staging frames folder: {e}")))?;
         fs::create_dir_all(&frames_out_dir)
             .map_err(|e| AppError::exec(format!("Failed to create output frames folder: {e}")))?;
+
+        // From this moment the folder is identifiable as resumable
+        // work-in-progress. Written before any frame exists on purpose: a
+        // crash during extraction still leaves a valid manifest, it just
+        // yields zero verified frames and gets cleaned by the next scan.
+        crate::video_pipeline::resume::write_manifest(&job_temp_dir, job);
 
         let active_handles = Arc::new(Mutex::new(Vec::new()));
 

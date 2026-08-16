@@ -88,6 +88,22 @@ pub fn estimate_total_vram_mb(tile_size: i32, proc_threads: u32, scale: i32) -> 
     MODEL_WEIGHTS_MB + single_buffer_mb * u64::from(proc_threads.max(1))
 }
 
+/// One tile step below `tile`, for gentle mode.
+///
+/// Strictly downward on the same ladder the governor itself selects from,
+/// so gentle mode can only ever reduce the working set -- it composes with
+/// the governor rather than second-guessing it. AUTO (0) maps to a concrete
+/// 256 because "gentler than an engine-chosen unknown" is not expressible;
+/// a known-moderate tile is.
+#[must_use]
+pub fn gentle_tile(tile: i32) -> i32 {
+    const LADDER: [i32; 7] = [512, 384, 256, 192, 128, 96, 64];
+    if tile <= 0 {
+        return 256;
+    }
+    LADDER.iter().copied().find(|&t| t < tile).unwrap_or(64)
+}
+
 /// Whether a sidecar's stderr shows the GPU has run out of memory or the
 /// driver has already lost the device.
 ///

@@ -3,7 +3,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { resetStudioStore, studioActions, studioStore } from '../studioStore';
 import {
   cancelAll,
+  checkResumableJobs,
   confirmSlowRunAndStart,
+  dismissOfferedResume,
+  resumeOfferedJob,
   refreshCatalog,
   selectScale,
   startUpscale,
@@ -192,6 +195,51 @@ describe('startUpscale', () => {
 
     expect(mockInvoke).not.toHaveBeenCalled();
     expect(state().items[0].status).toBe('ready');
+  });
+});
+
+describe('crash recovery', () => {
+  const OFFER = {
+    job_id: 'job-crashed',
+    file_name: 'test_1.mp4',
+    input_path: 'C:/in/test_1.mp4',
+    output_path: 'C:/out/test_1_upscaled_4x.mp4',
+    model_name: 'realesrgan-x4plus',
+    scale: 4,
+    frames_done: 210,
+  };
+
+  it('surfaces crashed work found by the backend scan', async () => {
+    mockInvoke.mockImplementation((cmd) =>
+      Promise.resolve(cmd === 'list_resumable_jobs' ? [OFFER] : [])
+    );
+
+    await checkResumableJobs();
+
+    expect(state().resumableJobs).toHaveLength(1);
+    expect(state().resumableJobs[0].frames_done).toBe(210);
+  });
+
+  it('resumes by id only -- the backend re-reads its own manifest', async () => {
+    mockInvoke.mockResolvedValue({ job_id: 'job-crashed', output_path: OFFER.output_path });
+    studioActions.setResumableJobs([OFFER]);
+
+    await resumeOfferedJob();
+
+    expect(mockInvoke).toHaveBeenCalledWith('resume_video_job', { jobId: 'job-crashed' });
+    // The offer is consumed either way; the queue row arrives via the
+    // backend's snapshot delta, not from anything staged here.
+    expect(state().resumableJobs).toHaveLength(0);
+  });
+
+  it('declining keeps the work on disk for a later launch', () => {
+    studioActions.setResumableJobs([OFFER]);
+
+    dismissOfferedResume();
+
+    expect(state().resumableJobs).toHaveLength(0);
+    // "Not now" must not delete anything: no discard call was made.
+    expect(mockInvoke).not.toHaveBeenCalledWith('discard_resumable_job', expect.anything());
   });
 });
 
