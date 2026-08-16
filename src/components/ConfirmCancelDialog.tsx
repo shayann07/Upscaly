@@ -15,7 +15,15 @@ interface ConfirmCancelDialogProps {
    */
   secondaryText?: string;
   onSecondary?: () => void;
-  /** Confirm styled as the accent action instead of the danger action. */
+  /**
+   * Confirm styled as the accent action instead of the danger action, and
+   * the eyebrow reads RECOVERY rather than CONFIRM.
+   *
+   * This component started life as the cancel prompt, so its styling was
+   * uniformly destructive -- a red warning badge, a red confirm button.
+   * Reusing it for the resume offer meant "Resume upscaling", the safe and
+   * encouraged action, wore the visual language of "destroy something".
+   */
   confirmIsPositive?: boolean;
   onConfirm: () => void;
   onDismiss: () => void;
@@ -46,9 +54,11 @@ export function ConfirmCancelDialog({
   }, [isOpen]);
 
   const handleTrapFocus = (e: React.KeyboardEvent) => {
-    // Only two focusable elements exist in this dialog, so trapping focus
-    // is just cycling Tab/Shift+Tab between them instead of letting focus
-    // escape to whatever is behind the backdrop.
+    // Only two elements are cycled, so trapping focus is just Tab/Shift+Tab
+    // between them instead of letting focus escape to whatever is behind
+    // the backdrop. The optional secondary action is deliberately outside
+    // the cycle: it is the destructive one, and it should take a deliberate
+    // click rather than a stray keypress.
     if (e.key !== 'Tab') return;
     e.preventDefault();
     const goingBackward = e.shiftKey;
@@ -67,17 +77,21 @@ export function ConfirmCancelDialog({
           className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-auto"
           onKeyDown={handleTrapFocus}
         >
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             onClick={onDismiss}
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            className="absolute inset-0 bg-[var(--bg-overlay)] backdrop-blur-sm"
           />
 
-          {/* Dialog Window */}
+          {/*
+            Panel geometry matches the settings and catalog panels -- 14px
+            radius, the same surface and subtle border -- so a dialog reads
+            as part of the app rather than a browser alert dropped on top of
+            it.
+          */}
           <motion.div
             role="alertdialog"
             aria-modal="true"
@@ -87,73 +101,80 @@ export function ConfirmCancelDialog({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 8 }}
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-            className="relative z-10 w-[420px] max-w-[90vw] p-6 rounded-2xl border border-[var(--border-subtle)] bg-[rgba(18,17,16,0.96)] shadow-2xl backdrop-blur-xl select-none"
+            className="relative z-10 w-[400px] max-w-[90vw] rounded-[14px] border border-[var(--border-subtle)] bg-[rgba(13,12,11,.97)] shadow-[var(--shadow-modal)] overflow-hidden select-none"
           >
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-[var(--danger-bg)] border border-[var(--border-danger)] text-[var(--danger-text)]">
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                  />
-                </svg>
-              </div>
+            {/*
+              Every panel in this app is titled with a Martian Mono eyebrow
+              rather than an icon badge, and the word carries the tone -- so
+              a recovery prompt no longer borrows the cancel dialog's
+              warning triangle and red header.
+            */}
+            <div className="h-[38px] flex-none flex items-center px-3.5 border-b border-[var(--border-default)]">
+              <span
+                className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.1em]"
+                style={{ color: confirmIsPositive ? 'var(--text-muted)' : 'var(--danger-text)' }}
+              >
+                {confirmIsPositive ? 'RECOVERY' : 'CONFIRM'}
+              </span>
+            </div>
+
+            <div className="p-3.5">
               <h3
                 id="confirm-cancel-title"
-                className="font-['Archivo',sans-serif] text-base font-semibold text-[var(--text-primary)]"
+                className="font-['Archivo',sans-serif] text-[13px] font-semibold text-[var(--text-primary)] mb-1.5"
               >
                 {title}
               </h3>
-            </div>
 
-            {/* Description */}
-            <p
-              id="confirm-cancel-message"
-              className="text-xs leading-relaxed text-[var(--text-dim)] mb-6 font-['Archivo',sans-serif]"
-            >
-              {message}
-            </p>
+              <p
+                id="confirm-cancel-message"
+                className="font-['Archivo',sans-serif] text-[11.5px] leading-[1.5] text-[var(--text-muted)] mb-4"
+              >
+                {message}
+              </p>
 
-            {/* Actions */}
-            <div className="flex items-center justify-end gap-3">
-              {secondaryText && onSecondary && (
+              <div className="flex items-center justify-end gap-2">
+                {secondaryText && onSecondary && (
+                  <button
+                    type="button"
+                    onClick={onSecondary}
+                    className="mr-auto px-1 font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] text-[var(--text-dim)] bg-transparent border-none cursor-pointer transition-colors duration-150 hover:text-[var(--danger-text)]"
+                  >
+                    {secondaryText}
+                  </button>
+                )}
+
                 <button
+                  ref={cancelButtonRef}
                   type="button"
-                  onClick={onSecondary}
-                  className="mr-auto px-2 py-2 text-[11px] font-semibold text-[var(--text-dim)] bg-transparent border-none cursor-pointer transition-colors duration-150 hover:text-[var(--danger-text)]"
+                  onClick={onDismiss}
+                  className="h-8 px-3 rounded-lg border border-[var(--border-default)] bg-[var(--bg-elevated)] font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.03em] text-[var(--text-secondary)] cursor-pointer transition-all duration-200 hover:scale-[1.05] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]"
                 >
-                  {secondaryText}
+                  {cancelText}
                 </button>
-              )}
-              <button
-                ref={cancelButtonRef}
-                type="button"
-                onClick={onDismiss}
-                className="px-4 py-2 text-xs font-semibold rounded-xl border border-[var(--border-default)] bg-[var(--bg-glass-subtle)] text-[var(--text-primary)] transition-all duration-150 hover:bg-[var(--border-default)] cursor-pointer"
-              >
-                {cancelText}
-              </button>
 
-              <button
-                ref={confirmButtonRef}
-                type="button"
-                onClick={onConfirm}
-                className={
-                  confirmIsPositive
-                    ? 'px-4 py-2 text-xs font-semibold rounded-xl border border-[var(--accent-border)] bg-[var(--accent-bg)] text-[var(--text-primary)] transition-all duration-150 hover:bg-[var(--bg-hover)] cursor-pointer'
-                    : 'px-4 py-2 text-xs font-semibold rounded-xl border border-[var(--border-danger)] bg-[var(--danger-bg)] text-[var(--danger-text)] transition-all duration-150 hover:bg-[var(--danger-hover)] hover:text-[#F2C4BE] shadow-lg shadow-red-950/30 cursor-pointer'
-                }
-              >
-                {confirmText}
-              </button>
+                <button
+                  ref={confirmButtonRef}
+                  type="button"
+                  onClick={onConfirm}
+                  className="h-8 px-3 rounded-lg font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.03em] cursor-pointer transition-all duration-200 hover:scale-[1.05] hover:shadow-[var(--shadow-pill-hover)]"
+                  style={
+                    confirmIsPositive
+                      ? {
+                          border: '1px solid var(--accent)',
+                          background: 'var(--accent-bg)',
+                          color: 'var(--text-primary)',
+                        }
+                      : {
+                          border: '1px solid var(--border-danger)',
+                          background: 'var(--danger-bg)',
+                          color: 'var(--danger-text)',
+                        }
+                  }
+                >
+                  {confirmText}
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>
