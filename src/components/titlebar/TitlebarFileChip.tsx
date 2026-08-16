@@ -1,7 +1,5 @@
 import { useGpuTelemetry } from '../../hooks/useGpuTelemetry';
-
-/** Absent readings render as an em-dash, never as an invented number. */
-const dash = (v: number | null | undefined, unit: string) => (v == null ? '—' : `${v}${unit}`);
+import { GpuTelemetryReadout } from './GpuTelemetryReadout';
 
 interface TitlebarFileChipProps {
   fileName: string;
@@ -39,14 +37,7 @@ export function TitlebarFileChip({
         <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.05em] whitespace-nowrap">
           {kindTag}
         </span>
-        {telemetry && (
-          <span className="font-['Martian_Mono',monospace] text-[9.5px] text-[var(--text-primary)] whitespace-nowrap">
-            {dash(telemetry.temperature_c, '°C')} · {dash(telemetry.utilization_pct, '%')} ·{' '}
-            {telemetry.memory_used_mb != null && telemetry.memory_total_mb != null
-              ? `${(telemetry.memory_used_mb / 1024).toFixed(1)}/${(telemetry.memory_total_mb / 1024).toFixed(1)}G`
-              : '—'}
-          </span>
-        )}
+        {telemetry && <GpuTelemetryReadout telemetry={telemetry} />}
         {isDone && outDims && (
           <span className="inline-block px-[7px] py-[3px] rounded-[6px] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] font-semibold whitespace-nowrap bg-[var(--accent-bg)] text-[var(--text-primary)] border border-[var(--border-subtle)]">
             {outDims}
