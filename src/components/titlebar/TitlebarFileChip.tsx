@@ -1,3 +1,8 @@
+import { useGpuTelemetry } from '../../hooks/useGpuTelemetry';
+
+/** Absent readings render as an em-dash, never as an invented number. */
+const dash = (v: number | null | undefined, unit: string) => (v == null ? '—' : `${v}${unit}`);
+
 interface TitlebarFileChipProps {
   fileName: string;
   kindTag: string;
@@ -15,6 +20,13 @@ export function TitlebarFileChip({
   isProcessing,
   onRemoveFile,
 }: TitlebarFileChipProps) {
+  // Polled here, not in the GPU island: the titlebar shows either the island
+  // or this chip, and a running job always has a file loaded -- so the chip
+  // is the only titlebar component actually mounted while there is a
+  // temperature worth reporting. The first version put the readout in the
+  // island, which is unmounted at exactly that moment.
+  const telemetry = useGpuTelemetry(isProcessing === true);
+
   return (
     <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-auto">
       <div className="flex items-center gap-[11px] h-[34px] pl-3 pr-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]">
@@ -27,6 +39,14 @@ export function TitlebarFileChip({
         <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.05em] whitespace-nowrap">
           {kindTag}
         </span>
+        {telemetry && (
+          <span className="font-['Martian_Mono',monospace] text-[9.5px] text-[var(--text-primary)] whitespace-nowrap">
+            {dash(telemetry.temperature_c, '°C')} · {dash(telemetry.utilization_pct, '%')} ·{' '}
+            {telemetry.memory_used_mb != null && telemetry.memory_total_mb != null
+              ? `${(telemetry.memory_used_mb / 1024).toFixed(1)}/${(telemetry.memory_total_mb / 1024).toFixed(1)}G`
+              : '—'}
+          </span>
+        )}
         {isDone && outDims && (
           <span className="inline-block px-[7px] py-[3px] rounded-[6px] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] font-semibold whitespace-nowrap bg-[var(--accent-bg)] text-[var(--text-primary)] border border-[var(--border-subtle)]">
             {outDims}
