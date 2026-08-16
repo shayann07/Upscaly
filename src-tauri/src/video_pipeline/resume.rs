@@ -34,7 +34,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use crate::engine::output_format::OutputFormat;
 use crate::error::AppError;
@@ -70,9 +70,7 @@ pub fn write_manifest(job_temp_dir: &Path, job: &Job) {
 }
 
 fn cache_dir(app: &AppHandle) -> PathBuf {
-    app.path()
-        .app_cache_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
+    crate::app_paths::app_cache_dir(app)
 }
 
 /// The temp directory for a job id, re-derived from the sanitised id.

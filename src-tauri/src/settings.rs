@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 #[derive(Debug, Serialize, Deserialize, Clone, ts_rs::TS)]
 #[ts(export, export_to = "../../src/lib/ipc/")]
@@ -61,10 +61,7 @@ impl Default for AppSettings {
 }
 
 pub fn get_settings_path(app: &AppHandle) -> PathBuf {
-    let app_dir = app
-        .path()
-        .app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."));
+    let app_dir = crate::app_paths::app_data_dir(app);
     if !app_dir.exists() {
         let _ = fs::create_dir_all(&app_dir);
     }

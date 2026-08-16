@@ -16,7 +16,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use crate::job_queue::Job;
 
@@ -40,10 +40,7 @@ pub struct HistoryRecord {
 }
 
 fn history_path(app: &AppHandle) -> PathBuf {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."));
+    let dir = crate::app_paths::app_data_dir(app);
     let _ = fs::create_dir_all(&dir);
     dir.join(HISTORY_FILE)
 }

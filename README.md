@@ -274,9 +274,17 @@ small: the weights previously accounted for 45 MB of a 56 MB clone.
 
 ```bash
 npm install
-npm run tauri dev     # development, hot reload
-npm run tauri build   # production installer in src-tauri/target/release/bundle
+npm run tauri:dev     # development, hot reload
+npm run tauri:build   # production installer in src-tauri/target/release/bundle
 ```
+
+`tauri:dev` runs under a separate app identifier (`com.shaya.ai-upscaler.dev`,
+window title "Upscaly Studio") via `src-tauri/tauri.dev.conf.json`, so a debug
+session never touches the installed release app's settings, history,
+downloaded models or WebView2 profile — they live in entirely separate
+`%APPDATA%`/`%LOCALAPPDATA%` folders. `src-tauri/src/app_paths.rs` backstops
+this further at the data-directory level for any debug build launched outside
+`tauri:dev` (e.g. `cargo build` directly).
 
 ### Quality gate
 
