@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use crate::job_queue::add_jobs_to_queue;
-use crate::output_paths::reserve_output_path;
+use crate::output_paths::{ensure_output_dir, reserve_output_path};
 use crate::video_pipeline::resume;
 use crate::UpscaleJobHandle;
 
@@ -30,6 +30,10 @@ pub async fn resume_video_job(
     job_id: String,
 ) -> Result<UpscaleJobHandle, AppError> {
     let mut job = resume::load_for_resume(&app_handle, &job_id)?;
+    // The destination may still be the one that failed the original run --
+    // a missing folder is the single most likely reason a job reached
+    // reassembly and died there.
+    ensure_output_dir(&job.output_path)?;
     job.output_path = reserve_output_path(&job.output_path);
 
     let handle = UpscaleJobHandle {
