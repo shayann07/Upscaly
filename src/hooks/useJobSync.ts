@@ -11,6 +11,29 @@ import { studioActions, studioStore } from '../store/studioStore';
 import { useJobEvents } from './useJobEvents';
 
 /**
+ * Which item the studio should follow, or `null` to leave the selection be.
+ *
+ * A finished item must not steal the view from one still working.
+ * Previously the selection simply stayed put, so the instant image 1 of a
+ * batch finished the studio swapped to its completion card while images 2
+ * and 3 upscaled invisibly behind it. Focus follows the work; the finished
+ * item stays one click away in the queue.
+ *
+ * Only ever moves *off* a terminal row -- a selection the user made on a
+ * live item is never overridden, and a queue where nothing is running is
+ * left exactly as they left it.
+ */
+export function nextFocusAfterTerminal(
+  items: QueueItem[],
+  selectedId: string | null
+): string | null {
+  const selected = items.find((i) => i.id === selectedId);
+  if (!selected || !isTerminalState(selected.status)) return null;
+  const working = items.find((i) => i.status === 'running' || i.status === 'queued');
+  return working ? working.id : null;
+}
+
+/**
  * Keeps the queue in step with the backend's job store.
  *
  * Two inputs, one destination: a snapshot on mount (so a reload, or a
@@ -75,6 +98,9 @@ export function useJobSync() {
 
       const { items } = studioStore.getState();
       const remainingActive = items.filter((item) => !isTerminalState(item.status)).length;
+
+      const nextFocus = nextFocusAfterTerminal(items, studioStore.getState().selectedId);
+      if (nextFocus) studioActions.selectItem(nextFocus);
 
       for (const item of items) {
         const previous = before.get(item.id);

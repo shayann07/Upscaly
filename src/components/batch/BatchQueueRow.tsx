@@ -65,6 +65,15 @@ function getRowStyle(
     opacity: failed || open || active ? 1 : 0.66,
     transform: open ? 'none' : `translateX(${active ? 5 : 0}px) scale(${active ? 1 : 0.9})`,
     transformOrigin: 'center left',
+    // Named properties rather than `transition-all`. The row rewrites
+    // padding, gap, radius, border and transform whenever selection
+    // changes, and `all` made the browser animate every one of them
+    // together -- on a list that also re-renders on progress ticks, that
+    // is the stutter when clicking between items mid-batch. Transform and
+    // opacity are compositor-only; the rest are cheap discrete swaps.
+    transition:
+      'transform .24s var(--ease-spring), opacity .24s ease, background-color .18s ease, border-color .18s ease',
+    willChange: 'transform',
   };
 }
 
@@ -103,7 +112,7 @@ export const BatchQueueRow = memo(function BatchQueueRow({
       onDragEnter={() => onDragEnter(index)}
       onDragOver={(e) => e.preventDefault()}
       onDragEnd={onDragEnd}
-      className="relative flex items-center cursor-pointer group transition-all duration-200 hover:scale-[1.02] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
+      className="relative flex items-center cursor-pointer group hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
       style={getRowStyle(open, active, index, failed)}
       // The error text is the row's tooltip in the collapsed rail too, so
       // the reason is one hover away without expanding the queue.
@@ -127,6 +136,18 @@ export const BatchQueueRow = memo(function BatchQueueRow({
             {file.w}×{file.h}
           </div>
         ) : null}
+        {st === 'running' && (
+          <div className="mt-1 h-[3px] rounded-full bg-[var(--bg-base)] overflow-hidden">
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${file.progress}%`,
+                background: accentColor,
+                transition: 'width .25s linear',
+              }}
+            />
+          </div>
+        )}
       </div>
 
       <BatchQueueRowControls
@@ -139,14 +160,17 @@ export const BatchQueueRow = memo(function BatchQueueRow({
         onCancelItem={onCancelItem}
       />
 
-      <div
-        className="absolute left-0 bottom-0 h-0.5"
-        style={{
-          width: `${st === 'running' ? file.progress : 0}%`,
-          background: accentColor,
-          transition: 'width .2s linear',
-        }}
-      />
+      {/*
+        The progress line used to be absolutely positioned across the whole
+        row at h-0.5. Collapsed, the row is only as wide as its thumbnail
+        but the bar still spanned the row box, so it rendered as a detached
+        red line floating below the tile. Expanded, it was a hairline welded
+        to the row's bottom edge, cutting the border.
+
+        Progress now lives where the eye already is: a track under the file
+        name when expanded, and a fill across the base of the thumbnail
+        itself when collapsed.
+      */}
     </div>
   );
 });
