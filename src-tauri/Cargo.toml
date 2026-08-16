@@ -1,14 +1,16 @@
 [package]
-name = "tauri-app"
+name = "upscaly"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Local image and video upscaling on Vulkan, powered by Real-ESRGAN"
+authors = ["shayann07"]
+license = "MIT"
+repository = "https://github.com/shayann07/Upscaly"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "tauri_app_lib"
+name = "upscaly_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
