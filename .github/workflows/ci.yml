@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch makes an in-flight run obsolete.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # Windows is the platform this app ships on, and much of the backend is
+    # Windows-specific -- the DXGI VRAM query, job objects, CREATE_NO_WINDOW.
+    # Running CI anywhere else would skip exactly the code most likely to
+    # break.
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # tauri.conf.json declares three sidecars under externalBin and the
+      # Tauri build script refuses to run if any is missing -- which is
+      # every CI checkout, since they are gitignored third-party binaries.
+      # This job type-checks, lints and unit-tests; none of that spawns the
+      # engine, ffmpeg or ffprobe, so empty placeholders satisfy the
+      # existence check without downloading ~290MB per run. Anything that
+      # actually executes a sidecar belongs in the release workflow, which
+      # fetches the real ones via scripts/fetch-sidecars.mjs.
+      - name: Stub sidecar binaries for check-only build
+        shell: bash
+        run: |
+          mkdir -p src-tauri/binaries
+          for name in realesrgan-ncnn-vulkan ffmpeg ffprobe; do
+            path="src-tauri/binaries/${name}-x86_64-pc-windows-msvc.exe"
+            [ -f "$path" ] || : > "$path"
+          done
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # The IPC types in src/lib/ipc are generated from the Rust structs.
+      # Regenerating and diffing catches a backend struct change that was
+      # committed without running `npm run gen:types` -- the drift class
+      # that generating them was introduced to eliminate.
+      - name: Check generated IPC types are current
+        shell: bash
+        run: |
+          npm run gen:types
+          git diff --exit-code -- src/lib/ipc || {
+            echo "::error::src/lib/ipc is stale. Run 'npm run gen:types' and commit the result."
+            exit 1
+          }
+
+      # The same aggregate the README documents and contributors run
+      # locally: tsc, eslint (zero warnings), vitest, clippy (-D warnings),
+      # then prettier and cargo fmt checks. Deliberately one step so CI and
+      # local cannot drift apart into two different definitions of "green".
+      - name: Quality gate
+        run: npm run check:quality
+
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
