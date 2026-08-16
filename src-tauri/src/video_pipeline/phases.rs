@@ -279,6 +279,10 @@ pub fn run_overlapping_upscale_pipeline(
         effective_scale,
         true,
     );
+    let gentle = crate::settings::load_settings(ctx.app).gentle_mode;
+    if gentle {
+        exec_profile.tile_size = crate::engine::vram_governor::gentle_tile(exec_profile.tile_size);
+    }
 
     // TTA multiplies GPU work per frame by eight -- on a clip of any length,
     // the difference between minutes and hours.
@@ -647,6 +651,19 @@ pub fn run_overlapping_upscale_pipeline(
         // completions, frames NCNN skipped, and the VRAM-retry path that
         // moves a whole batch back to staging to be redone.
         confirmed_completed = count_image_files(&ctx.frames_out_dir);
+
+        // Gentle mode: let the GPU breathe between batches. Sliced so a
+        // cancel during the pause is honoured within a poll tick rather
+        // than after the full cooldown.
+        if gentle {
+            const COOLDOWN: Duration = Duration::from_secs(10);
+            const SLICE: Duration = Duration::from_millis(250);
+            let mut waited = Duration::ZERO;
+            while waited < COOLDOWN && !ctx.is_cancelled() {
+                thread::sleep(SLICE);
+                waited += SLICE;
+            }
+        }
     }
 
     // Nothing below consumes staged frames, so leaving the extractor paused
@@ -903,6 +920,18 @@ fn stage_next_batch(
     let mut output_names = Vec::with_capacity(take);
     for frame_path in ready.drain(..take) {
         if let Some(file_name) = frame_path.file_name() {
+            // Resume support, and the reason the whole feature costs one
+            // stat per frame: an output that already exists in frames_out
+            // is a frame a previous attempt finished. Anything there is
+            // complete -- the resume scan deletes partials before the job
+            // starts, and the current run's engine only sees frames after
+            // this point. Re-upscaling it would spend GPU time producing
+            // an identical file, so the staged copy is simply dropped and
+            // the per-batch frames_out re-anchor counts it as done.
+            if ctx.frames_out_dir.join(file_name).exists() {
+                let _ = fs::remove_file(&frame_path);
+                continue;
+            }
             if fs::rename(&frame_path, dir.join(file_name)).is_ok() {
                 output_names.push(file_name.to_os_string());
             }

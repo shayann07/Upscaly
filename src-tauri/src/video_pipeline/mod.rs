@@ -7,6 +7,8 @@ use crate::job_queue::Job;
 use crate::process_runner::ProcessHandle;
 use context::VideoJobContext;
 use phases::{probe_video_metadata, reassemble_video, run_overlapping_upscale_pipeline};
+pub mod resume;
+
 pub use phases::{resolve_ffmpeg_binary, resolve_ffprobe_binary};
 
 use std::sync::atomic::AtomicBool;
@@ -21,7 +23,7 @@ pub fn run_video_job(
     cancel_requested: Arc<AtomicBool>,
     process_handle: Arc<Mutex<Option<Box<dyn ProcessHandle>>>>,
 ) -> Result<(), AppError> {
-    let (ctx, _guard) = VideoJobContext::new(app, job, cancel_requested, process_handle)?;
+    let (ctx, guard) = VideoJobContext::new(app, job, cancel_requested, process_handle)?;
 
     let result = run_video_job_inner(&ctx, app, job);
 
@@ -37,6 +39,22 @@ pub fn run_video_job(
                 let _ = handle.kill();
             }
         }
+    }
+
+    // A failed run's completed frames are hours of GPU work; deleting them
+    // makes the failure cost the entire job. Keep the folder when there is
+    // anything worth resuming and the failure was not the user's own
+    // cancellation -- a cancel is an explicit "discard this". The guard's
+    // Drop is what deletes, so keeping means forgetting it.
+    match &result {
+        Err(err) if !err.is_cancellation() => {
+            let frames_dir = ctx.frames_out_dir.clone();
+            drop(ctx);
+            if resume::verified_frame_count(&frames_dir) > 0 {
+                std::mem::forget(guard);
+            }
+        }
+        _ => {}
     }
 
     result

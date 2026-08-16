@@ -3,7 +3,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { formatIpcError } from '../lib/appError';
 import { allowMediaPath } from '../lib/assetScope';
-import { HistoryEntry, ModelInfo, UpscaleJobHandle } from '../lib/types';
+import { HistoryEntry, ModelInfo, ResumableJob, UpscaleJobHandle } from '../lib/types';
 import { isTerminalState } from '../lib/jobState';
 import { QueueItem } from './queueItem';
 import { getMediaDimensions, getMediaSrc } from '../lib/media';
@@ -152,6 +152,59 @@ function hasActiveJob(): boolean {
  * one path here rather than a single-file one and a batch one: a single
  * file is a queue of one, and the backend serialises execution either way.
  */
+/**
+ * Asks the backend what crashed video work survived on disk. Called once at
+ * launch; the scan is also the cleanup pass for unresumable debris, so it
+ * runs even if the answer turns out to be empty.
+ */
+export async function checkResumableJobs(): Promise<void> {
+  try {
+    const jobs = await invoke<ResumableJob[]>('list_resumable_jobs');
+    if (jobs.length > 0) studioActions.setResumableJobs(jobs);
+  } catch (err) {
+    console.error('Resumable-job scan failed:', err);
+  }
+}
+
+/** Continues the currently offered crashed job from its surviving frames. */
+export async function resumeOfferedJob(): Promise<void> {
+  const offered = state().resumableJobs[0];
+  studioActions.shiftResumableJob();
+  if (!offered) return;
+  try {
+    // The input has to be readable through the asset protocol for the
+    // preview, same as a freshly opened file.
+    await allowMediaPath(offered.input_path);
+    await invoke<UpscaleJobHandle>('resume_video_job', { jobId: offered.job_id });
+    // The backend registers the job and its snapshot delta creates the
+    // queue row -- nothing to stage locally.
+    studioActions.notify(
+      'info',
+      'Resuming upscale',
+      `${offered.file_name}: ${offered.frames_done} frames already done are kept.`
+    );
+  } catch (err) {
+    studioActions.notify('error', 'Resume failed', formatIpcError(err));
+  }
+}
+
+/** Declines the offered job for now; the folder stays for a later launch. */
+export function dismissOfferedResume(): void {
+  studioActions.shiftResumableJob();
+}
+
+/** Deletes the offered job's partial frames at the user's explicit request. */
+export async function discardOfferedResume(): Promise<void> {
+  const offered = state().resumableJobs[0];
+  studioActions.shiftResumableJob();
+  if (!offered) return;
+  try {
+    await invoke('discard_resumable_job', { jobId: offered.job_id });
+  } catch (err) {
+    console.error('Failed to discard partial work:', err);
+  }
+}
+
 /**
  * Whether this run would enable TTA on a video.
  *

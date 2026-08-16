@@ -8,6 +8,7 @@ import {
   useActiveNavTab,
   useConfirmCancelOpen,
   useConfirmSlowRunOpen,
+  useResumableJobs,
   useGpus,
   useIsProcessing,
   useIsVramOverflowing,
@@ -24,8 +25,11 @@ import {
   clearFile,
   confirmCancelAndClear,
   confirmSlowRunAndStart,
+  discardOfferedResume,
   dismissCancelConfirmation,
+  dismissOfferedResume,
   dismissSlowRunConfirmation,
+  resumeOfferedJob,
   openFiles,
 } from '../../store/studioCommands';
 
@@ -33,6 +37,8 @@ const handleOpenFile = () => void openFiles();
 const handleCancelItem = (id: string) => void cancelItem(id);
 const handleConfirmCancel = () => void confirmCancelAndClear();
 const handleConfirmSlowRun = () => void confirmSlowRunAndStart();
+const handleResumeOffered = () => void resumeOfferedJob();
+const handleDiscardOffered = () => void discardOfferedResume();
 
 export const StudioCanvas = memo(function StudioCanvas({ isDragOver }: { isDragOver: boolean }) {
   const items = useItems();
@@ -46,6 +52,8 @@ export const StudioCanvas = memo(function StudioCanvas({ isDragOver }: { isDragO
   const activeNavTab = useActiveNavTab();
   const confirmCancelOpen = useConfirmCancelOpen();
   const confirmSlowRunOpen = useConfirmSlowRunOpen();
+  const resumableJobs = useResumableJobs();
+  const offeredResume = resumableJobs[0];
 
   const isVramOverflowing = useIsVramOverflowing();
 
@@ -118,6 +126,29 @@ export const StudioCanvas = memo(function StudioCanvas({ isDragOver }: { isDragO
         a progress bar cannot distinguish that from something being broken.
         Confirmed before the run rather than explained afterwards.
       */}
+      {/*
+        Crashed-run recovery. Escape and the plain button mean "not now" --
+        the frames stay on disk for a later launch. Deleting hours of GPU
+        work is only reachable by clicking the explicit quiet action, never
+        by a stray Enter or Escape.
+      */}
+      <ConfirmCancelDialog
+        isOpen={offeredResume != null}
+        title="Finish an interrupted upscale?"
+        message={
+          offeredResume
+            ? `${offeredResume.file_name} was interrupted, but ${offeredResume.frames_done} upscaled frame${offeredResume.frames_done === 1 ? '' : 's'} survived. Resuming keeps them and only upscales what's missing.`
+            : ''
+        }
+        confirmText="Resume upscaling"
+        cancelText="Not now"
+        secondaryText="Delete partial work"
+        confirmIsPositive
+        onConfirm={handleResumeOffered}
+        onDismiss={dismissOfferedResume}
+        onSecondary={handleDiscardOffered}
+      />
+
       <ConfirmCancelDialog
         isOpen={confirmSlowRunOpen}
         title="This will take a long time"

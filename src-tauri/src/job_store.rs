@@ -232,8 +232,24 @@ impl JobStore {
         to: JobState,
         phase: Option<&str>,
     ) -> bool {
+        let succeeded = matches!(to, JobState::Succeeded);
         let applied = self.apply_transition(job_id, to, phase);
         if applied {
+            // History is written here, at the moment the store itself
+            // learns the job succeeded -- not when a webview happens to
+            // observe it. A completion during a reload or crash therefore
+            // still leaves a durable record; the old localStorage-only
+            // design recorded the observation instead of the event, and a
+            // job nobody was watching left no trace at all.
+            if succeeded {
+                let job = {
+                    let inner = self.lock_inner();
+                    inner.records.get(job_id).map(|r| r.job.clone())
+                };
+                if let Some(job) = job {
+                    crate::history::append(app, &job, now_ms());
+                }
+            }
             // A state change is what the user is waiting to see. Coalescing
             // is for the progress stream, not for "it finished".
             self.flush_now(app);
@@ -466,6 +482,7 @@ mod tests {
             is_video: false,
             preset: crate::engine::preset::QualityPreset::Balanced,
             output_format: crate::engine::output_format::OutputFormat::Png,
+            resume: false,
         }
     }
 

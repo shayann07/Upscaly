@@ -8,6 +8,7 @@ import { HistoryEntry } from '../../lib/types';
 import {
   useActiveNavTab,
   useCustomModelsDir,
+  useGentleMode,
   useCustomOutputPath,
   useDownloadProgress,
   useDownloadingModelId,
@@ -47,6 +48,11 @@ export const StudioModals = memo(function StudioModals() {
   const preset = usePreset();
   const outputFormat = useOutputFormat();
   const customModelsDir = useCustomModelsDir();
+  const gentleMode = useGentleMode();
+  const gentle = useMemo(
+    () => ({ on: gentleMode, onToggle: studioActions.setGentleMode }),
+    [gentleMode]
+  );
   const customModels = useMemo(
     () => ({
       dir: customModelsDir,
@@ -104,6 +110,7 @@ export const StudioModals = memo(function StudioModals() {
               outputFormat={outputFormat}
               onSelectOutputFormat={studioActions.setOutputFormat}
               customModels={customModels}
+              gentle={gentle}
               customOutputPath={customOutputPath}
               onSetOutputDir={studioActions.setCustomOutputPath}
               onSelectOutputPath={handleSelectOutputDir}

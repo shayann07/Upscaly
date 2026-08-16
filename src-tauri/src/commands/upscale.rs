@@ -43,6 +43,10 @@ fn build_job(app_handle: &tauri::AppHandle, request: UpscaleRequest) -> (Job, Up
         is_video: request.is_video,
         preset: request.preset,
         output_format: request.output_format,
+        // Fresh submissions never resume; only the resume command sets this,
+        // and it reconstructs the Job from the on-disk manifest instead of
+        // trusting a request field.
+        resume: false,
     };
 
     (
