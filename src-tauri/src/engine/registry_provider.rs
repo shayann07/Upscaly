@@ -124,8 +124,10 @@ impl GitHubReleaseProvider {
 
     /// The upstream Real-ESRGAN models.
     ///
-    /// Hashes here match the copies bundled in `src-tauri/models`
-    /// byte-for-byte, and always did. The URLs did not: they pointed at
+    /// These are downloaded on demand like every other entry -- weights
+    /// are no longer shipped with the app. The hashes were verified against
+    /// the copies that used to be bundled, byte-for-byte. The URLs were the
+    /// broken part: they pointed at
     /// `.../releases/download/v0.2.5.0/<name>.param`, and that release
     /// ships only `.pth` weights and per-platform zips -- no loose ncnn
     /// files. All ten returned a 9-byte "Not Found" body, so every
@@ -371,12 +373,13 @@ mod tests {
 
     #[test]
     fn test_declared_hashes_match_the_models_actually_shipped() {
-        // For every model bundled in src-tauri/models, the bytes on disk
-        // must hash to what the catalog claims. This is the half of the
-        // contract that can be checked without a network: if a bundled file
-        // is ever updated without updating its entry, the app would ship one
-        // model and advertise the hash of another, and re-downloading it
-        // would fail with an integrity error that looked like tampering.
+        // Model weights are no longer committed -- they are downloaded on
+        // demand -- so src-tauri/models is empty on a fresh clone and this
+        // check has nothing to verify. It still earns its place for anyone
+        // who has run the app or dropped weights in by hand: if a file
+        // there disagrees with its catalog entry, the local install and the
+        // catalog have diverged, and a re-download would fail an integrity
+        // check in a way that looks like tampering.
         //
         // It does not check that the URLs still serve those bytes. That
         // needs a live request, and this suite deliberately makes none --
@@ -401,7 +404,10 @@ mod tests {
                 checked += 1;
             }
         }
-        assert!(checked > 0, "no bundled models found to verify");
+        // Nothing to check on a clean checkout, which is the normal case
+        // now. Asserting a non-zero count would fail CI for the correct
+        // behaviour.
+        let _ = checked;
     }
 
     #[test]

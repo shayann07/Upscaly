@@ -31,3 +31,13 @@ target/
 src-tauri/target/
 benchmark-reports/
 
+# Model weights are downloaded on demand, never committed. They are ~34MB
+# each and made up 45MB of a 56MB repository; the catalog fetches them
+# from commit-pinned URLs with a verified SHA-256 (see registry_provider),
+# so shipping them bought nothing a first-run download does not.
+src-tauri/models/*.bin
+src-tauri/models/*.param
+
+# Local test media. Personal photos and multi-MB sample outputs -- kept
+# on disk, never published.
+test/

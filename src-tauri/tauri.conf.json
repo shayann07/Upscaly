@@ -35,9 +35,6 @@
       "binaries/ffmpeg",
       "binaries/ffprobe"
     ],
-    "resources": [
-      "models/*"
-    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

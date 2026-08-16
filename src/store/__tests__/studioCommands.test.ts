@@ -36,6 +36,11 @@ beforeEach(() => {
   resetStudioStore();
   mockInvoke.mockReset();
   studioActions.setGpus([{ id: 0, name: 'Test GPU', detail: 'Vulkan' }]);
+  // The default state of an app that has been used: the selected model is
+  // downloaded. Models ship on demand rather than bundled, so tests that
+  // exercise submission have to say so -- the ones that care about the
+  // empty first-run state override this.
+  studioActions.setInstalledModels(['realesrgan-x4plus']);
 });
 
 describe('startUpscale', () => {
@@ -145,6 +150,8 @@ describe('startUpscale', () => {
     resetStudioStore();
     mockInvoke.mockClear();
     studioActions.setGpus([{ id: 0, name: 'Test GPU', detail: 'Vulkan' }]);
+    // resetStudioStore wipes the fixture's installed models too.
+    studioActions.setInstalledModels(['realesrgan-x4plus']);
     studioActions.setPreset('balanced');
     studioActions.addFiles([{ ...staged('v'), isVideo: true }], true);
     await startUpscale();
@@ -185,6 +192,34 @@ describe('startUpscale', () => {
     // "[object Object]" -- which is what String(err) would produce now that
     // commands reject with a typed error rather than a string.
     expect(state().items[0].error).toContain('Sidecar binary not found');
+  });
+
+  it('sends a fresh install to the Models tab instead of a broken run', async () => {
+    // Models are downloaded on demand now, so an empty models directory is
+    // the normal state of a first launch. Submitting anyway would spawn an
+    // engine that dies on a missing .param and surface as an opaque
+    // execution error -- a terrible first thing for a new user to meet.
+    mockInvoke.mockResolvedValue([]);
+    studioActions.setInstalledModels([]);
+    studioActions.addFiles([staged('a')], true);
+
+    await startUpscale();
+
+    expect(mockInvoke).not.toHaveBeenCalledWith('run_upscale_batch', expect.anything());
+    expect(state().activeNavTab).toBe('models');
+    expect(state().items[0].status).toBe('ready');
+  });
+
+  it('will not run a model the user has not downloaded yet', async () => {
+    mockInvoke.mockResolvedValue([]);
+    studioActions.setInstalledModels(['realesrgan-x4plus-anime']);
+    studioActions.setSelectedModel('remacri-4x');
+    studioActions.addFiles([staged('a')], true);
+
+    await startUpscale();
+
+    expect(mockInvoke).not.toHaveBeenCalledWith('run_upscale_batch', expect.anything());
+    expect(state().activeNavTab).toBe('models');
   });
 
   it('refuses to start with no GPU available', async () => {

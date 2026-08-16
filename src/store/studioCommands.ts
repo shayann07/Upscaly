@@ -243,6 +243,29 @@ export async function startUpscale(): Promise<void> {
     return;
   }
 
+  // Models are downloaded on demand rather than shipped, so "nothing is
+  // installed yet" is the normal state of a fresh install, not an error
+  // condition. Submitting anyway would spawn an engine that fails on a
+  // missing .param file and surface as an opaque execution error, which is
+  // a terrible first thing for a new user to see.
+  if (snapshot.installedModels.length === 0) {
+    studioActions.notify(
+      'info',
+      'No models installed yet',
+      'Pick a model in the Models tab to download it. Around 34 MB, once.'
+    );
+    studioActions.setActiveNavTab('models');
+    return;
+  }
+  if (!snapshot.installedModels.includes(snapshot.selectedModel)) {
+    const name =
+      snapshot.supportedModels.find((m) => m.id === snapshot.selectedModel)?.name ??
+      snapshot.selectedModel;
+    studioActions.notify('info', `${name} is not downloaded yet`, 'Download it to run this model.');
+    studioActions.setActiveNavTab('models');
+    return;
+  }
+
   const pending = snapshot.items.filter(
     (item) => item.status === 'ready' || item.status === 'failed'
   );
@@ -509,6 +532,11 @@ export function loadHistoryItem(entry: HistoryEntry): void {
  */
 export async function refreshCatalog(): Promise<void> {
   const reconcileSelection = (installed: string[]) => {
+    // Move to something runnable when the current pick is not installed.
+    // With nothing installed at all there is nothing to move to, and the
+    // selection is deliberately left alone: it is what the Models tab
+    // highlights, and startUpscale routes the user there rather than
+    // letting them press Run on a model that cannot execute.
     if (installed.length > 0 && !installed.includes(state().selectedModel)) {
       studioActions.setSelectedModel(installed[0]);
     }

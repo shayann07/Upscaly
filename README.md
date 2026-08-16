@@ -118,7 +118,9 @@ Integrated GPUs (Intel UHD/Iris, AMD Radeon Graphics) work but are considerably 
 
 ### Option 1 — download a release
 
-Grab the latest installer from the [Releases page](https://github.com/shayann07/Upscaly/releases) and run it. Models for the stock engine ship with the app; the extra photographic models download on demand.
+Grab the latest installer from the [Releases page](https://github.com/shayann07/Upscaly/releases) and run it.
+
+On first launch no models are installed yet — open the **Models** tab and download the one you want (~34 MB each, once). Every download is verified against a pinned SHA-256 and refuses to install on a mismatch. Nothing else phones home.
 
 ### Option 2 — build it yourself
 
@@ -264,6 +266,11 @@ Executables are **not** committed (`*.exe` is gitignored — ffmpeg alone is ~24
 | `ffprobe-x86_64-pc-windows-msvc.exe`                | as above                                                                                        |
 
 Tauri's sidecar naming requires the `-x86_64-pc-windows-msvc` suffix exactly.
+
+**Model weights are not committed either.** They are downloaded on demand from
+commit-pinned URLs with verified SHA-256 hashes, so a fresh clone has none and
+the app will send you to the Models tab on first run. That keeps the repository
+small: the weights previously accounted for 45 MB of a 56 MB clone.
 
 ### Run and build
 
