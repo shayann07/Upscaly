@@ -22,28 +22,47 @@ function getItemColor(status: string, accentColor: string): string {
   if (status === 'succeeded') return 'var(--success)';
   if (status === 'running') return accentColor;
   if (status === 'queued') return 'var(--text-secondary)';
+  if (status === 'failed') return 'var(--danger-text)';
   return 'var(--text-dim)';
 }
 
+/**
+ * The row's status glyph.
+ *
+ * A failure used to render as an empty string, indistinguishable from a
+ * cancelled or not-yet-started row -- the only report of it was a toast
+ * that removed itself after five seconds. A job that fails while nobody is
+ * watching therefore left no trace anywhere in the UI, which is exactly how
+ * a 50-minute video job came to look like it had simply never finished.
+ * The row now says so, permanently, until the user clears it.
+ */
 function getItemStatusLabel(status: string, progress: number): string {
   if (status === 'succeeded') return '✓';
   if (status === 'running') return `${Math.round(progress)}%`;
   if (status === 'queued') return '···';
+  if (status === 'failed') return '!';
   return '';
 }
 
-function getRowStyle(open: boolean, active: boolean, index: number): React.CSSProperties {
+function getRowStyle(
+  open: boolean,
+  active: boolean,
+  index: number,
+  failed: boolean
+): React.CSSProperties {
   return {
     gap: open ? 11 : 0,
     justifyContent: open ? 'flex-start' : 'center',
     padding: open ? '6px' : '0',
     marginBottom: open ? 3 : -13,
     borderRadius: open ? 10 : 12,
-    border: `1px solid ${open && active ? 'var(--border-subtle)' : 'transparent'}`,
-    background: open && active ? 'var(--bg-active)' : 'transparent',
+    // A failed row keeps its border and tint whether or not it is selected:
+    // the whole point is that it stays visible without being looked for.
+    border: `1px solid ${failed ? 'var(--border-danger)' : open && active ? 'var(--border-subtle)' : 'transparent'}`,
+    background: failed ? 'var(--danger-bg)' : open && active ? 'var(--bg-active)' : 'transparent',
     overflow: open ? 'hidden' : 'visible',
     zIndex: active ? 40 : 20 - index,
-    opacity: open || active ? 1 : 0.66,
+    opacity: failed || open || active ? 1 : 0.66,
     transform: open ? 'none' : `translateX(${active ? 5 : 0}px) scale(${active ? 1 : 0.9})`,
     transformOrigin: 'center left',
   };
@@ -74,6 +93,7 @@ export const BatchQueueRow = memo(function BatchQueueRow({
   const st = file.status;
   const col = getItemColor(st, accentColor);
   const statusLabel = getItemStatusLabel(st, file.progress);
+  const failed = st === 'failed';
 
   return (
     <div
@@ -84,7 +104,10 @@ export const BatchQueueRow = memo(function BatchQueueRow({
       onDragOver={(e) => e.preventDefault()}
       onDragEnd={onDragEnd}
       className="relative flex items-center cursor-pointer group transition-all duration-200 hover:scale-[1.02] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
-      style={getRowStyle(open, active, index)}
+      style={getRowStyle(open, active, index, failed)}
+      // The error text is the row's tooltip in the collapsed rail too, so
+      // the reason is one hover away without expanding the queue.
+      title={failed && file.error ? file.error : undefined}
     >
       <BatchQueueRowThumbnail
         file={file}
