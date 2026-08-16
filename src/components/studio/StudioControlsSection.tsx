@@ -3,7 +3,6 @@ import { ProgressOverlay } from '../ProgressOverlay';
 import { CompletionCard } from '../CompletionCard';
 import { SettingsPanel } from '../SettingsPanel';
 import {
-  useActiveVramGb,
   useCategory,
   useEffectiveTileSize,
   useComparisonViewMode,
@@ -110,8 +109,6 @@ export const StudioControlsSection = memo(function StudioControlsSection() {
   const comparisonViewMode = useComparisonViewMode();
   const zoomLevel = useZoomLevel();
 
-  const activeVramGb = useActiveVramGb();
-
   const outputDims = useMemo(
     () =>
       selected?.w != null && selected.h != null
@@ -171,7 +168,6 @@ export const StudioControlsSection = memo(function StudioControlsSection() {
             progressItem.progress,
             progressItem.startedAtMs
           )}
-          vram={activeVramGb}
           tileCount={formatTile(tileSize, effectiveTileSize)}
           onCancel={handleCancel}
         />
