@@ -231,7 +231,7 @@ fn read_tail(path: &Path, n: usize) -> Option<Vec<u8>> {
 /// complete, so its tail answers the question exactly -- no guessing from
 /// file sizes settling, and no dependence on how many save threads the
 /// profile happens to use.
-fn is_complete_image(path: &Path, format: OutputFormat) -> bool {
+pub(crate) fn is_complete_image(path: &Path, format: OutputFormat) -> bool {
     match format {
         // A fixed 12-byte IEND chunk.
         OutputFormat::Png => {
@@ -636,6 +636,7 @@ mod tests {
             is_video: false,
             preset: crate::engine::preset::QualityPreset::Balanced,
             output_format: OutputFormat::Png,
+            resume: false,
         }
     }
 

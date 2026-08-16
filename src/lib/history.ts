@@ -50,6 +50,52 @@ export function addHistoryItem(item: Omit<HistoryItem, 'id' | 'timestamp'>): His
   }
 }
 
+/**
+ * Folds the backend's durable history into the local copy.
+ *
+ * The backend records completions at the transition itself, so it has
+ * entries for jobs that finished while no webview was watching -- the exact
+ * entries localStorage is missing. Local entries are kept too, because they
+ * predate the backend file. Deduplicated on the output path: the same file
+ * cannot be two different completions.
+ */
+export function mergeBackendHistory(
+  records: {
+    file_name: string;
+    input_path: string;
+    output_path: string;
+    model_name: string;
+    scale: number;
+    is_video: boolean;
+    timestamp_ms: number;
+  }[]
+): HistoryItem[] {
+  try {
+    const local = getRecentHistory();
+    const seen = new Set(local.map((h) => h.upscaledPath));
+    const fromBackend: HistoryItem[] = records
+      .filter((r) => !seen.has(r.output_path))
+      .map((r) => ({
+        id: `bk-${r.timestamp_ms}-${r.output_path.length}`,
+        fileName: r.file_name,
+        originalPath: r.input_path,
+        upscaledPath: r.output_path,
+        modelId: r.model_name,
+        scale: r.scale,
+        isVideo: r.is_video,
+        timestamp: r.timestamp_ms,
+      }));
+    const merged = [...local, ...fromBackend]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 20);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(merged));
+    return merged;
+  } catch (err) {
+    console.error('Failed to merge backend history:', err);
+    return getRecentHistory();
+  }
+}
+
 export function removeHistoryItem(id: string): HistoryItem[] {
   try {
     const current = getRecentHistory();

@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod engine;
 pub mod error;
+pub mod history;
 pub mod image_batch;
 pub mod job_queue;
 pub mod job_state;
@@ -60,12 +61,17 @@ pub fn run() {
             commands::models::list_installed_models,
             commands::models::get_model_catalog,
             commands::models::download_model,
+            commands::resume::list_resumable_jobs,
+            commands::resume::resume_video_job,
+            commands::resume::discard_resumable_job,
             commands::upscale::run_upscale_batch,
             commands::upscale::cancel_upscale,
             commands::upscale::get_jobs_snapshot,
             commands::settings::get_app_settings,
             commands::settings::update_app_settings,
             commands::settings::get_default_output_dir,
+            commands::settings::get_history_entries,
+            commands::telemetry::get_gpu_telemetry,
             commands::files::allow_media_path,
             commands::files::close_window,
             commands::files::minimize_window,

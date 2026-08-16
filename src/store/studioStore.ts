@@ -1,4 +1,4 @@
-import { JobSnapshot, OutputFormat, QualityPreset } from '../lib/ipc';
+import { JobSnapshot, OutputFormat, QualityPreset, ResumableJob } from '../lib/ipc';
 import { GpuInfo, ModelInfo, MAX_VISIBLE_TOASTS, SUPPORTED_MODELS } from '../lib/types';
 import { getRecentHistory, HistoryItem } from '../lib/history';
 import { isTerminalState } from '../lib/jobState';
@@ -53,6 +53,12 @@ export interface StudioState {
    * addition to the app's own. Empty when unset.
    */
   customModelsDir: string;
+  /**
+   * Slower but cooler: a pause between video batches and one tile step
+   * below the governor's pick. For machines whose GPU resets under hours
+   * of sustained full load.
+   */
+  gentleMode: boolean;
   customOutputPath: string;
   isMuted: boolean;
   autoCheckUpdates: boolean;
@@ -74,6 +80,12 @@ export interface StudioState {
    * TTA. Blocks the submission until the user has seen the cost.
    */
   confirmSlowRunOpen: boolean;
+  /**
+   * Crashed video jobs whose completed frames survived on disk, offered
+   * for resume one at a time. Populated once at launch from the backend's
+   * scan.
+   */
+  resumableJobs: ResumableJob[];
   toasts: Toast[];
   historyItems: HistoryItem[];
 
@@ -105,6 +117,7 @@ function createInitialState(): StudioState {
     preset: 'balanced',
     outputFormat: 'png',
     customModelsDir: '',
+    gentleMode: false,
     customOutputPath: '',
     isMuted: localStorage.getItem('upscaly_sound_muted') === 'true',
     autoCheckUpdates: true,
@@ -122,6 +135,7 @@ function createInitialState(): StudioState {
     zoomLevel: 1,
     confirmCancelOpen: false,
     confirmSlowRunOpen: false,
+    resumableJobs: [],
     toasts: [],
     historyItems: getRecentHistory(),
 
@@ -317,6 +331,15 @@ export const studioActions = {
   },
   setCustomModelsDir(customModelsDir: string) {
     setState((prev) => ({ ...prev, customModelsDir }));
+  },
+  setGentleMode(gentleMode: boolean) {
+    setState((prev) => ({ ...prev, gentleMode }));
+  },
+  setResumableJobs(resumableJobs: ResumableJob[]) {
+    setState((prev) => ({ ...prev, resumableJobs }));
+  },
+  shiftResumableJob() {
+    setState((prev) => ({ ...prev, resumableJobs: prev.resumableJobs.slice(1) }));
   },
   setTileSize(tileSize: number) {
     setState((prev) => ({ ...prev, tileSize }));

@@ -2,11 +2,11 @@ import { useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { JobSnapshot } from '../lib/ipc';
 import { JobState, isTerminalState } from '../lib/jobState';
-import { addHistoryItem } from '../lib/history';
+import { addHistoryItem, mergeBackendHistory } from '../lib/history';
 import { allowMediaPath } from '../lib/assetScope';
 import { playCompleteSound, playErrorSound } from '../lib/sound';
 import { QueueItem } from '../store/queueItem';
-import { refreshCatalog } from '../store/studioCommands';
+import { checkResumableJobs, refreshCatalog } from '../store/studioCommands';
 import { studioActions, studioStore } from '../store/studioStore';
 import { useJobEvents } from './useJobEvents';
 
@@ -107,6 +107,18 @@ export function useJobSync() {
     invoke<JobSnapshot[]>('get_jobs_snapshot')
       .then((snapshots) => studioActions.applySnapshots(snapshots))
       .catch(() => {});
+
+    // The backend's durable history has entries for jobs that finished
+    // while no webview was watching -- a crash, a reload -- which are
+    // exactly the entries localStorage is missing. Folding them in here is
+    // the frontend half of the fix; writing them at the transition is the
+    // backend half.
+    invoke<Parameters<typeof mergeBackendHistory>[0]>('get_history_entries')
+      .then((records) => studioActions.setHistoryItems(mergeBackendHistory(records)))
+      .catch(() => {});
+
+    // And ask what crashed work survived on disk, once per launch.
+    void checkResumableJobs();
   }, []);
 
   useJobEvents(handleJobsChanged, handleDownloadProgress, handleModelCatalogUpdated);

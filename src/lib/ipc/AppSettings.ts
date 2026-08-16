@@ -25,4 +25,11 @@ default_gpu_name: string | null, default_scale: number, default_tile_size: numbe
  * A folder of user-supplied ncnn `.param`+`.bin` pairs, searched in
  * addition to the app's own models directory. `None` when unset.
  */
-custom_models_dir: string | null, output_directory: string | null, sound_muted: boolean, auto_check_updates: boolean, };
+custom_models_dir: string | null, 
+/**
+ * Trades ~10-20% throughput for thermal headroom on long video runs:
+ * a cooldown pause between engine batches and one tile step below the
+ * governor's choice. For machines whose GPU resets under hours of
+ * sustained full load.
+ */
+gentle_mode: boolean, output_directory: string | null, sound_muted: boolean, auto_check_updates: boolean, };

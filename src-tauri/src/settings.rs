@@ -31,6 +31,12 @@ pub struct AppSettings {
     /// addition to the app's own models directory. `None` when unset.
     #[serde(default)]
     pub custom_models_dir: Option<String>,
+    /// Trades ~10-20% throughput for thermal headroom on long video runs:
+    /// a cooldown pause between engine batches and one tile step below the
+    /// governor's choice. For machines whose GPU resets under hours of
+    /// sustained full load.
+    #[serde(default)]
+    pub gentle_mode: bool,
     pub output_directory: Option<String>,
     pub sound_muted: bool,
     pub auto_check_updates: bool,
@@ -46,6 +52,7 @@ impl Default for AppSettings {
             default_preset: crate::engine::preset::QualityPreset::Balanced,
             default_output_format: crate::engine::output_format::OutputFormat::Png,
             custom_models_dir: None,
+            gentle_mode: false,
             output_directory: None,
             sound_muted: false,
             auto_check_updates: true,
