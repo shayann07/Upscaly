@@ -1,0 +1,34 @@
+# Normalize text files to LF in the repository *and* in the working tree.
+#
+# Without this, a Windows checkout with core.autocrlf=true -- the default
+# on GitHub's windows runners, and on most local Git for Windows installs
+# -- rewrites every text file to CRLF on disk. Prettier is configured with
+# `endOfLine: "lf"`, so it then flags the entire tree. That is exactly how
+# CI failed while `npm run format:ts:check` passed locally: the checked-out
+# bytes differed from the committed ones, so the two were never running the
+# same check.
+#
+# `eol=lf` (rather than plain `text=auto`) is what makes the working tree
+# match the repository, which is the property prettier and rustfmt actually
+# depend on.
+* text=auto eol=lf
+
+# Binaries git must never touch. `text=auto` detects most of these on its
+# own, but the sidecar executables and model weights are large and being
+# explicit costs nothing.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.svg text eol=lf
+*.exe binary
+*.dll binary
+*.bin binary
+*.param binary
+*.zip binary
+*.mp4 binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

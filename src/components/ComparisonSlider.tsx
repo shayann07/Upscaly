@@ -1,7 +1,7 @@
-import React from 'react';
 import { useComparisonDrag } from '../hooks/useComparisonDrag';
 import { useComparisonMedia } from '../hooks/useComparisonMedia';
 import { ComparisonSideView } from './comparison/ComparisonSideView';
+import { ComparisonMediaOverlay } from './comparison/ComparisonMediaOverlay';
 
 interface ComparisonSliderProps {
   inputPath?: string;
@@ -58,61 +58,10 @@ export function ComparisonSlider(props: ComparisonSliderProps) {
     handleHandleMouseDown,
   } = useComparisonDrag({ zoom, onZoomChange, activeMode });
 
-  const mediaContainerStyle: React.CSSProperties = {
-    position: 'absolute',
-    inset: 0,
-    transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0px) scale3d(${zoom}, ${zoom}, 1)`,
-    transformOrigin: 'center center',
-    transition: isPanning ? 'none' : 'transform 0.12s cubic-bezier(0.16, 1, 0.3, 1)',
-    willChange: 'transform',
-    backfaceVisibility: 'hidden',
-    WebkitBackfaceVisibility: 'hidden',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
-
-  const renderMedia = (
-    src: string,
-    isVideo: boolean,
-    ref?: React.RefObject<HTMLVideoElement | null>
-  ) => {
-    if (!src) return null;
-
-    if (isVideo) {
-      return (
-        <div style={mediaContainerStyle}>
-          <video
-            ref={ref}
-            src={src}
-            autoPlay
-            loop
-            muted
-            playsInline
-            onPlay={() => {
-              if (ref === videoInputRef && videoOutputRef.current) {
-                videoOutputRef.current.play().catch(() => {});
-              }
-            }}
-            className="w-full h-full object-contain pointer-events-none"
-            style={{ backfaceVisibility: 'hidden' }}
-          />
-        </div>
-      );
-    }
-
-    return (
-      <div style={mediaContainerStyle}>
-        <img
-          src={src}
-          alt=""
-          className="w-full h-full object-contain pointer-events-none select-none"
-          draggable={false}
-          style={{ backfaceVisibility: 'hidden' }}
-        />
-      </div>
-    );
-  };
+  // Panning/zoom transform and the img/video split are identical to what
+  // the side-by-side view already renders, so both go through the same
+  // component rather than the near-verbatim copy that used to live here.
+  const layerProps = { panOffset, zoom, isPanning };
 
   if (activeMode === 'side') {
     return (
@@ -146,7 +95,12 @@ export function ComparisonSlider(props: ComparisonSliderProps) {
     >
       {/* Output (upscaled) layer — full frame */}
       <div className="absolute inset-0">
-        {renderMedia(outputSrc, isVideoOutput, videoOutputRef)}
+        <ComparisonMediaOverlay
+          src={outputSrc}
+          isVideo={isVideoOutput}
+          videoRef={videoOutputRef}
+          {...layerProps}
+        />
       </div>
 
       {/* Input (original) layer — clipped */}
@@ -158,7 +112,17 @@ export function ComparisonSlider(props: ComparisonSliderProps) {
           willChange: 'clip-path',
         }}
       >
-        {renderMedia(inputSrc, isVideoInput, videoInputRef)}
+        <ComparisonMediaOverlay
+          src={inputSrc}
+          isVideo={isVideoInput}
+          videoRef={videoInputRef}
+          // Starting the other half explicitly, rather than the old
+          // `ref === videoInputRef` identity check inside a shared render
+          // closure -- which silently did nothing if the refs were ever
+          // passed in a different order.
+          onPlay={() => void videoOutputRef.current?.play().catch(() => {})}
+          {...layerProps}
+        />
       </div>
 
       {/* Interactive Slider Divider Line & Hit Zone */}

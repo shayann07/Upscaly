@@ -30,20 +30,60 @@ describe('formatTile', () => {
 });
 
 describe('formatRate', () => {
+  /** Only `fps` and `progress` matter to the video path; the rest are the
+   * image-rate inputs, absent for video. */
+  const atFps = (fps: number | null) => ({
+    fps,
+    w: null,
+    h: null,
+    scale: null,
+    progress: 50,
+    startedAtMs: null,
+  });
+
   it('reports seconds-per-frame below 1 FPS instead of rounding to zero', () => {
     // A TTA video run sits near 0.01 fps. One-decimal FPS formatting turns
     // that into "0.0 FPS", which reads as a stalled job rather than a slow
     // one -- the exact confusion this replaces.
-    expect(formatRate(0.0125, null, null, null, 50, null)).toBe('80 s/frame');
-    expect(formatRate(0.5, null, null, null, 50, null)).toBe('2 s/frame');
+    expect(formatRate(atFps(0.0125))).toBe('80 s/frame');
+    expect(formatRate(atFps(0.5))).toBe('2 s/frame');
   });
 
   it('keeps FPS for rates where FPS is the natural unit', () => {
-    expect(formatRate(12.34, null, null, null, 50, null)).toBe('12.3 FPS');
-    expect(formatRate(1, null, null, null, 50, null)).toBe('1.0 FPS');
+    expect(formatRate(atFps(12.34))).toBe('12.3 FPS');
+    expect(formatRate(atFps(1))).toBe('1.0 FPS');
   });
 
   it('says nothing when there is no measured rate', () => {
-    expect(formatRate(null, null, null, null, 0, null)).toBe('');
+    expect(formatRate({ ...atFps(null), progress: 0 })).toBe('');
+  });
+
+  it('reports a megapixel rate for images once dimensions are known', () => {
+    // The image path: no fps from the backend, so the rate is derived from
+    // probed dimensions and elapsed time.
+    const rate = formatRate({
+      fps: null,
+      w: 1000,
+      h: 1000,
+      scale: 2,
+      progress: 50,
+      startedAtMs: Date.now() - 1000,
+    });
+    expect(rate).toMatch(/MP\/s$/);
+  });
+
+  it('refuses to guess a megapixel rate when dimensions were never probed', () => {
+    // Never derive a figure from assumed 1920x1080 -- an unmeasured value
+    // is reported as nothing at all.
+    expect(
+      formatRate({
+        fps: null,
+        w: null,
+        h: null,
+        scale: 2,
+        progress: 50,
+        startedAtMs: Date.now() - 1000,
+      })
+    ).toBe('');
   });
 });
