@@ -5,7 +5,6 @@ interface ProgressOverlayProps {
   phase?: string;
   eta?: string;
   rate?: string;
-  vram?: string;
   tileCount?: string;
   onCancel?: () => void;
   // Alternate prop names support
@@ -19,7 +18,6 @@ function ProgressOverlayImpl({
   phase = 'PREPARING',
   eta,
   rate,
-  vram = '-- GB',
   tileCount = 'AUTO',
   onCancel = () => {},
   percentage,
@@ -99,10 +97,15 @@ function ProgressOverlayImpl({
           )}
         </span>
 
-        <span className="text-[var(--text-dim)]">
-          VRAM <span className="text-[var(--text-primary)] font-semibold">{vram}</span>
-        </span>
-
+        {/*
+          No VRAM figure here on purpose. The one that used to sit in this
+          row was the governor's pre-run projection -- a static planning
+          number that, parked inside a live progress bar, read as a
+          measurement that never moved. The measured figure lives in the
+          titlebar chip while a job runs; the projection stays in Settings,
+          where a planning number belongs. One number, one meaning, one
+          place each.
+        */}
         <span className="text-[var(--text-dim)]">
           TILE <span className="text-[var(--text-primary)] font-semibold">{tileCount}</span>
         </span>
