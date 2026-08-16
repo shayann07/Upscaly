@@ -1,10 +1,5 @@
 import { memo, useState } from 'react';
 import { GpuInfo } from '../../lib/types';
-import { useGpuTelemetry } from '../../hooks/useGpuTelemetry';
-import { useIsProcessing } from '../../store/selectors';
-
-/** Absent readings render as an em-dash, never as an invented number. */
-const dash = (v: number | null | undefined, unit: string) => (v == null ? '—' : `${v}${unit}`);
 
 interface TitlebarGpuIslandProps {
   selectedGpu: number;
@@ -26,12 +21,6 @@ function TitlebarGpuIslandImpl({
   const currentGpu = availableGpus.find((g) => g.id === selectedGpu);
   const gpuLabel = currentGpu ? currentGpu.name : 'GPU Acceleration';
 
-  // Subscribed here rather than threaded through Titlebar's props: the
-  // reading changes every two seconds during a run, and only this island
-  // should re-render for it.
-  const isProcessing = useIsProcessing();
-  const telemetry = useGpuTelemetry(isProcessing);
-
   return (
     <div
       className={`pointer-events-auto absolute top-3 left-1/2 -translate-x-1/2 z-[41] border bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] overflow-hidden transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)] ${
@@ -40,7 +29,7 @@ function TitlebarGpuIslandImpl({
           : 'border-[var(--border-subtle)]'
       }`}
       style={{
-        width: gpuMenuOpen ? 310 : isVramOverflowing ? 275 : telemetry ? 280 : 210,
+        width: gpuMenuOpen ? 310 : isVramOverflowing ? 275 : 210,
         borderRadius: gpuMenuOpen ? 14 : 11,
         transformOrigin: 'top center',
       }}
@@ -52,23 +41,9 @@ function TitlebarGpuIslandImpl({
         <span className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.07em] text-[var(--text-dim)] flex-none">
           GPU
         </span>
-        {telemetry ? (
-          // During a run the island reports what the silicon is doing --
-          // that is the moment the name matters least and the temperature
-          // matters most. VRAM here is measured by the driver, unlike the
-          // projection shown in settings.
-          <span className="font-['Martian_Mono',monospace] text-[9.5px] text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0 text-center">
-            {dash(telemetry.temperature_c, '°C')} · {dash(telemetry.utilization_pct, '%')} ·{' '}
-            {telemetry.memory_used_mb != null && telemetry.memory_total_mb != null
-              ? `${(telemetry.memory_used_mb / 1024).toFixed(1)}/${(telemetry.memory_total_mb / 1024).toFixed(1)}G`
-              : '—'}{' '}
-            · fan {dash(telemetry.fan_pct, '%')}
-          </span>
-        ) : (
-          <span className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0 text-center">
-            {gpuLabel}
-          </span>
-        )}
+        <span className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0 text-center">
+          {gpuLabel}
+        </span>
         {isVramOverflowing && (
           <span className="flex-none px-1.5 py-0.5 rounded-full font-['Martian_Mono',monospace] text-[8px] font-bold tracking-[0.06em] bg-[rgba(232,138,128,0.18)] text-[#E88A80] border border-[rgba(232,138,128,0.4)] animate-pulse">
             OVERFLOW
