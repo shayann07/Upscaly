@@ -1,0 +1,121 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  # Every push to main runs this, but only a version bump should publish.
+  # Comparing tauri.conf.json against the tags that already exist is what
+  # makes "push to main and get a release" safe: docs commits, refactors
+  # and merges do not produce releases, and re-running a workflow cannot
+  # publish the same version twice.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: check
+        shell: bash
+        run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse "v$version" >/dev/null 2>&1; then
+            echo "v$version is already tagged; nothing to release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version is new; releasing."
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: gate
+    if: needs.gate.outputs.should_release == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Unlike CI, this needs the real engine: it is bundled into the
+      # installer. ffmpeg/ffprobe are deliberately not fetched here -- they
+      # are downloaded on the user's machine at install time (see
+      # installer-hooks.nsh), which is why this step is fast despite the
+      # manifest also describing them.
+      - name: Fetch sidecar binaries
+        run: npm ci && npm run fetch:sidecars
+
+      - name: Build installer
+        env:
+          # Signs the updater artifact. Without these the build still
+          # produces an installer but errors at the end, and latest.json
+          # would be unusable by the updater plugin.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri:build
+
+      # latest.json is what tauri-plugin-updater fetches from the release's
+      # `latest` alias. It has to be generated rather than hand-written
+      # because it carries the detached signature the bundler just produced.
+      - name: Generate latest.json
+        shell: bash
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          bundle="src-tauri/target/release/bundle/nsis"
+          setup=$(ls "$bundle"/*-setup.exe)
+          sig=$(cat "$bundle"/*-setup.exe.sig)
+          notes=$(git log -1 --pretty=%B | head -20)
+          node -e '
+            const fs = require("fs");
+            const [version, sig, url, notes] = process.argv.slice(1);
+            fs.writeFileSync("latest.json", JSON.stringify({
+              version,
+              notes,
+              pub_date: new Date().toISOString(),
+              platforms: { "windows-x86_64": { signature: sig, url } },
+            }, null, 2));
+          ' "$VERSION" "$sig" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/$(basename "$setup")" \
+            "$notes"
+          cat latest.json
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="src-tauri/target/release/bundle/nsis"
+          gh release create "v${VERSION}" \
+            --title "Upscaly v${VERSION}" \
+            --generate-notes \
+            "$bundle"/*-setup.exe \
+            "$bundle"/*-setup.exe.sig \
+            latest.json
