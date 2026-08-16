@@ -4,6 +4,7 @@ import { AppSettings, GpuInfo } from '../lib/types';
 import { allowMediaPath } from '../lib/assetScope';
 import { resolveGpu } from '../lib/gpuSelection';
 import { refreshCatalog } from '../store/studioCommands';
+import { checkForUpdates, loadAppVersion } from '../lib/updater';
 import { studioActions, studioStore } from '../store/studioStore';
 import { useStoreValue } from '../store/createStore';
 import { StudioState } from '../store/studioStore';
@@ -111,7 +112,16 @@ export function useSettingsSync() {
 
       applyGpuChoice(gpus, saved?.default_gpu_name);
       if (saved) await restoreNonGpuSettings(saved);
+
+      // After the settings are in, so the user's auto-check preference is
+      // the restored one rather than the default. Deliberately not awaited
+      // as part of the gate below -- a slow or unreachable update endpoint
+      // must not hold `settingsLoaded`, and therefore the whole UI, behind
+      // a network round trip.
+      if (studioStore.getState().autoCheckUpdates) void checkForUpdates();
     };
+
+    void loadAppVersion();
 
     // The save effect stays gated until the whole bootstrap settles.
     // Ungating earlier meant a save could fire pairing the resolved GPU
