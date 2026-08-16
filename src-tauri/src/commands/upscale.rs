@@ -4,10 +4,13 @@ use crate::job_queue::{
 };
 use crate::job_store::{JobSnapshot, JobStore};
 use crate::model_manager::get_models_dir;
-use crate::output_paths::{build_output_path, reserve_output_path};
+use crate::output_paths::{build_output_path, ensure_output_dir, reserve_output_path};
 use crate::{UpscaleJobHandle, UpscaleRequest};
 
-fn build_job(app_handle: &tauri::AppHandle, request: UpscaleRequest) -> (Job, UpscaleJobHandle) {
+fn build_job(
+    app_handle: &tauri::AppHandle,
+    request: UpscaleRequest,
+) -> Result<(Job, UpscaleJobHandle), AppError> {
     let job_id = request
         .job_id
         .map_or_else(generate_job_id, |id| sanitize_job_id(&id));
@@ -30,6 +33,10 @@ fn build_job(app_handle: &tauri::AppHandle, request: UpscaleRequest) -> (Job, Up
         request.output_dir.as_deref(),
         request.output_format,
     );
+    // Before reserving, not after: a destination that cannot be written
+    // to must fail here, at submission, rather than after every frame has
+    // been upscaled and only the final encode discovers it.
+    ensure_output_dir(&desired)?;
     let output_path = reserve_output_path(&desired);
 
     let job = Job {
@@ -49,13 +56,13 @@ fn build_job(app_handle: &tauri::AppHandle, request: UpscaleRequest) -> (Job, Up
         resume: false,
     };
 
-    (
+    Ok((
         job,
         UpscaleJobHandle {
             job_id,
             output_path,
         },
-    )
+    ))
 }
 
 /// Submits a whole run at once and reports where each result will land.
@@ -70,10 +77,14 @@ pub async fn run_upscale_batch(
     app_handle: tauri::AppHandle,
     requests: Vec<UpscaleRequest>,
 ) -> Result<Vec<UpscaleJobHandle>, AppError> {
-    let (jobs, handles): (Vec<Job>, Vec<UpscaleJobHandle>) = requests
+    // collect::<Result<..>> so one unusable destination rejects the whole
+    // submission rather than starting the jobs that happened to be listed
+    // before it.
+    let built = requests
         .into_iter()
         .map(|r| build_job(&app_handle, r))
-        .unzip();
+        .collect::<Result<Vec<_>, AppError>>()?;
+    let (jobs, handles): (Vec<Job>, Vec<UpscaleJobHandle>) = built.into_iter().unzip();
 
     add_jobs_to_queue(app_handle, jobs);
     Ok(handles)
