@@ -90,7 +90,11 @@ jobs:
           bundle="src-tauri/target/release/bundle/nsis"
           setup=$(ls "$bundle"/*-setup.exe)
           sig=$(cat "$bundle"/*-setup.exe.sig)
-          notes=$(git log -1 --pretty=%B | head -20)
+          # Subject line only. `%B | head -20` cut long commit bodies at an
+          # arbitrary line, and the v0.1.0 release shipped a notes field
+          # ending mid-sentence -- which is the text the in-app update
+          # dialog shows verbatim. The full notes live on the release page.
+          notes=$(git log -1 --pretty=%s)
           node -e '
             const fs = require("fs");
             const [version, sig, url, notes] = process.argv.slice(1);
