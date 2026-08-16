@@ -30,6 +30,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "externalBin": [
       "binaries/realesrgan-ncnn-vulkan",
       "binaries/ffmpeg",
@@ -42,5 +43,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgzN0M5Q0MyMjJCQzEyNzIKUldSeUVyd2l3cHg4ZzF2LytPRjl6N1Z1Zy9XVEZTUm5SNW41Q2d2UDZRU1FvOVJHNlJWTFI3bmUK",
+      "endpoints": [
+        "https://github.com/shayann07/Upscaly/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

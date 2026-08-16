@@ -9,6 +9,11 @@ export type NavTab = 'models' | 'history' | 'settings' | 'about';
 export type Category = 'photos' | 'anime' | 'video';
 export type ToastKind = 'success' | 'error' | 'info' | 'warning';
 export type ComparisonViewMode = 'split' | 'side-by-side';
+/**
+ * `installing` is terminal from the UI's point of view: Tauri's updater
+ * replaces the running binary and relaunches, so nothing renders after it.
+ */
+export type UpdatePhase = 'idle' | 'checking' | 'downloading' | 'installing';
 
 export interface Toast {
   id: string;
@@ -63,6 +68,22 @@ export interface StudioState {
   isMuted: boolean;
   autoCheckUpdates: boolean;
   settingsLoaded: boolean;
+
+  /**
+   * This build's own version, read once from the Tauri app metadata rather
+   * than hardcoded -- the titlebar used to render a literal "0.1.0" that
+   * would have quietly disagreed with the shipped binary after the first
+   * release. Empty until the read resolves.
+   */
+  appVersion: string;
+  /**
+   * A newer release the updater found, or null when up to date / not yet
+   * checked. `notes` is the release body, which the workflow generates.
+   */
+  availableUpdate: { version: string; notes: string } | null;
+  updatePhase: UpdatePhase;
+  /** 0-100 while `updatePhase` is `downloading`, else 0. */
+  updateProgress: number;
 
   supportedModels: ModelInfo[];
   installedModels: string[];
@@ -122,6 +143,11 @@ function createInitialState(): StudioState {
     isMuted: localStorage.getItem('upscaly_sound_muted') === 'true',
     autoCheckUpdates: true,
     settingsLoaded: false,
+
+    appVersion: '',
+    availableUpdate: null,
+    updatePhase: 'idle',
+    updateProgress: 0,
 
     supportedModels: SUPPORTED_MODELS,
     installedModels: [],
@@ -349,6 +375,22 @@ export const studioActions = {
   },
   setAutoCheckUpdates(autoCheckUpdates: boolean) {
     setState((prev) => ({ ...prev, autoCheckUpdates }));
+  },
+  setAppVersion(appVersion: string) {
+    setState((prev) => ({ ...prev, appVersion }));
+  },
+  setAvailableUpdate(availableUpdate: { version: string; notes: string } | null) {
+    setState((prev) => ({ ...prev, availableUpdate }));
+  },
+  setUpdatePhase(updatePhase: UpdatePhase) {
+    setState((prev) => ({
+      ...prev,
+      updatePhase,
+      updateProgress: updatePhase === 'downloading' ? prev.updateProgress : 0,
+    }));
+  },
+  setUpdateProgress(updateProgress: number) {
+    setState((prev) => (prev.updateProgress === updateProgress ? prev : { ...prev, updateProgress }));
   },
   setSettingsLoaded(settingsLoaded: boolean) {
     setState((prev) => ({ ...prev, settingsLoaded }));

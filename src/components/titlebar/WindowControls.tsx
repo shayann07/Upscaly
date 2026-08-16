@@ -1,6 +1,19 @@
 import { invoke } from '@tauri-apps/api/core';
+import {
+  useAppVersion,
+  useAvailableUpdate,
+  useUpdatePhase,
+  useUpdateProgress,
+} from '../../store/selectors';
+import { downloadAndInstallUpdate } from '../../lib/updater';
+import { UpdateBadge } from '../UpdateBadge';
 
 export function WindowControls() {
+  const appVersion = useAppVersion();
+  const availableUpdate = useAvailableUpdate();
+  const updatePhase = useUpdatePhase();
+  const updateProgress = useUpdateProgress();
+
   const handleMinimize = async () => {
     try {
       await invoke('minimize_window');
@@ -56,9 +69,16 @@ export function WindowControls() {
         </div>
         <div className="w-px h-[15px] bg-[var(--border-default)]" />
         <span className="font-bold text-[12.5px] tracking-[-0.01em]">Upscaly</span>
-        <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.06em]">
-          0.1.0
-        </span>
+        {/*
+          Read from Tauri's app metadata rather than written here. The
+          literal that used to sit in this slot would have kept reporting
+          0.1.0 no matter what version was actually shipped.
+        */}
+        {appVersion && (
+          <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.06em]">
+            {appVersion}
+          </span>
+        )}
         {/*
           import.meta.env.DEV is Vite's own dev-vs-build flag, true only
           when this is served by `vite`/`tauri dev` and false in the built
@@ -73,6 +93,19 @@ export function WindowControls() {
           >
             DEV
           </span>
+        )}
+
+        {availableUpdate && (
+          <>
+            <div className="w-px h-[15px] bg-[var(--border-default)]" />
+            <UpdateBadge
+              version={availableUpdate.version}
+              notes={availableUpdate.notes}
+              phase={updatePhase}
+              progress={updateProgress}
+              onInstall={downloadAndInstallUpdate}
+            />
+          </>
         )}
       </div>
     </div>

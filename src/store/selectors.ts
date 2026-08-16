@@ -99,6 +99,18 @@ export const useActiveVramGb = () => useSlice(selectActiveVramGb);
 export const useIsVramOverflowing = () => useSlice(selectIsVramOverflowing);
 export const useEffectiveTileSize = () => useSlice(selectEffectiveTileSize);
 
+// -------------------------------------------------------------- updates
+
+const selectAppVersion = (s: StudioState) => s.appVersion;
+const selectAvailableUpdate = (s: StudioState) => s.availableUpdate;
+const selectUpdatePhase = (s: StudioState) => s.updatePhase;
+const selectUpdateProgress = (s: StudioState) => s.updateProgress;
+
+export const useAppVersion = () => useSlice(selectAppVersion);
+export const useAvailableUpdate = () => useSlice(selectAvailableUpdate);
+export const useUpdatePhase = () => useSlice(selectUpdatePhase);
+export const useUpdateProgress = () => useSlice(selectUpdateProgress);
+
 // -------------------------------------------------------------- catalog
 
 const selectSupportedModels = (s: StudioState) => s.supportedModels;

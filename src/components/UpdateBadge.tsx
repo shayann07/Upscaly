@@ -1,90 +1,143 @@
-import React, { useState } from 'react';
-import { Sparkle, DownloadSimple, X } from '@phosphor-icons/react';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { UpdatePhase } from '../store/studioStore';
 
 interface UpdateBadgeProps {
-  latestVersion: string;
-  releaseNotes?: string;
-  onDownload: () => void;
-  isDownloading: boolean;
-  downloadPercentage: number;
+  version: string;
+  notes: string;
+  phase: UpdatePhase;
+  progress: number;
+  onInstall: () => void;
 }
 
-export const UpdateBadge: React.FC<UpdateBadgeProps> = ({
-  latestVersion,
-  releaseNotes = 'Real-ESRGAN v0.3.0 release with enhanced Vulkan FP16 acceleration and lower memory consumption.',
-  onDownload,
-  isDownloading,
-  downloadPercentage,
-}) => {
+const BUSY_LABEL: Partial<Record<UpdatePhase, string>> = {
+  downloading: 'Downloading',
+  installing: 'Installing',
+};
+
+/**
+ * The "an update is ready" affordance: a pill in the titlebar that opens
+ * the release notes.
+ *
+ * Replaces a version of this component that was never rendered anywhere --
+ * it was written against an earlier purple palette, and described *model*
+ * downloads rather than app updates. Everything here is on the current
+ * design tokens so it sits in the titlebar alongside the window controls
+ * rather than looking like a transplant.
+ */
+export function UpdateBadge({ version, notes, phase, progress, onInstall }: UpdateBadgeProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const busy = phase === 'downloading' || phase === 'installing';
 
   return (
     <>
-      {/* Glowing Pill Badge */}
       <button
+        type="button"
         onClick={() => setIsOpen(true)}
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#36255C] border border-[#F1FEC8]/40 text-[#F1FEC8] text-[11px] font-bold shadow-lg shadow-[#F1FEC8]/10 hover:scale-105 transition-all cursor-pointer animate-pulse"
+        title={`Upscaly ${version} is available`}
+        className="pointer-events-auto flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--border-default)] bg-[var(--accent-bg)] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] text-[var(--text-secondary)] cursor-pointer transition-all duration-200 hover:scale-[1.05] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]"
       >
-        <span className="w-2 h-2 rounded-full bg-[#F1FEC8]" />
-        <span>Update Available {latestVersion}</span>
+        <span className="w-[5px] h-[5px] rounded-full bg-[var(--accent)]" aria-hidden="true" />
+        <span>{busy ? (BUSY_LABEL[phase] ?? 'UPDATE') : `UPDATE ${version}`}</span>
       </button>
 
-      {/* Release Notes Modal */}
-      {isOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-6 select-none">
-          <div className="w-full max-w-md liquid-glass border border-[#F1FEC8]/30 rounded-3xl p-6 space-y-5 shadow-2xl relative">
-            <button
-              onClick={() => setIsOpen(false)}
-              className="absolute top-4 right-4 text-[#D2C3F6]/60 hover:text-[#F1FEC8] transition-colors"
+      <AnimatePresence>
+        {isOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-auto">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => !busy && setIsOpen(false)}
+              className="absolute inset-0 bg-[var(--bg-overlay)] backdrop-blur-sm"
+            />
+
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="update-title"
+              initial={{ opacity: 0, scale: 0.94, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 8 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              className="relative z-10 w-[420px] max-w-[90vw] rounded-[14px] border border-[var(--border-subtle)] bg-[rgba(13,12,11,.97)] shadow-[var(--shadow-modal)] overflow-hidden select-none"
             >
-              <X size={18} />
-            </button>
-
-            {/* Modal Icon & Title */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#36255C] to-[#4A3078] border border-[#F1FEC8]/40 flex items-center justify-center text-[#F1FEC8]">
-                <Sparkle size={22} weight="fill" />
+              <div className="h-[38px] flex-none flex items-center px-3.5 border-b border-[var(--border-default)]">
+                <span className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.1em] text-[var(--text-muted)]">
+                  UPDATE AVAILABLE
+                </span>
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-[#F1FEC8]">New Model Release Available</h3>
-                <p className="text-xs text-[#D2C3F6]/70">Version {latestVersion}</p>
-              </div>
-            </div>
 
-            {/* Release Notes */}
-            <div className="p-3 rounded-2xl bg-[#23212C]/80 border border-[#D2C3F6]/15 text-xs text-[#D2C3F6]/90 space-y-1">
-              <span className="text-[10px] uppercase font-bold text-[#F1FEC8]">
-                Release Highlights:
-              </span>
-              <p className="leading-relaxed">{releaseNotes}</p>
-            </div>
+              <div className="p-3.5">
+                <h3
+                  id="update-title"
+                  className="font-['Archivo',sans-serif] text-[13px] font-semibold text-[var(--text-primary)] mb-1.5"
+                >
+                  Upscaly {version}
+                </h3>
 
-            {/* Download Progress Bar or Action CTA */}
-            {isDownloading ? (
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-mono font-bold text-[#F1FEC8]">
-                  <span>Downloading Model Weights...</span>
-                  <span>{downloadPercentage.toFixed(1)}%</span>
+                {notes ? (
+                  <div className="max-h-[220px] overflow-y-auto mb-4 p-2.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-elevated)]">
+                    <pre className="font-['Archivo',sans-serif] text-[11.5px] leading-[1.55] text-[var(--text-tertiary)] whitespace-pre-wrap break-words m-0">
+                      {notes}
+                    </pre>
+                  </div>
+                ) : (
+                  <p className="font-['Archivo',sans-serif] text-[11.5px] leading-[1.5] text-[var(--text-muted)] mb-4">
+                    No release notes were published for this version.
+                  </p>
+                )}
+
+                {phase === 'downloading' && (
+                  <div className="mb-3">
+                    <div className="flex justify-between font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] text-[var(--text-muted)] mb-1.5">
+                      <span>DOWNLOADING</span>
+                      <span>{progress.toFixed(0)}%</span>
+                    </div>
+                    <div className="h-[3px] rounded-full bg-[var(--bg-elevated)] overflow-hidden">
+                      <div
+                        className="h-full bg-[var(--accent)]"
+                        style={{ width: `${progress}%`, transition: 'width .25s linear' }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsOpen(false)}
+                    disabled={busy}
+                    className="h-8 px-3 rounded-lg border border-[var(--border-default)] bg-[var(--bg-elevated)] font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.03em] text-[var(--text-secondary)] cursor-pointer transition-all duration-200 hover:scale-[1.05] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-default disabled:hover:scale-100"
+                  >
+                    Later
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onInstall}
+                    disabled={busy}
+                    className="h-8 px-3 rounded-lg border border-[var(--accent)] bg-[var(--accent-bg)] font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.03em] text-[var(--text-primary)] cursor-pointer transition-all duration-200 hover:scale-[1.05] hover:shadow-[var(--shadow-pill-hover)] disabled:opacity-40 disabled:cursor-default disabled:hover:scale-100"
+                  >
+                    {busy ? (BUSY_LABEL[phase] ?? 'Working') : 'Restart & Install'}
+                  </button>
                 </div>
-                <div className="w-full h-2 rounded-full bg-[#16141D] overflow-hidden border border-[#D2C3F6]/20">
-                  <div
-                    className="h-full bg-gradient-to-r from-[#36255C] to-[#F1FEC8] transition-all duration-150"
-                    style={{ width: `${downloadPercentage}%` }}
-                  />
-                </div>
+
+                {/*
+                  The install replaces the running binary and relaunches, so
+                  say so before the click rather than surprising someone
+                  mid-job.
+                */}
+                <p className="font-['Archivo',sans-serif] text-[10.5px] leading-[1.45] text-[var(--text-dim)] mt-2.5 text-right">
+                  Upscaly will close and reopen. Finish any running job first.
+                </p>
               </div>
-            ) : (
-              <button
-                onClick={onDownload}
-                className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-[#F1FEC8] to-[#D2C3F6] text-[#16141D] font-bold text-xs shadow-lg shadow-[#F1FEC8]/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-              >
-                <DownloadSimple size={16} weight="bold" />
-                <span>Download & Install Model</span>
-              </button>
-            )}
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </>
   );
-};
+}
+
+export default UpdateBadge;
