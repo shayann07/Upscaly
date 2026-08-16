@@ -47,14 +47,16 @@ const handleSetSide = () => studioActions.setComparisonViewMode('side-by-side');
  * probed -- in which case the row shows no rate rather than one derived
  * from an assumed 1920x1080.
  */
-export function formatRate(
-  fps: number | null,
-  w: number | null,
-  h: number | null,
-  scale: number | null,
-  progress: number,
-  startedAtMs: number | null
-): string {
+export interface RateInputs {
+  fps: number | null;
+  w: number | null;
+  h: number | null;
+  scale: number | null;
+  progress: number;
+  startedAtMs: number | null;
+}
+
+export function formatRate({ fps, w, h, scale, progress, startedAtMs }: RateInputs): string {
   if (fps != null && fps > 0) {
     // Below one frame per second, "0.0 FPS" is what a 1-decimal format
     // produces, and it reads as a stalled job rather than a slow one. A TTA
@@ -160,14 +162,14 @@ export const StudioControlsSection = memo(function StudioControlsSection() {
           phase={progressItem.status === 'queued' ? 'QUEUED' : 'UPSCALING'}
           etaSeconds={progressItem.etaSeconds ?? undefined}
           fps={progressItem.fps ?? undefined}
-          rate={formatRate(
-            progressItem.fps,
-            progressItem.w,
-            progressItem.h,
-            progressItem.scale ?? scale,
-            progressItem.progress,
-            progressItem.startedAtMs
-          )}
+          rate={formatRate({
+            fps: progressItem.fps,
+            w: progressItem.w,
+            h: progressItem.h,
+            scale: progressItem.scale ?? scale,
+            progress: progressItem.progress,
+            startedAtMs: progressItem.startedAtMs,
+          })}
           tileCount={formatTile(tileSize, effectiveTileSize)}
           onCancel={handleCancel}
         />

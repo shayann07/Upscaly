@@ -7,6 +7,12 @@ interface ComparisonMediaOverlayProps {
   panOffset: { x: number; y: number };
   zoom: number;
   isPanning: boolean;
+  /**
+   * Fires when this layer's video starts. The split view uses it to start
+   * the other side in step, so the two halves of the comparison do not
+   * drift apart.
+   */
+  onPlay?: () => void;
 }
 
 export function ComparisonMediaOverlay({
@@ -16,6 +22,7 @@ export function ComparisonMediaOverlay({
   panOffset,
   zoom,
   isPanning,
+  onPlay,
 }: ComparisonMediaOverlayProps) {
   const mediaContainerStyle: React.CSSProperties = {
     position: 'absolute',
@@ -43,6 +50,7 @@ export function ComparisonMediaOverlay({
           loop
           muted
           playsInline
+          onPlay={onPlay}
           className="w-full h-full object-contain pointer-events-none"
           style={{ backfaceVisibility: 'hidden' }}
         />
