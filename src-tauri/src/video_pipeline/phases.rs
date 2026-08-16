@@ -314,7 +314,15 @@ pub fn run_overlapping_upscale_pipeline(
     // loop adds its in-flight batch's incremental progress on top of this,
     // and one real directory scan per batch (~300 frames) re-anchors it --
     // instead of one scan per poll tick.
-    let mut confirmed_completed = 0usize;
+    // Seeded from what is already on disk, not zero. A resume starts with
+    // hundreds of finished frames in frames_out, and counting from zero
+    // meant the overlay opened at "0 / 294" and a progress figure that
+    // ignored every frame the previous attempt had produced -- it read as
+    // if the whole job had restarted, which is precisely the fear a resume
+    // feature exists to remove. The re-anchor at each batch boundary would
+    // have corrected it a batch later; by then the user has already drawn
+    // the wrong conclusion.
+    let mut confirmed_completed = count_image_files(&ctx.frames_out_dir);
     // Next batch's frames, moved into place while the current batch occupies
     // the GPU. See stage_next_batch.
     let mut pending_batch: Option<PreparedBatch> = None;
@@ -330,6 +338,14 @@ pub fn run_overlapping_upscale_pipeline(
     // slightly higher peak disk usage per in-flight batch (a few hundred
     // JPEG frames, negligible next to the already-unbounded staging dir).
     let batch_target_size = 300usize;
+
+    if confirmed_completed > 0 {
+        let expected = meta.total_frames_estimate.unwrap_or(confirmed_completed);
+        ctx.emit_progress(
+            8.0,
+            &format!("Resuming: {confirmed_completed} of {expected} frames already done"),
+        );
+    }
 
     loop {
         if ctx.is_cancelled() {
