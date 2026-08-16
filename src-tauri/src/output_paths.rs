@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -53,6 +54,37 @@ pub fn build_output_path(
     dir.join(format!("{stem}_upscaled_{target_scale}x.{ext}"))
         .to_string_lossy()
         .to_string()
+}
+
+/// Makes sure the directory an output will be written to exists.
+///
+/// The output directory is a free-text field, so it can name a folder that
+/// simply is not there -- and nothing downstream notices until the very
+/// last step. A video job discovers it after every frame has been upscaled:
+/// ffmpeg opens the output, gets "No such file or directory", and an hour
+/// of GPU work is thrown away over a folder that takes a millisecond to
+/// create. Observed exactly that way on a 294-frame job writing to a
+/// `Batch3` directory that had never been created.
+///
+/// Creating it is the right behaviour rather than merely failing early: a
+/// user who types a destination is asking for output to go there, and
+/// `mkdir -p` is what every other tool does with that instruction. The
+/// error path remains for the cases creation genuinely cannot fix --
+/// permissions, a missing drive, a file where the directory should be --
+/// and those now surface at submission, in seconds, instead of at the end.
+pub fn ensure_output_dir(path: &str) -> Result<(), AppError> {
+    let Some(parent) = Path::new(path).parent() else {
+        return Ok(());
+    };
+    if parent.as_os_str().is_empty() || parent.is_dir() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(parent).map_err(|e| AppError::OutputPathUnusable {
+        message: format!(
+            "Cannot write to the output folder '{}': {e}",
+            parent.display()
+        ),
+    })
 }
 
 /// Reserves a unique output path prior to job enqueueing, avoiding filename
@@ -158,6 +190,43 @@ mod tests {
         // AUTO scale (0) records as the 4x default it actually runs at.
         let auto = build_output_path("C:\\media\\clip.mkv", true, 0, None, OutputFormat::Png);
         assert!(auto.ends_with("clip_upscaled_4x.mp4"));
+    }
+
+    #[test]
+    fn test_a_missing_output_folder_is_created_rather_than_failing_late() {
+        // The bug this closes cost a real 294-frame job: the destination
+        // folder did not exist, nothing checked, and ffmpeg only discovered
+        // it when opening the output after ~50 minutes of GPU work.
+        let root = std::env::temp_dir().join("upscaly_outdir_test");
+        let _ = std::fs::remove_dir_all(&root);
+        let nested = root.join("Batch3").join("deeper");
+        let target = nested.join("clip_upscaled_4x.mp4");
+
+        assert!(!nested.exists());
+        ensure_output_dir(&target.to_string_lossy()).expect("should create the folder");
+        assert!(nested.is_dir(), "the whole chain must be created");
+
+        // Idempotent: an existing folder is not an error.
+        ensure_output_dir(&target.to_string_lossy()).expect("existing folder is fine");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_a_file_where_the_folder_should_be_is_reported_not_ignored() {
+        // create_dir_all cannot fix this one, and silently continuing would
+        // reproduce the original failure at the end of the run.
+        let root = std::env::temp_dir().join("upscaly_outdir_conflict");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let blocker = root.join("not_a_dir");
+        std::fs::write(&blocker, b"x").unwrap();
+
+        let target = blocker.join("clip_upscaled_4x.mp4");
+        let err = ensure_output_dir(&target.to_string_lossy());
+        assert!(err.is_err(), "a file blocking the path must be reported");
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

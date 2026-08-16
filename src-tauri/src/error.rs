@@ -15,6 +15,10 @@ pub enum AppError {
     #[error("Invalid media file format: {reason}")]
     InvalidFileFormat { reason: String },
 
+    /// The destination folder cannot be written to and could not be created.
+    #[error("{message}")]
+    OutputPathUnusable { message: String },
+
     #[error("Network error: {message}")]
     NetworkError { message: String },
 
@@ -83,6 +87,11 @@ impl AppError {
                 "INVALID_FILE_FORMAT",
                 reason.clone(),
                 "Use supported formats (PNG, JPG, WEBP, MP4, MKV)".to_string(),
+            ),
+            AppError::OutputPathUnusable { message } => (
+                "OUTPUT_PATH_UNUSABLE",
+                message.clone(),
+                "Choose a different output folder in Settings".to_string(),
             ),
             AppError::NetworkError { message } => (
                 "NETWORK_ERROR",
