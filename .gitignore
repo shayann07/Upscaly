@@ -31,6 +31,10 @@ target/
 src-tauri/target/
 benchmark-reports/
 
+# scripts/fetch-sidecars.mjs stages downloads here before the final move;
+# only left behind if the process is killed mid-run.
+src-tauri/binaries/.fetch-tmp-*/
+
 # Model weights are downloaded on demand, never committed. They are ~34MB
 # each and made up 45MB of a 56MB repository; the catalog fetches them
 # from commit-pinned URLs with a verified SHA-256 (see registry_provider),

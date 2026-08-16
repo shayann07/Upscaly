@@ -20,6 +20,7 @@
     "check:all": "npm run check:ts && npm run lint:ts && npm run test && npm run check:rust",
     "check:quality": "npm run check:ts && npm run lint:ts && npm run test && npm run check:rust && npm run format:check:all",
     "version:set": "node scripts/version-set.mjs",
+    "fetch:sidecars": "node scripts/fetch-sidecars.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },

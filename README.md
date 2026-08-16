@@ -257,15 +257,13 @@ Good sources: [OpenModelDB](https://openmodeldb.info/), [upscayl/custom-models](
 
 ### Sidecar binaries
 
-Executables are **not** committed (`*.exe` is gitignored — ffmpeg alone is ~240 MB). Place these in `src-tauri/binaries/` before building:
+Executables are **not** committed (`*.exe` is gitignored — ffmpeg alone is well over 100 MB). Fetch them with:
 
-| File                                                | Source                                                                                          |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `realesrgan-ncnn-vulkan-x86_64-pc-windows-msvc.exe` | [Real-ESRGAN-ncnn-vulkan releases](https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan/releases) |
-| `ffmpeg-x86_64-pc-windows-msvc.exe`                 | [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) — **LGPL build**                                |
-| `ffprobe-x86_64-pc-windows-msvc.exe`                | as above                                                                                        |
+```bash
+npm run fetch:sidecars
+```
 
-Tauri's sidecar naming requires the `-x86_64-pc-windows-msvc` suffix exactly.
+This downloads `realesrgan-ncnn-vulkan`, `ffmpeg` and `ffprobe` into `src-tauri/binaries/` from the pinned, SHA-256-verified sources in [`src-tauri/sidecar-manifest.json`](src-tauri/sidecar-manifest.json), and skips anything already present. Re-run with `--force` to refetch even what's already there.
 
 **Model weights are not committed either.** They are downloaded on demand from
 commit-pinned URLs with verified SHA-256 hashes, so a fresh clone has none and
