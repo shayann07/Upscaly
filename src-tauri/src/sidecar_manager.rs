@@ -39,6 +39,16 @@ fn get_active_processes() -> &'static Mutex<Vec<TrackedChild>> {
     ACTIVE_PROCESSES.get_or_init(|| Mutex::new(Vec::new()))
 }
 
+/// How a sidecar is named once Tauri has bundled it: the target triple it
+/// carries in `src-tauri/binaries/` is stripped, leaving a plain name.
+fn plain_binary_name(binary_name: &str) -> String {
+    if cfg!(target_os = "windows") {
+        format!("{binary_name}.exe")
+    } else {
+        binary_name.to_string()
+    }
+}
+
 /// Resolves the path to a sidecar binary, supporting dev, resources, and exe-relative directory layouts.
 pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBuf, AppError> {
     let target_triple = if cfg!(target_os = "windows") {
@@ -89,6 +99,30 @@ pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBu
             return Ok(path_direct);
         }
 
+        // The installed layout. Tauri strips the target triple when it
+        // bundles an externalBin, so the shipped engine is plainly
+        // `realesrgan-ncnn-vulkan.exe` next to the main executable -- a
+        // name none of the triple-suffixed probes above can ever match.
+        // The only plain-name fallbacks used to be relative to the process
+        // working directory, which in an installed app is wherever the user
+        // happened to launch from, so the engine was effectively
+        // unresolvable outside a dev tree. Never caught because the app had
+        // never been built into an installer before.
+        let plain_exe_relative = exe_path.join(plain_binary_name(binary_name));
+        if plain_exe_relative.exists() {
+            return Ok(plain_exe_relative);
+        }
+
+        // Downloaded after installation rather than shipped -- ffmpeg and
+        // ffprobe land here when the installer's fetch did not run or did
+        // not succeed and the app provisioned them itself.
+        let downloaded = exe_path
+            .join("binaries")
+            .join(plain_binary_name(binary_name));
+        if downloaded.exists() {
+            return Ok(downloaded);
+        }
+
         // Check if inside target/debug or similar for development
         let parent = exe_path.parent();
         if let Some(p) = parent {
@@ -111,11 +145,7 @@ pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBu
     }
 
     // Additional plain binary fallback without target triple
-    let plain_name = if cfg!(target_os = "windows") {
-        format!("{binary_name}.exe")
-    } else {
-        binary_name.to_string()
-    };
+    let plain_name = plain_binary_name(binary_name);
 
     let plain_local = PathBuf::from("src-tauri")
         .join("binaries")
@@ -349,22 +379,24 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
     // orphaning it (attach_to_job_object happens inside register_process).
     let tracked = register_process(child);
 
-    // Timeout mechanism (5 seconds max for GPU discovery)
+    // Bounds how long the probe may run. The exit status is deliberately
+    // not propagated -- see the parse below for why a crashed or killed
+    // engine still yields a usable device list.
     let start_time = std::time::Instant::now();
-    let exited = loop {
+    loop {
         let poll = {
             let mut slot = tracked
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             match slot.as_mut() {
                 // kill_all_processes took it: the app is shutting down.
-                None => break false,
+                None => break,
                 Some(child) => child.try_wait(),
             }
         };
 
         match poll {
-            Ok(Some(_status)) => break true,
+            Ok(Some(_status)) => break,
             Ok(None) => {
                 if start_time.elapsed() > std::time::Duration::from_secs(5) {
                     let mut slot = tracked
@@ -374,7 +406,7 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
                         let _ = child.kill();
                         let _ = child.wait();
                     }
-                    break false;
+                    break;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
@@ -386,10 +418,10 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
                     let _ = child.kill();
                     let _ = child.wait();
                 }
-                break false;
+                break;
             }
         }
-    };
+    }
 
     release_process(&tracked);
 
@@ -406,7 +438,23 @@ fn probe_gpus_raw(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
     let mut gpus = Vec::new();
     let mut seen_ids = std::collections::HashSet::new();
 
-    if exited {
+    // Parsed regardless of how the child ended, which `exited` used to gate.
+    //
+    // ncnn prints its device banner during Vulkan initialisation, before it
+    // touches a model, so the lines this function exists to read are
+    // already in the drained buffers by the time anything can go wrong
+    // afterwards. Requiring a clean exit threw all of it away whenever the
+    // engine did not finish in five seconds.
+    //
+    // Which is exactly what a fresh install does: with no model weights
+    // downloaded yet, the engine prints both GPUs, fails to open
+    // realesr-animevideov3-x4.param, and then crashes
+    // (STATUS_STACK_BUFFER_OVERRUN, 0xC0000409) around nine seconds in --
+    // past the timeout, so the probe was killed and reported "no GPUs" on a
+    // machine with two working ones. Observed on a real install of this
+    // build: the app spawned the engine, the engine printed both devices,
+    // and `default_gpu_name` still came out null.
+    {
         let stderr_str = stderr_buf.lock().map(|g| g.clone()).unwrap_or_default();
         let stdout_str = stdout_buf.lock().map(|g| g.clone()).unwrap_or_default();
 

@@ -265,6 +265,8 @@ npm run fetch:sidecars
 
 This downloads `realesrgan-ncnn-vulkan`, `ffmpeg` and `ffprobe` into `src-tauri/binaries/` from the pinned, SHA-256-verified sources in [`src-tauri/sidecar-manifest.json`](src-tauri/sidecar-manifest.json), and skips anything already present. Re-run with `--force` to refetch even what's already there.
 
+> **Only the engine is bundled into releases.** `ffmpeg`/`ffprobe` are ~290 MB together and GPL-licensed, so the installer downloads them from upstream during installation (see `src-tauri/installer-hooks.nsh`) rather than shipping them — which keeps the installer at ~5 MB and means Upscaly never redistributes GPL binaries itself. If that download fails, installation still succeeds: image upscaling never needs ffmpeg, and the app fetches it when a video job is first started.
+
 **Model weights are not committed either.** They are downloaded on demand from
 commit-pinned URLs with verified SHA-256 hashes, so a fresh clone has none and
 the app will send you to the Models tab on first run. That keeps the repository
@@ -440,10 +442,10 @@ Upscaly bundles software under its own licenses. Full details in [`docs/THIRD_PA
 | ----------------------------------------------------------------------------- | ---------------------------------------------- |
 | [Real-ESRGAN ncnn Vulkan](https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan) | BSD 3-Clause / MIT                             |
 | [ncnn](https://github.com/Tencent/ncnn) (Tencent)                             | BSD 3-Clause                                   |
-| [FFmpeg / FFprobe](https://ffmpeg.org/)                                       | **LGPL v2.1 / v3.0** (GPL components excluded) |
+| [FFmpeg / FFprobe](https://ffmpeg.org/)                                       | **GPL v3** — not bundled, fetched from upstream |
 | [Tauri](https://tauri.app)                                                    | MIT / Apache-2.0                               |
 
-> **If you redistribute builds of Upscaly**, the bundled FFmpeg is LGPL. You must keep the notices intact and make its source available. Upscaly ships an LGPL build with GPL-only encoders (x264, x265, xvid) excluded, relying on hardware encoders instead — do not swap in a GPL build without understanding what that means for your distribution.
+> **FFmpeg is GPL v3 and Upscaly does not redistribute it.** Neither this repository nor the installer contains it; the installer downloads it from a pinned [BtbN](https://github.com/BtbN/FFmpeg-Builds) release during installation, so your copy comes straight from upstream. The GPL build is chosen deliberately: the encoder chain falls back to `libx264` software encoding when no hardware encoder works, and that rung does not exist in an LGPL build. If *you* mirror or bundle those binaries yourself, GPL v3 obligations apply to you — see [`docs/THIRD_PARTY_NOTICES.md`](docs/THIRD_PARTY_NOTICES.md).
 
 Model weights are the property of their respective authors: Remacri by **FoolhardyVEVO**, UltraSharp by **Kim2091**, and the Real-ESRGAN models by **Xintao Wang et al.**
 
