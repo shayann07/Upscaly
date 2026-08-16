@@ -390,7 +390,9 @@ export const studioActions = {
     }));
   },
   setUpdateProgress(updateProgress: number) {
-    setState((prev) => (prev.updateProgress === updateProgress ? prev : { ...prev, updateProgress }));
+    setState((prev) =>
+      prev.updateProgress === updateProgress ? prev : { ...prev, updateProgress }
+    );
   },
   setSettingsLoaded(settingsLoaded: boolean) {
     setState((prev) => ({ ...prev, settingsLoaded }));

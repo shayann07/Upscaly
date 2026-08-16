@@ -88,7 +88,11 @@ export function WindowControls() {
         {import.meta.env.DEV && (
           <span
             className="font-['Martian_Mono',monospace] text-[9px] font-bold tracking-[0.08em] px-1 py-px rounded-[3px] border"
-            style={{ color: '#E8B980', borderColor: 'rgba(232,185,128,.35)', background: 'rgba(232,185,128,.08)' }}
+            style={{
+              color: '#E8B980',
+              borderColor: 'rgba(232,185,128,.35)',
+              background: 'rgba(232,185,128,.08)',
+            }}
             title="Running via tauri:dev -- separate data from the installed app"
           >
             DEV

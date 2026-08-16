@@ -140,12 +140,10 @@ describe('downloadAndInstallUpdate', () => {
     // Never invent a percentage: a fabricated bar that jumps to 100% and
     // sits there is worse than no bar.
     asProductionBuild();
-    const downloadAndInstall = vi.fn(
-      async (onEvent: (e: Record<string, unknown>) => void) => {
-        onEvent({ event: 'Started', data: {} });
-        onEvent({ event: 'Progress', data: { chunkLength: 4096 } });
-      }
-    );
+    const downloadAndInstall = vi.fn(async (onEvent: (e: Record<string, unknown>) => void) => {
+      onEvent({ event: 'Started', data: {} });
+      onEvent({ event: 'Progress', data: { chunkLength: 4096 } });
+    });
     mockCheck.mockResolvedValue(fakeUpdate({ downloadAndInstall }));
 
     await downloadAndInstallUpdate();
