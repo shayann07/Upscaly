@@ -87,10 +87,7 @@ pub fn calculate_sha256(path: &Path) -> Result<String, String> {
 
 /// Returns local models directory, ensuring bundled models are copied if missing.
 pub fn get_models_dir(app: &AppHandle) -> PathBuf {
-    let app_dir = app
-        .path()
-        .app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."));
+    let app_dir = crate::app_paths::app_data_dir(app);
     let models_dir = app_dir.join("models");
     if !models_dir.exists() {
         let _ = std::fs::create_dir_all(&models_dir);

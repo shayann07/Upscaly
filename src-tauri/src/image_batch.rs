@@ -32,7 +32,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use crate::engine::output_format::OutputFormat;
 use crate::error::AppError;
@@ -163,10 +163,7 @@ struct BatchDirs {
 }
 
 fn prepare_dirs(app: &AppHandle, group_id: &str) -> Result<(BatchDirs, TempFolderGuard), AppError> {
-    let cache_dir = app
-        .path()
-        .app_cache_dir()
-        .unwrap_or_else(|_| PathBuf::from("."));
+    let cache_dir = crate::app_paths::app_cache_dir(app);
     // Same defence as the video pipeline's temp directory: this path is
     // recursively deleted, so it must never be able to escape the cache dir.
     let safe_id = sanitize_job_id(group_id);

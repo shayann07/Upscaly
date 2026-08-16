@@ -22,7 +22,9 @@
     "version:set": "node scripts/version-set.mjs",
     "fetch:sidecars": "node scripts/fetch-sidecars.mjs",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

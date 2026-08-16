@@ -1,0 +1,15 @@
+{
+  "productName": "Upscaly Studio",
+  "identifier": "com.shaya.ai-upscaler.dev",
+  "app": {
+    "windows": [
+      {
+        "title": "Upscaly Studio",
+        "width": 1280,
+        "height": 800,
+        "center": true,
+        "decorations": false
+      }
+    ]
+  }
+}

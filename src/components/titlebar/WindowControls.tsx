@@ -59,6 +59,21 @@ export function WindowControls() {
         <span className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.06em]">
           0.1.0
         </span>
+        {/*
+          import.meta.env.DEV is Vite's own dev-vs-build flag, true only
+          when this is served by `vite`/`tauri dev` and false in the built
+          bundle `tauri build` ships -- so this needs no plumbing from the
+          Rust side to track which mode the app is actually running in.
+        */}
+        {import.meta.env.DEV && (
+          <span
+            className="font-['Martian_Mono',monospace] text-[9px] font-bold tracking-[0.08em] px-1 py-px rounded-[3px] border"
+            style={{ color: '#E8B980', borderColor: 'rgba(232,185,128,.35)', background: 'rgba(232,185,128,.08)' }}
+            title="Running via tauri:dev -- separate data from the installed app"
+          >
+            DEV
+          </span>
+        )}
       </div>
     </div>
   );

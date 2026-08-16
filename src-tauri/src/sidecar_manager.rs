@@ -221,10 +221,7 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
         }
     }
 
-    let app_dir = app
-        .path()
-        .app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."));
+    let app_dir = crate::app_paths::app_data_dir(app);
     let cache_path = app_dir.join("gpu_cache.json");
 
     let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan").ok();

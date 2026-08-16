@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 /// RAII Guard for temporary job directories to guarantee cleanup on success, failure, or cancellation.
 pub struct TempFolderGuard(pub PathBuf);
@@ -38,10 +38,7 @@ impl<'a> VideoJobContext<'a> {
         cancel_requested: Arc<AtomicBool>,
         process_handle: Arc<Mutex<Option<Box<dyn ProcessHandle>>>>,
     ) -> Result<(Self, TempFolderGuard), AppError> {
-        let cache_dir = app
-            .path()
-            .app_cache_dir()
-            .unwrap_or_else(|_| PathBuf::from("."));
+        let cache_dir = crate::app_paths::app_cache_dir(app);
         // Defense in depth: re-sanitize here too, at the point where the
         // resulting path is recursively deleted, regardless of whether the
         // caller already validated `job.id`.
