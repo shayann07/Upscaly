@@ -10,8 +10,7 @@ import {
   useCustomModelsDir,
   useGentleMode,
   useCustomOutputPath,
-  useDownloadProgress,
-  useDownloadingModelId,
+  useDownloadingModels,
   useGpus,
   useHistoryItems,
   useInstalledModels,
@@ -65,8 +64,7 @@ export const StudioModals = memo(function StudioModals() {
   const isProcessing = useIsProcessing();
   const supportedModels = useSupportedModels();
   const installedModels = useInstalledModels();
-  const downloadingModelId = useDownloadingModelId();
-  const downloadProgress = useDownloadProgress();
+  const downloadingModels = useDownloadingModels();
   const historyItems = useHistoryItems();
   const toasts = useToasts();
 
@@ -125,8 +123,7 @@ export const StudioModals = memo(function StudioModals() {
               supportedModels={supportedModels}
               installedModelIds={installedModels}
               onDownloadModel={handleDownloadModel}
-              downloadingModelId={downloadingModelId}
-              downloadProgress={downloadProgress}
+              downloadingModels={downloadingModels}
               onClose={closeNav}
             />
           )}

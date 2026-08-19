@@ -34,18 +34,23 @@ pub async fn get_file_size_bytes(path: String) -> Result<u64, String> {
 #[tauri::command]
 pub async fn allow_media_path(app: AppHandle, path: String) -> Result<(), String> {
     let p = validate_safe_path(&path)?;
-    if !p.exists() {
-        return Err("Path does not exist".to_string());
-    }
     let dir = if p.is_dir() {
         p
-    } else {
+    } else if p.exists() {
         p.parent()
             .map(std::path::Path::to_path_buf)
             .ok_or_else(|| "Path has no parent directory".to_string())?
+    } else if let Some(parent) = p.parent() {
+        if parent.exists() {
+            parent.to_path_buf()
+        } else {
+            return Err("Directory does not exist".to_string());
+        }
+    } else {
+        return Err("Path does not exist".to_string());
     };
     app.asset_protocol_scope()
-        .allow_directory(&dir, false)
+        .allow_directory(&dir, true)
         .map_err(|e| format!("Failed to extend asset scope: {e}"))
 }
 

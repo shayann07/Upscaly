@@ -69,6 +69,36 @@ pub struct EngineModelItem {
     pub bin_size: Option<u64>,
 }
 
+/// Model ids with a download currently in flight.
+///
+/// The frontend already disables a model's Download button while its own
+/// download is running, but that only stops a well-behaved UI -- there is
+/// nothing else preventing two concurrent `download_model` calls for the
+/// same id, and `model_manager::download_file` writes to a fixed,
+/// deterministic temp path (`dest_path.with_extension("tmp")`). Two
+/// writers to that same file would race, and could hand the SHA-256 check
+/// a corrupted interleave of two responses. This is the actual guarantee;
+/// the UI guard is just about not making the user wait on a lock.
+static IN_FLIGHT_DOWNLOADS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+fn in_flight_downloads() -> &'static Mutex<HashSet<String>> {
+    IN_FLIGHT_DOWNLOADS.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// Releases a model's in-flight claim when dropped, so every exit from
+/// `download_model` -- success, a `?` on the first file, a `?` on the
+/// second -- clears it exactly once without repeating that cleanup at
+/// each return point.
+struct DownloadGuard(String);
+
+impl Drop for DownloadGuard {
+    fn drop(&mut self) {
+        if let Ok(mut set) = in_flight_downloads().lock() {
+            set.remove(&self.0);
+        }
+    }
+}
+
 pub struct ModelStore;
 
 impl ModelStore {
@@ -260,6 +290,16 @@ impl ModelStore {
         if item.param_url.is_empty() || item.bin_url.is_empty() {
             return Err(format!("No download URL configured for {}", item.id));
         }
+
+        {
+            let mut set = in_flight_downloads()
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if !set.insert(item.id.clone()) {
+                return Err(format!("{} is already downloading", item.id));
+            }
+        }
+        let _guard = DownloadGuard(item.id.clone());
 
         let param_target = models_dir.join(format!("{}.param", item.id));
         let bin_target = models_dir.join(format!("{}.bin", item.id));

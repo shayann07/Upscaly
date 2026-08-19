@@ -17,6 +17,20 @@ export function formatIpcError(err: unknown): string {
   if (isAppErrorPayload(err)) {
     return err.suggestion ? `${err.message} (${err.suggestion})` : err.message;
   }
+  if (err instanceof Error) {
+    return err.message;
+  }
+  if (
+    typeof err === 'object' &&
+    err !== null &&
+    'message' in err &&
+    typeof (err as Record<string, unknown>).message === 'string'
+  ) {
+    return (err as { message: string }).message;
+  }
+  if (typeof err === 'string') {
+    return err;
+  }
   return String(err);
 }
 

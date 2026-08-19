@@ -6,7 +6,10 @@
   "permissions": [
     "core:default",
     "core:window:default",
+    "core:webview:default",
+    "core:event:default",
     "core:path:default",
+    "core:image:default",
     "opener:default",
     "dialog:default",
     "updater:default",

@@ -96,8 +96,19 @@ export interface StudioState {
   supportedModels: ModelInfo[];
   installedModels: string[];
   selectedModel: string;
-  downloadingModelId: string | null;
-  downloadProgress: number;
+  /**
+   * Percentage per model id currently downloading, not a single scalar.
+   *
+   * Model downloads are genuinely concurrent -- each is its own async
+   * Rust command, and nothing serializes them -- so a shared
+   * `downloadingModelId`/`downloadProgress` pair meant two downloads
+   * fighting over one slot: whichever model's progress event landed
+   * last "owned" the number, the other model's row silently lost its
+   * progress bar, and the first one to finish force-set the shared
+   * percentage to 100 out from under whichever download was still
+   * running. Keying by id gives every row its own state to read.
+   */
+  downloadingModels: Record<string, number>;
 
   category: Category;
   activeNavTab: NavTab | null;
@@ -170,8 +181,7 @@ function createInitialState(): StudioState {
     supportedModels: SUPPORTED_MODELS,
     installedModels: [],
     selectedModel: 'realesrgan-x4plus',
-    downloadingModelId: null,
-    downloadProgress: 0,
+    downloadingModels: {},
 
     category: 'photos',
     activeNavTab: null,
@@ -444,11 +454,21 @@ export const studioActions = {
   setSelectedModel(selectedModel: string) {
     setState((prev) => ({ ...prev, selectedModel }));
   },
-  setDownloadingModelId(downloadingModelId: string | null) {
-    setState((prev) => ({ ...prev, downloadingModelId }));
+  /** Marks `modelId` as downloading at `percentage`. */
+  setModelDownloadProgress(modelId: string, percentage: number) {
+    setState((prev) => ({
+      ...prev,
+      downloadingModels: { ...prev.downloadingModels, [modelId]: percentage },
+    }));
   },
-  setDownloadProgress(downloadProgress: number) {
-    setState((prev) => ({ ...prev, downloadProgress }));
+  /** Clears `modelId`'s entry -- the download finished, one way or another. */
+  clearModelDownload(modelId: string) {
+    setState((prev) => {
+      if (!(modelId in prev.downloadingModels)) return prev;
+      const downloadingModels = { ...prev.downloadingModels };
+      delete downloadingModels[modelId];
+      return { ...prev, downloadingModels };
+    });
   },
 
   // ------------------------------------------------------------------- ui

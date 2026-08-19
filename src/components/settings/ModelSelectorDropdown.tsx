@@ -11,6 +11,7 @@ interface ModelSelectorDropdownProps {
   onSelectModel: (id: string) => void;
   onOpenCatalog: () => void;
   accentColor: string;
+  installedModels?: string[];
 }
 
 export function ModelSelectorDropdown({
@@ -24,6 +25,7 @@ export function ModelSelectorDropdown({
   onSelectModel,
   onOpenCatalog,
   accentColor,
+  installedModels = [],
 }: ModelSelectorDropdownProps) {
   return (
     <div
@@ -53,38 +55,46 @@ export function ModelSelectorDropdown({
           className="absolute bottom-[calc(100%+10px)] left-0 w-[376px] border border-[var(--border-subtle)] rounded-[14px] bg-[var(--bg-surface)] shadow-[0_24px_60px_rgba(0,0,0,.7)] p-2 z-[80]"
           style={{ animation: 'pop .2s var(--ease-bounce) both' }}
         >
-          {filteredModels.map((m: ModelInfo) => (
-            <div
-              key={m.id}
-              onClick={() => {
-                onSelectModel(m.id);
-                setModelMenuOpen(false);
-              }}
-              className="flex items-start gap-3 p-3 rounded-[10px] cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:bg-[var(--bg-elevated)] hover:border-[var(--border-hover)]"
-              style={{
-                background: m.id === selectedModel ? 'var(--bg-active)' : 'transparent',
-              }}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-[7px]">
-                  <span className="text-[12.5px] font-semibold text-[var(--text-primary)]">
-                    {m.name}
-                  </span>
-                  <span className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.05em] px-1.5 py-[3px] rounded-[6px] border border-[var(--border-subtle)] text-[var(--text-tertiary)]">
-                    {m.scale}×
-                  </span>
+          {filteredModels.map((m: ModelInfo) => {
+            const isInstalled = installedModels.includes(m.id);
+            return (
+              <div
+                key={m.id}
+                onClick={() => {
+                  onSelectModel(m.id);
+                  setModelMenuOpen(false);
+                }}
+                className="flex items-start gap-3 p-3 rounded-[10px] cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:bg-[var(--bg-elevated)] hover:border-[var(--border-hover)]"
+                style={{
+                  background: m.id === selectedModel ? 'var(--bg-active)' : 'transparent',
+                }}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-[7px]">
+                    <span className="text-[12.5px] font-semibold text-[var(--text-primary)]">
+                      {m.name}
+                    </span>
+                    <span className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.05em] px-1.5 py-[3px] rounded-[6px] border border-[var(--border-subtle)] text-[var(--text-tertiary)]">
+                      {m.scale}×
+                    </span>
+                    {!isInstalled && (
+                      <span className="font-['Martian_Mono',monospace] text-[8.5px] text-[var(--text-ghost)] tracking-[0.04em]">
+                        {m.size}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11.5px] text-[var(--text-muted)] mt-[3px] leading-[1.4]">
+                    {m.note}
+                  </div>
                 </div>
-                <div className="text-[11.5px] text-[var(--text-muted)] mt-[3px] leading-[1.4]">
-                  {m.note}
-                </div>
+                {m.id === selectedModel && (
+                  <span className="flex-none w-3 text-[11px]" style={{ color: accentColor }}>
+                    ✓
+                  </span>
+                )}
               </div>
-              {m.id === selectedModel && (
-                <span className="flex-none w-3 text-[11px]" style={{ color: accentColor }}>
-                  ✓
-                </span>
-              )}
-            </div>
-          ))}
+            );
+          })}
           <div
             onClick={() => {
               setModelMenuOpen(false);

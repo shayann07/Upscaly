@@ -21,8 +21,8 @@ interface ModelCatalogModalProps {
   supportedModels?: ModelInfo[];
   installedModelIds?: string[];
   onDownloadModel?: (modelId: string) => void;
-  downloadingModelId?: string | null;
-  downloadProgress?: number;
+  /** Percentage per model id currently downloading -- see studioStore. */
+  downloadingModels?: Record<string, number>;
 }
 
 export function ModelCatalogModal({
@@ -32,8 +32,7 @@ export function ModelCatalogModal({
   supportedModels,
   installedModelIds = [],
   onDownloadModel = () => {},
-  downloadingModelId = null,
-  downloadProgress = 0,
+  downloadingModels = {},
 }: ModelCatalogModalProps) {
   // Above the early return: hook order must not depend on isOpen.
   const panelRef = usePanelA11y<HTMLDivElement>(isOpen);
@@ -43,8 +42,6 @@ export function ModelCatalogModal({
   const modelsList =
     supportedModels && supportedModels.length > 0 ? supportedModels : SUPPORTED_MODELS;
   const activeInstalled = installedModelIds;
-  const activeDownloading = downloadingModelId;
-  const activeDlPct = downloadProgress;
 
   return (
     <div
@@ -81,7 +78,8 @@ export function ModelCatalogModal({
       <div className="flex-1 overflow-y-auto min-h-0 p-2 space-y-1.5">
         {modelsList.map((m: ModelInfo) => {
           const isInstalled = activeInstalled.includes(m.id);
-          const isDl = activeDownloading === m.id;
+          const dlPct = downloadingModels[m.id];
+          const isDl = dlPct !== undefined;
           return (
             <div
               key={m.id}
@@ -131,12 +129,12 @@ export function ModelCatalogModal({
                         className="font-['Martian_Mono',monospace] text-[8.5px] tracking-[0.04em] mb-1"
                         style={{ color: accentColor }}
                       >
-                        {Math.round(activeDlPct)}%
+                        {Math.round(dlPct)}%
                       </div>
                       <div className="h-[3px] rounded-sm bg-[#1B1917] overflow-hidden">
                         <div
                           className="h-full"
-                          style={{ width: `${activeDlPct}%`, background: accentColor }}
+                          style={{ width: `${dlPct}%`, background: accentColor }}
                         />
                       </div>
                     </div>

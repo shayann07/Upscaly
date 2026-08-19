@@ -154,14 +154,15 @@ export const StudioPreviewSection = memo(function StudioPreviewSection({
                     }}
                   />
                 ) : (
-                  <div
+                  <img
+                    src={getMediaSrc(inputMedia)}
+                    alt={selected.fileName}
                     style={{
                       position: 'absolute',
                       inset: 0,
-                      backgroundImage: `url(${getMediaSrc(inputMedia)})`,
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center',
-                      backgroundRepeat: 'no-repeat',
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
                       filter: isProc ? 'opacity(0.3) blur(2px)' : 'none',
                       transition: 'filter .2s ease',
                     }}

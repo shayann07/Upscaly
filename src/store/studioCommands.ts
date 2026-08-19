@@ -608,8 +608,15 @@ export async function refreshCatalog(): Promise<void> {
 }
 
 export async function downloadModel(modelId: string): Promise<void> {
-  studioActions.setDownloadingModelId(modelId);
-  studioActions.setDownloadProgress(0);
+  // The catalog's Download button is hidden while its own model is in
+  // `downloadingModels`, so this only fires for a genuine double-trigger
+  // (a stale click queued before the row re-rendered, or a caller other
+  // than the button). Guarding here as well as in the UI matters because
+  // the backend has no per-model lock of its own: two concurrent requests
+  // for the same id would both write the same `.tmp` path.
+  if (modelId in state().downloadingModels) return;
+
+  studioActions.setModelDownloadProgress(modelId, 0);
   try {
     // Each download streams progress for two files, so percentage resets
     // partway through and reaches 100 twice. This promise resolving -- once
@@ -617,13 +624,13 @@ export async function downloadModel(modelId: string): Promise<void> {
     // "finished" signal, which is why completion is handled here and not in
     // the progress event.
     await invoke('download_model', { modelId });
-    studioActions.setDownloadProgress(100);
+    studioActions.setModelDownloadProgress(modelId, 100);
     await refreshCatalog();
     studioActions.notify('success', 'Model Installed', `${modelId} is ready for inference.`);
   } catch (err) {
     studioActions.notify('error', 'Download Failed', formatIpcError(err));
   } finally {
-    studioActions.setDownloadingModelId(null);
+    studioActions.clearModelDownload(modelId);
   }
 }
 
