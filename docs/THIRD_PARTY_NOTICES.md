@@ -1,8 +1,8 @@
 # Third-Party Notices & Open Source Licenses
 
-This document records the third-party software, binaries, and libraries bundled with or used by **Upscaly**.
+This document records the third-party software, binaries, and libraries bundled with or used by **Upscaly Studio**.
 
-Upscaly itself is MIT-licensed (see [`LICENSE`](../LICENSE)). The components below keep their own licenses.
+Upscaly Studio itself is MIT-licensed (see [`LICENSE`](../LICENSE)). The components below keep their own licenses.
 
 ---
 
@@ -15,17 +15,17 @@ Upscaly itself is MIT-licensed (see [`LICENSE`](../LICENSE)). The components bel
 
 ### Not bundled — downloaded from upstream
 
-**Upscaly does not redistribute FFmpeg.** Neither the repository nor the installer contains these binaries. The installer downloads them from the pinned BtbN release during installation, and the app can fetch them later if that did not happen, so the copy on your machine comes directly from the upstream project and is governed solely by its own license.
+**Upscaly Studio does not redistribute FFmpeg.** Neither the repository nor the installer contains these binaries. The installer downloads them from the pinned BtbN release during installation, and the app can fetch them later if that did not happen, so the copy on your machine comes directly from the upstream project and is governed solely by its own license.
 
 ### Why the GPL build
 
-Upscaly encodes with hardware encoders first (`h264_nvenc`, `h264_qsv`, `h264_amf`, `h264_mf`), none of which are GPL. Its encoder chain then falls back to **`libx264`** software encoding when no hardware encoder is available or all of them fail — on a virtual machine, an older integrated GPU, or a broken driver. That rung only works in a GPL build; an LGPL build would leave `mpeg4` as the last resort and produce visibly worse output on exactly the machines least able to spare quality.
+Upscaly Studio encodes with hardware encoders first (`h264_nvenc`, `h264_qsv`, `h264_amf`, `h264_mf`), none of which are GPL. Its encoder chain then falls back to **`libx264`** software encoding when no hardware encoder is available or all of them fail — on a virtual machine, an older integrated GPU, or a broken driver. That rung only works in a GPL build; an LGPL build would leave `mpeg4` as the last resort and produce visibly worse output on exactly the machines least able to spare quality.
 
 ### Source access
 
 FFmpeg source for the pinned build is available from the FFmpeg project at https://ffmpeg.org/download.html and from the build's own repository at https://github.com/BtbN/FFmpeg-Builds.
 
-> **If you redistribute FFmpeg yourself** — for example by mirroring these binaries or shipping a build that bundles them — GPL v3 obligations apply to you, including making the corresponding source available. Fetching them at install time, as Upscaly does, is not redistribution.
+> **If you redistribute FFmpeg yourself** — for example by mirroring these binaries or shipping a build that bundles them — GPL v3 obligations apply to you, including making the corresponding source available. Fetching them at install time, as Upscaly Studio does, is not redistribution.
 
 ---
 

@@ -42,6 +42,7 @@ windows-sys = { version = "0.52", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 ts-rs = "12.0.1"
+ash = "0.38"
 
 
 [lints.rust]

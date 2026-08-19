@@ -86,9 +86,31 @@ pub fn calculate_sha256(path: &Path) -> Result<String, String> {
 }
 
 /// Returns local models directory, ensuring bundled models are copied if missing.
+///
+/// Stores models in %LOCALAPPDATA% (via `app_local_data_dir`) rather than
+/// Roaming %APPDATA%. If a roaming `models/` directory exists from an earlier
+/// version, it is migrated once.
 pub fn get_models_dir(app: &AppHandle) -> PathBuf {
-    let app_dir = crate::app_paths::app_data_dir(app);
-    let models_dir = app_dir.join("models");
+    let local_dir = crate::app_paths::app_local_data_dir(app);
+    let models_dir = local_dir.join("models");
+
+    // One-time migration: move models from roaming app_data_dir if present
+    let roaming_models = crate::app_paths::app_data_dir(app).join("models");
+    if roaming_models.exists() && !models_dir.exists() {
+        let _ = std::fs::create_dir_all(&local_dir);
+        if std::fs::rename(&roaming_models, &models_dir).is_err() {
+            // Fallback: copy files if rename across volumes fails
+            if let Ok(entries) = std::fs::read_dir(&roaming_models) {
+                let _ = std::fs::create_dir_all(&models_dir);
+                for entry in entries.flatten() {
+                    let dest = models_dir.join(entry.file_name());
+                    let _ = std::fs::copy(entry.path(), dest);
+                }
+                let _ = std::fs::remove_dir_all(&roaming_models);
+            }
+        }
+    }
+
     if !models_dir.exists() {
         let _ = std::fs::create_dir_all(&models_dir);
     }
@@ -187,7 +209,10 @@ pub fn copy_bundled_models(app: &AppHandle, dest_dir: &Path) {
 // Progress percentage precision loss from the u64 byte counts is
 // inconsequential at file-download sizes (nowhere near f64's 52-bit
 // mantissa limit) and is only ever displayed rounded to one decimal.
-#[allow(clippy::cast_precision_loss)]
+// Eight arguments, but they are one call site's worth of catalog fields; a
+// params struct would be built inline from the same eight expressions and
+// add a layer without removing anything.
+#[allow(clippy::cast_precision_loss, clippy::too_many_arguments)]
 pub async fn download_file(
     app: &AppHandle,
     model_id: &str,
@@ -196,6 +221,14 @@ pub async fn download_file(
     dest_path: &Path,
     expected_size: u64,
     expected_sha256: &str,
+    // `(bytes finished before this file, grand total across every file of
+    // the model)`. Progress is reported against the whole model, not this
+    // file: an ncnn model is a .param/.bin pair, and a per-file percentage
+    // ran the user's progress bar 0-100 twice per install -- with a dead
+    // stop at "100%" in between while the second connection was set up,
+    // which reads as a hung app. `(0, 0)` when the catalog does not know
+    // the sizes; the percentage then falls back to this file alone.
+    progress_span: (u64, u64),
 ) -> Result<(), String> {
     let temp_path = dest_path.with_extension("tmp");
 
@@ -256,20 +289,29 @@ pub async fn download_file(
         file.write_all(&chunk).map_err(|e| e.to_string())?;
         downloaded += chunk.len() as u64;
 
-        let percentage = if expected_size > 0 {
+        let (span_base, span_total) = progress_span;
+        let percentage = if span_total > 0 {
+            ((span_base + downloaded) as f64 / span_total as f64) * 100.0
+        } else if expected_size > 0 {
             (downloaded as f64 / expected_size as f64) * 100.0
         } else {
             0.0
         };
 
-        // Emit progress event to Tauri webview
+        // Emit progress event to Tauri webview. `downloaded`/`total` match
+        // whatever the percentage was computed against, so the payload
+        // cannot tell two different stories.
         let _ = app.emit(
             "download-progress",
             DownloadProgress {
                 model_id: model_id.to_string(),
                 file_type: file_type.to_string(),
-                downloaded,
-                total: expected_size,
+                downloaded: span_base + downloaded,
+                total: if span_total > 0 {
+                    span_total
+                } else {
+                    expected_size
+                },
                 percentage,
             },
         );

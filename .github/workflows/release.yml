@@ -66,10 +66,12 @@ jobs:
       # Unlike CI, this needs the real engine: it is bundled into the
       # installer. ffmpeg/ffprobe are deliberately not fetched here -- they
       # are downloaded on the user's machine at install time (see
-      # installer-hooks.nsh), which is why this step is fast despite the
-      # manifest also describing them.
+      # installer-hooks.nsh), which is why this step fetches only
+      # realesrgan-ncnn-vulkan.
       - name: Fetch sidecar binaries
-        run: npm ci && npm run fetch:sidecars
+        run: |
+          npm ci
+          node scripts/fetch-sidecars.mjs realesrgan-ncnn-vulkan
 
       - name: Quality gate
         run: npm run check:quality

@@ -4,7 +4,7 @@ import { AppSettings, GpuInfo } from '../lib/types';
 import { allowMediaPath } from '../lib/assetScope';
 import { CPU_DEVICE_ID, resolveGpu } from '../lib/gpuSelection';
 import { refreshCatalog } from '../store/studioCommands';
-import { checkForUpdates, loadAppVersion } from '../lib/updater';
+import { checkForUpdates, loadAppIdentity } from '../lib/updater';
 import { bootArm, bootComplete, bootStatus } from '../lib/boot';
 import { studioActions, studioStore } from '../store/studioStore';
 
@@ -167,7 +167,7 @@ export function useSettingsSync() {
     // that round trip.
     void bootArm();
 
-    void loadAppVersion();
+    void loadAppIdentity();
 
     // Never let a hung startup strand the user on the splash. Any of these
     // steps can block on something outside our control -- a wedged engine

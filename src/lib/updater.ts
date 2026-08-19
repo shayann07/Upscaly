@@ -1,7 +1,8 @@
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { getVersion } from '@tauri-apps/api/app';
+import { getName, getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
+import { bootName } from './boot';
 import { studioActions, studioStore } from '../store/studioStore';
 
 let debugBuild: boolean | null = null;
@@ -37,19 +38,22 @@ async function updatesSupported(): Promise<boolean> {
 }
 
 /**
- * Reads this build's version from Tauri's own metadata, which comes from
- * tauri.conf.json at compile time. The titlebar previously rendered a
- * hardcoded string, which would silently disagree with the real binary as
- * soon as a release bumped the version.
+ * Reads this build's name and version from Tauri's own metadata, which
+ * comes from tauri.conf.json at compile time.
  */
-export async function loadAppVersion(): Promise<void> {
+export async function loadAppIdentity(): Promise<void> {
   try {
-    studioActions.setAppVersion(await getVersion());
+    const [name, version] = await Promise.all([getName(), getVersion()]);
+    studioActions.setAppName(name);
+    studioActions.setAppVersion(version);
+    bootName(name);
   } catch {
     // Non-Tauri context (vitest/jsdom, browser preview). The titlebar
-    // simply renders no version rather than a wrong one.
+    // simply renders default name and no version rather than a wrong one.
   }
 }
+
+export const loadAppVersion = loadAppIdentity;
 
 /**
  * Looks for a newer release. Silent by design: this runs unprompted at
@@ -80,7 +84,7 @@ export async function checkForUpdates(manual = false): Promise<void> {
         studioActions.notify(
           'success',
           'Up to date',
-          `Upscaly ${studioStore.getState().appVersion} is the latest version.`
+          `Upscaly Studio ${studioStore.getState().appVersion} is the latest version.`
         );
       }
     }

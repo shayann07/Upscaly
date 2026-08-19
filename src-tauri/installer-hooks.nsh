@@ -1,8 +1,8 @@
-; Installer hooks for Upscaly.
+; Installer hooks for Upscaly Studio.
 ;
 ; ffmpeg and ffprobe are ~290MB together and GPL-licensed. Bundling them
 ; would put a copyleft payload inside an MIT-licensed installer and triple
-; its size, so the installer fetches them from upstream instead. Upscaly
+; its size, so the installer fetches them from upstream instead. Upscaly Studio
 ; therefore never redistributes GPL binaries itself.
 ;
 ; All of the work is in resources\provision-ffmpeg.ps1 rather than inline
@@ -51,7 +51,7 @@
   ${If} $0 == 0
     DetailPrint "Video components installed."
   ${Else}
-    DetailPrint "Video components could not be downloaded; Upscaly will fetch them on first video job."
+    DetailPrint "Video components could not be downloaded; Upscaly Studio will fetch them on first video job."
   ${EndIf}
 !macroend
 

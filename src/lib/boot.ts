@@ -43,6 +43,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 const OVERLAY_ID = 'boot';
 const STATUS_ID = 'boot-status';
+const NAME_ID = 'boot-name';
 const ROOT_ID = 'root';
 
 /**
@@ -115,6 +116,13 @@ function exitDurationMs(): number {
 export function bootStatus(text: string): void {
   if (handedOver) return;
   const el = document.getElementById(STATUS_ID);
+  if (el) el.textContent = text;
+}
+
+/** Updates the product name on the splash if it is still up. */
+export function bootName(text: string): void {
+  if (handedOver) return;
+  const el = document.getElementById(NAME_ID);
   if (el) el.textContent = text;
 }
 

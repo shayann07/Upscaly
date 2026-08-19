@@ -82,6 +82,7 @@ export interface StudioState {
    */
   cpuOnly: boolean;
 
+  appName: string;
   appVersion: string;
   /**
    * A newer release the updater found, or null when up to date / not yet
@@ -160,6 +161,7 @@ function createInitialState(): StudioState {
     settingsLoaded: false,
 
     cpuOnly: false,
+    appName: 'Upscaly Studio',
     appVersion: '',
     availableUpdate: null,
     updatePhase: 'idle',
@@ -394,6 +396,9 @@ export const studioActions = {
   },
   setCpuOnly(cpuOnly: boolean) {
     setState((prev) => (prev.cpuOnly === cpuOnly ? prev : { ...prev, cpuOnly }));
+  },
+  setAppName(appName: string) {
+    setState((prev) => ({ ...prev, appName }));
   },
   setAppVersion(appVersion: string) {
     setState((prev) => ({ ...prev, appVersion }));

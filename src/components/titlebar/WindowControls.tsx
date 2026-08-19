@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import {
+  useAppName,
   useAppVersion,
   useAvailableUpdate,
   useUpdatePhase,
@@ -9,6 +10,7 @@ import { downloadAndInstallUpdate } from '../../lib/updater';
 import { UpdateBadge } from '../UpdateBadge';
 
 export function WindowControls() {
+  const appName = useAppName();
   const appVersion = useAppVersion();
   const availableUpdate = useAvailableUpdate();
   const updatePhase = useUpdatePhase();
@@ -68,7 +70,7 @@ export function WindowControls() {
           </button>
         </div>
         <div className="w-px h-[15px] bg-[var(--border-default)]" />
-        <span className="font-bold text-[12.5px] tracking-[-0.01em]">Upscaly</span>
+        <span className="font-bold text-[12.5px] tracking-[-0.01em]">{appName || 'Upscaly'}</span>
         {/*
           Read from Tauri's app metadata rather than written here. The
           literal that used to sit in this slot would have kept reporting

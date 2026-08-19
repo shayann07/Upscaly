@@ -133,30 +133,33 @@ pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBu
         }
     }
 
-    // Fallback: check current directory and src-tauri/binaries
-    let local_path = PathBuf::from("src-tauri").join("binaries").join(&filename);
-    if local_path.exists() {
-        return Ok(local_path);
-    }
+    // Fallback: check current directory and src-tauri/binaries (debug only to prevent DLL/binary planting)
+    #[cfg(debug_assertions)]
+    {
+        let local_path = PathBuf::from("src-tauri").join("binaries").join(&filename);
+        if local_path.exists() {
+            return Ok(local_path);
+        }
 
-    let local_path2 = PathBuf::from("binaries").join(&filename);
-    if local_path2.exists() {
-        return Ok(local_path2);
-    }
+        let local_path2 = PathBuf::from("binaries").join(&filename);
+        if local_path2.exists() {
+            return Ok(local_path2);
+        }
 
-    // Additional plain binary fallback without target triple
-    let plain_name = plain_binary_name(binary_name);
+        // Additional plain binary fallback without target triple
+        let plain_name = plain_binary_name(binary_name);
 
-    let plain_local = PathBuf::from("src-tauri")
-        .join("binaries")
-        .join(&plain_name);
-    if plain_local.exists() {
-        return Ok(plain_local);
-    }
+        let plain_local = PathBuf::from("src-tauri")
+            .join("binaries")
+            .join(&plain_name);
+        if plain_local.exists() {
+            return Ok(plain_local);
+        }
 
-    let plain_local2 = PathBuf::from("binaries").join(&plain_name);
-    if plain_local2.exists() {
-        return Ok(plain_local2);
+        let plain_local2 = PathBuf::from("binaries").join(&plain_name);
+        if plain_local2.exists() {
+            return Ok(plain_local2);
+        }
     }
 
     Err(AppError::SidecarNotFound { path: filename })
@@ -229,6 +232,7 @@ static EMPTY_PROBE_AT: std::sync::Mutex<Option<u64>> = std::sync::Mutex::new(Non
 const EMPTY_PROBE_TTL_SECS: u64 = 60;
 
 /// Discovers Vulkan GPU devices with 24-hour cache lifecycle and instant in-memory lookup.
+#[allow(clippy::unnecessary_wraps)]
 pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
     if let Ok(guard) = IN_MEMORY_GPU_CACHE.lock() {
         if let Some(ref cached) = *guard {
@@ -251,7 +255,7 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
         }
     }
 
-    let app_dir = crate::app_paths::app_data_dir(app);
+    let app_dir = crate::app_paths::app_local_data_dir(app);
     let cache_path = app_dir.join("gpu_cache.json");
 
     let sidecar_path = resolve_sidecar_path(app, "realesrgan-ncnn-vulkan").ok();
@@ -278,8 +282,14 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
         }
     }
 
-    // 2. Perform raw discovery
-    let gpus = probe_gpus_raw(app)?;
+    // 2. Perform raw discovery: native Vulkan first to avoid engine crashes and WER noise,
+    // falling back to sidecar probe if ash cannot initialize the Vulkan loader.
+    let gpus = probe_gpus_vulkan_native().unwrap_or_else(|| {
+        tracing::warn!(
+            "Native Vulkan enumeration unavailable; falling back to engine sidecar probe"
+        );
+        probe_gpus_raw(app).unwrap_or_default()
+    });
 
     // 3. Write cache envelope to disk and memory if GPUs were successfully discovered
     if !gpus.is_empty() {
@@ -302,6 +312,76 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
     }
 
     Ok(gpus)
+}
+
+#[allow(unsafe_code, clippy::cast_possible_truncation)]
+fn probe_gpus_vulkan_native() -> Option<Vec<GpuDevice>> {
+    unsafe {
+        let entry = ash::Entry::load().ok()?;
+        let app_info = ash::vk::ApplicationInfo {
+            api_version: ash::vk::make_api_version(0, 1, 0, 0),
+            ..Default::default()
+        };
+        let create_info = ash::vk::InstanceCreateInfo {
+            p_application_info: std::ptr::addr_of!(app_info),
+            ..Default::default()
+        };
+        let instance = entry.create_instance(&create_info, None).ok()?;
+        let physical_devices = instance.enumerate_physical_devices().ok()?;
+        let mut devices = Vec::new();
+
+        for (idx, &pdevice) in physical_devices.iter().enumerate() {
+            let props = instance.get_physical_device_properties(pdevice);
+            let memory_props = instance.get_physical_device_memory_properties(pdevice);
+            let queue_family_props = instance.get_physical_device_queue_family_properties(pdevice);
+
+            let raw_name = std::ffi::CStr::from_ptr(props.device_name.as_ptr());
+            let name = raw_name
+                .to_str()
+                .unwrap_or("Unknown GPU")
+                .trim()
+                .to_string();
+
+            let device_type_str = match props.device_type {
+                ash::vk::PhysicalDeviceType::DISCRETE_GPU => "Discrete GPU",
+                ash::vk::PhysicalDeviceType::INTEGRATED_GPU => "Integrated GPU",
+                ash::vk::PhysicalDeviceType::VIRTUAL_GPU => "Virtual GPU",
+                ash::vk::PhysicalDeviceType::CPU => "CPU",
+                _ => "Other GPU",
+            };
+
+            let mut total_vram_bytes = 0u64;
+            let heap_count = usize::try_from(memory_props.memory_heap_count).unwrap_or(0);
+            for i in 0..heap_count.min(memory_props.memory_heaps.len()) {
+                let heap = memory_props.memory_heaps[i];
+                if heap.flags.contains(ash::vk::MemoryHeapFlags::DEVICE_LOCAL) {
+                    total_vram_bytes = total_vram_bytes.max(heap.size);
+                }
+            }
+            let vram_mb = total_vram_bytes / (1024 * 1024);
+
+            let mut compute_queue_count = 0u32;
+            for q in &queue_family_props {
+                if q.queue_flags.contains(ash::vk::QueueFlags::COMPUTE) {
+                    compute_queue_count += q.queue_count;
+                }
+            }
+
+            devices.push(GpuDevice {
+                id: i32::try_from(idx).unwrap_or(0),
+                name: name.clone(),
+                detail: format!("{name} ({device_type_str})"),
+                vram_mb,
+                fp16_storage_supported: true,
+                fp16_arithmetic_supported: true,
+                compute_queue_count: compute_queue_count.max(1),
+            });
+        }
+
+        instance.destroy_instance(None);
+        devices.sort_by(cmp_by_discrete);
+        Some(devices)
+    }
 }
 
 #[allow(clippy::similar_names)]
