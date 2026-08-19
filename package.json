@@ -1,7 +1,7 @@
 {
   "name": "upscaly",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -24,7 +24,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "tauri:build:dev": "tauri build --debug --config src-tauri/tauri.dev.conf.json"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

@@ -2,6 +2,15 @@ import { GpuInfo } from './types';
 
 const DISCRETE_GPU_HINTS = ['nvidia', 'geforce', 'rtx', 'gtx', 'radeon'];
 
+/**
+ * The engine's own "run on the CPU" device id. `realesrgan-ncnn-vulkan`
+ * treats `-g -1` as "no Vulkan device", falling back to ncnn's CPU
+ * inference path. It is the only way the app works at all on a machine
+ * with no usable GPU, and it is drastically slower -- minutes for a single
+ * image where a discrete card takes seconds.
+ */
+export const CPU_DEVICE_ID = -1;
+
 /** The best default when there is nothing saved: prefer a discrete card. */
 export function preferredGpu(gpus: GpuInfo[]): GpuInfo | undefined {
   return (

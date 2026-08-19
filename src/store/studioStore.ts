@@ -75,6 +75,14 @@ export interface StudioState {
    * would have quietly disagreed with the shipped binary after the first
    * release. Empty until the read resolves.
    */
+  /**
+   * No Vulkan device was found, so jobs run on the engine's CPU path.
+   * Images still work, slowly; video does not, and is blocked rather than
+   * started and abandoned hours later.
+   */
+  cpuOnly: boolean;
+
+  appName: string;
   appVersion: string;
   /**
    * A newer release the updater found, or null when up to date / not yet
@@ -126,6 +134,14 @@ export interface StudioState {
   effectiveTileSize: number | null;
 }
 
+function readMutedPreference(): boolean {
+  try {
+    return localStorage.getItem('upscaly_sound_muted') === 'true';
+  } catch {
+    return false;
+  }
+}
+
 function createInitialState(): StudioState {
   return {
     items: [],
@@ -140,10 +156,12 @@ function createInitialState(): StudioState {
     customModelsDir: '',
     gentleMode: false,
     customOutputPath: '',
-    isMuted: localStorage.getItem('upscaly_sound_muted') === 'true',
+    isMuted: readMutedPreference(),
     autoCheckUpdates: true,
     settingsLoaded: false,
 
+    cpuOnly: false,
+    appName: 'Upscaly Studio',
     appVersion: '',
     availableUpdate: null,
     updatePhase: 'idle',
@@ -376,6 +394,12 @@ export const studioActions = {
   setAutoCheckUpdates(autoCheckUpdates: boolean) {
     setState((prev) => ({ ...prev, autoCheckUpdates }));
   },
+  setCpuOnly(cpuOnly: boolean) {
+    setState((prev) => (prev.cpuOnly === cpuOnly ? prev : { ...prev, cpuOnly }));
+  },
+  setAppName(appName: string) {
+    setState((prev) => ({ ...prev, appName }));
+  },
   setAppVersion(appVersion: string) {
     setState((prev) => ({ ...prev, appVersion }));
   },
@@ -398,7 +422,11 @@ export const studioActions = {
     setState((prev) => ({ ...prev, settingsLoaded }));
   },
   setMuted(isMuted: boolean) {
-    localStorage.setItem('upscaly_sound_muted', String(isMuted));
+    try {
+      localStorage.setItem('upscaly_sound_muted', String(isMuted));
+    } catch {
+      // Storage unavailable or disabled.
+    }
     setState((prev) => ({ ...prev, isMuted }));
   },
   toggleMute() {

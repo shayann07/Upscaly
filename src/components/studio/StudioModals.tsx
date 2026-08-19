@@ -80,7 +80,7 @@ export const StudioModals = memo(function StudioModals() {
   }, []);
 
   const handleSelectHistoryItem = useCallback((item: HistoryEntry) => {
-    loadHistoryItem(item);
+    void loadHistoryItem(item);
   }, []);
 
   return (

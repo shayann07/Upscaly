@@ -54,8 +54,8 @@ export function AboutModal({ onClose, isOpen = true }: AboutModalProps) {
       <div className="flex-1 overflow-y-auto min-h-0 p-3">
         <div className="text-[11.5px] text-[var(--text-tertiary)] leading-[1.6] mb-3 pb-3 border-b border-[#232120]">
           Local image and video upscaling on Vulkan. Your media never leaves the machine — the only
-          network requests Upscaly makes are for model weights you choose to download and its own
-          update check.
+          network requests Upscaly Studio makes are for model weights you choose to download and its
+          own update check.
         </div>
 
         {/*

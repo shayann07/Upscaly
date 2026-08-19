@@ -389,3 +389,51 @@ describe('scale and model stay consistent', () => {
     expect(state().selectedModel).toBe('realesrgan-x4plus');
   });
 });
+
+describe('machines with no compatible GPU', () => {
+  function stagedVideo(id: string): StagedFile {
+    return {
+      id,
+      filePath: `C:/in/${id}.mp4`,
+      fileName: `${id}.mp4`,
+      isVideo: true,
+      w: null,
+      h: null,
+    };
+  }
+
+  it('refuses video outright rather than starting a job that would run for days', async () => {
+    // Real-ESRGAN on ncnn's CPU path takes minutes per 1080p frame, so even
+    // a short clip runs for days. Accepting the job would not be "slow but
+    // working" -- it would be hours of waiting for nothing.
+    studioActions.setCpuOnly(true);
+    studioActions.addFiles([stagedVideo('clip')], true);
+
+    await startUpscale();
+
+    expect(mockInvoke).not.toHaveBeenCalledWith('run_upscale_batch', expect.anything());
+    expect(state().toasts.some((t) => t.message.includes('Video needs a GPU'))).toBe(true);
+  });
+
+  it('still allows images through', async () => {
+    // The whole point of the CPU path: the app remains usable for stills on
+    // a machine with no Vulkan device, instead of failing at the engine.
+    mockInvoke.mockResolvedValue([{ job_id: 'job-a', output_path: 'C:/out/a.png' }]);
+    studioActions.setCpuOnly(true);
+    studioActions.addFiles([staged('a')], true);
+
+    await startUpscale();
+
+    expect(mockInvoke).toHaveBeenCalledWith('run_upscale_batch', expect.anything());
+  });
+
+  it('does not block video when a GPU is present', async () => {
+    mockInvoke.mockResolvedValue([{ job_id: 'job-clip', output_path: 'C:/out/clip.mp4' }]);
+    studioActions.setCpuOnly(false);
+    studioActions.addFiles([stagedVideo('clip')], true);
+
+    await startUpscale();
+
+    expect(mockInvoke).toHaveBeenCalledWith('run_upscale_batch', expect.anything());
+  });
+});

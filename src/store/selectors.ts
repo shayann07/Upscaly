@@ -101,11 +101,13 @@ export const useEffectiveTileSize = () => useSlice(selectEffectiveTileSize);
 
 // -------------------------------------------------------------- updates
 
+const selectAppName = (s: StudioState) => s.appName;
 const selectAppVersion = (s: StudioState) => s.appVersion;
 const selectAvailableUpdate = (s: StudioState) => s.availableUpdate;
 const selectUpdatePhase = (s: StudioState) => s.updatePhase;
 const selectUpdateProgress = (s: StudioState) => s.updateProgress;
 
+export const useAppName = () => useSlice(selectAppName);
 export const useAppVersion = () => useSlice(selectAppVersion);
 export const useAvailableUpdate = () => useSlice(selectAvailableUpdate);
 export const useUpdatePhase = () => useSlice(selectUpdatePhase);

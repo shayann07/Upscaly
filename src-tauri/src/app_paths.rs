@@ -27,13 +27,24 @@ fn debug_suffixed(mut dir: PathBuf) -> PathBuf {
     dir
 }
 
-/// Replaces `app.path().app_data_dir()`. Settings, history, the GPU
-/// detection cache and installed model weights all live under this.
+/// Replaces `app.path().app_data_dir()`. Settings, history, and application
+/// logs live under this (Roaming %APPDATA%).
 pub fn app_data_dir(app: &AppHandle) -> PathBuf {
     let dir = app
         .path()
         .app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."));
+        .unwrap_or_else(|_| std::env::temp_dir().join("upscaly"));
+    debug_suffixed(dir)
+}
+
+/// Replaces `app.path().app_local_data_dir()`. Machine-local data like model
+/// weights and GPU cache live under %LOCALAPPDATA% so they do not sync across
+/// roaming profiles.
+pub fn app_local_data_dir(app: &AppHandle) -> PathBuf {
+    let dir = app
+        .path()
+        .app_local_data_dir()
+        .unwrap_or_else(|_| std::env::temp_dir().join("upscaly"));
     debug_suffixed(dir)
 }
 
@@ -43,7 +54,7 @@ pub fn app_cache_dir(app: &AppHandle) -> PathBuf {
     let dir = app
         .path()
         .app_cache_dir()
-        .unwrap_or_else(|_| PathBuf::from("."));
+        .unwrap_or_else(|_| std::env::temp_dir().join("upscaly"));
     debug_suffixed(dir)
 }
 
@@ -54,7 +65,7 @@ mod tests {
 
     #[test]
     fn test_debug_suffix_matches_the_build_profile() {
-        let base = PathBuf::from("C:\\Users\\test\\AppData\\Roaming\\com.shaya.ai-upscaler");
+        let base = PathBuf::from("C:\\Users\\test\\AppData\\Roaming\\com.wexpa.upscaly");
         let result = debug_suffixed(base.clone());
         if cfg!(debug_assertions) {
             assert_eq!(result, base.join("debug"));

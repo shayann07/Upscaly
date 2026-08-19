@@ -509,7 +509,7 @@ fn run_image_batch_inner(
                 Err(err) => {
                     // Leave it undelivered; the end-of-run pass reports it
                     // against whatever the shared process had to say.
-                    eprintln!("batch delivery failed for {}: {err}", member.job.id);
+                    tracing::warn!("batch delivery failed for {}: {err}", member.job.id);
                 }
             }
         }

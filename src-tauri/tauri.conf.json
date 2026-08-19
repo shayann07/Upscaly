@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Upscaly",
-  "version": "0.1.0",
-  "identifier": "com.shaya.ai-upscaler",
+  "productName": "Upscaly Studio",
+  "version": "1.0.1",
+  "identifier": "com.wexpa.upscaly",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,15 +12,17 @@
   "app": {
     "windows": [
       {
-        "title": "Upscaly",
+        "title": "Upscaly Studio",
         "width": 1280,
         "height": 800,
         "center": true,
-        "decorations": false
+        "decorations": false,
+        "visible": false,
+        "backgroundColor": "#110F0E"
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost blob: data:; media-src 'self' asset: https://asset.localhost blob: data:; script-src 'self'; style-src 'self' 'unsafe-inline';",
+      "csp": "default-src 'self' ipc: http://ipc.localhost; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost https://asset.localhost blob: data:; media-src 'self' asset: http://asset.localhost https://asset.localhost blob: data:; script-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'self'; form-action 'none';",
       "assetProtocol": {
         "enable": true,
         "scope": []
@@ -29,9 +31,18 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "publisher": "Wexpa",
+    "copyright": "Copyright (c) 2026 Wexpa (Shayan). MIT Licensed.",
+    "homepage": "https://github.com/shayann07/Upscaly",
+    "shortDescription": "Local AI image and video upscaler",
+    "longDescription": "Upscale images and video locally on your own GPU with Real-ESRGAN. No account, no uploads, no metering.",
+    "targets": [
+      "nsis"
+    ],
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/realesrgan-ncnn-vulkan"],
+    "externalBin": [
+      "binaries/realesrgan-ncnn-vulkan"
+    ],
     "resources": {
       "resources/provision-ffmpeg.ps1": "resources/provision-ffmpeg.ps1",
       "sidecar-manifest.json": "sidecar-manifest.json",
@@ -39,6 +50,7 @@
     },
     "icon": [
       "icons/32x32.png",
+      "icons/64x64.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
@@ -47,7 +59,11 @@
     "windows": {
       "nsis": {
         "installerHooks": "installer-hooks.nsh",
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "headerImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico"
       }
     }
   },

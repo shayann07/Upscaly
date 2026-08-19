@@ -1,11 +1,20 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { RootErrorBoundary } from './components/RootErrorBoundary';
+import { bootComplete } from './lib/boot';
 import './index.css';
 import './App.css';
 
+// Errors that escape React entirely (module-init throws, async listeners)
+// must still hand the window over -- hidden-forever is the one forbidden state.
+window.addEventListener('error', () => bootComplete());
+window.addEventListener('unhandledrejection', () => bootComplete());
+
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <RootErrorBoundary>
+      <App />
+    </RootErrorBoundary>
   </React.StrictMode>
 );

@@ -36,6 +36,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'  # Invoke-WebRequest is ~10x faster without it
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 function Write-Step($message) { Write-Output "[upscaly] $message" }
 
@@ -78,7 +79,7 @@ try {
     try {
         $archive = Join-Path $work 'ffmpeg.zip'
         Write-Step "Downloading ffmpeg from $($manifest.archive_url)"
-        Invoke-WebRequest -Uri $manifest.archive_url -OutFile $archive -UseBasicParsing
+        Invoke-WebRequest -Uri $manifest.archive_url -OutFile $archive -UseBasicParsing -TimeoutSec 900
 
         $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($actual -ne $manifest.archive_sha256.ToLowerInvariant()) {
@@ -130,6 +131,6 @@ catch {
     # continue regardless: video work will prompt for this again in-app,
     # and image upscaling never needed it.
     Write-Output "[upscaly] ffmpeg provisioning failed: $($_.Exception.Message)"
-    Write-Output '[upscaly] Upscaly will offer to download it again when a video job is started.'
+    Write-Output '[upscaly] Upscaly Studio will offer to download it again when a video job is started.'
     exit 1
 }

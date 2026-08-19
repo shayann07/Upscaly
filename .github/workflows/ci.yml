@@ -23,9 +23,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # tauri.conf.json declares three sidecars under externalBin and the
-      # Tauri build script refuses to run if any is missing -- which is
-      # every CI checkout, since they are gitignored third-party binaries.
+      # tauri.conf.json declares realesrgan-ncnn-vulkan under externalBin and the
+      # Tauri build script refuses to run if it is missing -- which is
+      # every CI checkout, since it is a gitignored third-party binary.
       # This job type-checks, lints and unit-tests; none of that spawns the
       # engine, ffmpeg or ffprobe, so empty placeholders satisfy the
       # existence check without downloading ~290MB per run. Anything that

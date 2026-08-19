@@ -1,15 +1,25 @@
 {
-  "productName": "Upscaly Studio",
-  "identifier": "com.shaya.ai-upscaler.dev",
+  "productName": "Upscaly",
+  "identifier": "com.wexpa.upscaly.dev",
   "app": {
     "windows": [
       {
-        "title": "Upscaly Studio",
+        "title": "Upscaly",
         "width": 1280,
         "height": 800,
         "center": true,
-        "decorations": false
+        "decorations": false,
+        "visible": false,
+        "backgroundColor": "#110F0E"
       }
     ]
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": []
+    }
   }
 }

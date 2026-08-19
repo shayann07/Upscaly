@@ -6,21 +6,24 @@
    allowed) already silently blocked these from loading in the packaged
    build, falling back to system fonts with no visible error. Both files are
    variable fonts (a single file covers the whole weight range), sourced
-   from Google Fonts under the SIL Open Font License. */
+   from Google Fonts under the SIL Open Font License.
+   
+   font-display MUST stay `block` in both this file and index.html so there
+   is no font-swap / FOUT between the early HTML boot splash and the loaded bundle. */
 @font-face {
   font-family: 'Archivo';
   font-style: normal;
   font-weight: 400 700;
-  font-display: swap;
-  src: url('./assets/fonts/Archivo-Variable.woff2') format('woff2');
+  font-display: block;
+  src: url('/fonts/Archivo-Variable.woff2') format('woff2');
 }
 
 @font-face {
   font-family: 'Martian Mono';
   font-style: normal;
   font-weight: 400 500;
-  font-display: swap;
-  src: url('./assets/fonts/MartianMono-Variable.woff2') format('woff2');
+  font-display: block;
+  src: url('/fonts/MartianMono-Variable.woff2') format('woff2');
 }
 
 :root {
@@ -81,4 +84,76 @@
 
   /* ── Background pattern ── */
   --bg-stripe: repeating-linear-gradient(115deg, #171514 0 13px, #0b0a09 13px 26px);
+}
+
+/* ── First-paint entrance ──────────────────────────────────────────────
+   Runs once, when boot.ts marks #root as ready. The titlebar arrives a
+   beat ahead of the canvas so the window frame reads as solid before its
+   contents fill in.
+
+   `animation-fill-mode: backwards` is load-bearing, not stylistic. It
+   applies the opening keyframe during the delay and then stops applying
+   anything once the animation ends. `both` would retain the final
+   `transform`, and an element with a retained transform becomes the
+   containing block for any `position: fixed` descendant -- which is
+   exactly what blanked the whole window when #root was animated with a
+   transform. The confirm/resume dialogs and the update modal are all
+   fixed and live inside these subtrees, so they would break permanently
+   rather than just during the animation.
+
+   These selectors are scoped under .app-entering, so nothing animates on
+   re-render -- only on the single transition out of the splash. */
+#root.app-entering .app-enter-titlebar {
+  animation: app-enter-down 0.42s var(--ease-spring) backwards;
+}
+
+#root.app-entering .app-enter-content {
+  animation: app-enter-up 0.44s var(--ease-spring) 90ms backwards;
+}
+
+@keyframes app-enter-down {
+  from {
+    opacity: 0;
+    transform: translateY(-7px);
+  }
+}
+
+@keyframes app-enter-up {
+  from {
+    opacity: 0;
+    transform: translateY(9px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #root.app-entering .app-enter-titlebar,
+  #root.app-entering .app-enter-content {
+    animation: none;
+  }
+}
+
+/* The controls dock is horizontally centred with an inline
+   `translateX(-50%)`. An animation's `transform` replaces that outright
+   rather than composing with it, so this variant carries the centring
+   through every keyframe -- without it the dock slides to the right edge
+   for the duration of the entrance. */
+#root.app-entering .app-enter-content-centered {
+  animation: app-enter-up-centered 0.44s var(--ease-spring) 90ms backwards;
+}
+
+@keyframes app-enter-up-centered {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(9px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #root.app-entering .app-enter-content-centered {
+    animation: none;
+  }
 }

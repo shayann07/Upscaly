@@ -18,6 +18,7 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const binariesDir = path.join(root, 'src-tauri', 'binaries');
 const manifestPath = path.join(root, 'src-tauri', 'sidecar-manifest.json');
 const force = process.argv.includes('--force');
+const requestedPackages = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
 
 if (process.platform !== 'win32') {
   console.error('Sidecar fetch only supports Windows right now (Upscaly is Windows-only) -- see README.');
@@ -105,6 +106,9 @@ async function processPackage(name, pkg) {
 
 let failed = false;
 for (const [name, pkg] of Object.entries(manifest)) {
+  if (requestedPackages.length > 0 && !requestedPackages.includes(name)) {
+    continue;
+  }
   try {
     await processPackage(name, pkg);
   } catch (err) {

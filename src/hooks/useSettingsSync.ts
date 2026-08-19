@@ -2,12 +2,26 @@ import { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { AppSettings, GpuInfo } from '../lib/types';
 import { allowMediaPath } from '../lib/assetScope';
-import { resolveGpu } from '../lib/gpuSelection';
+import { CPU_DEVICE_ID, resolveGpu } from '../lib/gpuSelection';
 import { refreshCatalog } from '../store/studioCommands';
-import { checkForUpdates, loadAppVersion } from '../lib/updater';
+import { checkForUpdates, loadAppIdentity } from '../lib/updater';
+import { bootArm, bootComplete, bootStatus } from '../lib/boot';
 import { studioActions, studioStore } from '../store/studioStore';
+
 import { useStoreValue } from '../store/createStore';
 import { StudioState } from '../store/studioStore';
+
+/**
+ * Hard ceiling on how long the splash may stay up. Generous relative to a
+ * healthy start (well under a second once the engine has been probed once)
+ * but short enough that a stuck step is a brief delay rather than a
+ * permanently frozen-looking app.
+ *
+ * MUST stay below the Rust backend failsafe (5 s) in src-tauri/src/lib.rs,
+ * so the frontend always has the opportunity to reveal #root before the
+ * backend forces the window visible.
+ */
+const BOOT_FAILSAFE_MS = 4000;
 
 /** Every field the save effect below persists, as one comparable tuple. */
 const selectPersisted = (s: StudioState) =>
@@ -60,7 +74,26 @@ async function restoreNonGpuSettings(saved: AppSettings): Promise<void> {
 
 function applyGpuChoice(gpus: GpuInfo[], savedName: string | null | undefined): void {
   const { gpu, reason } = resolveGpu(gpus, savedName);
-  if (!gpu) return;
+
+  // No Vulkan device at all: a machine with no discrete card and an iGPU
+  // too old for Vulkan, a VM without GPU passthrough, or a broken/missing
+  // driver. This used to return silently, leaving the selection at GPU 0 --
+  // so the app looked fine until Upscale was pressed and the engine died
+  // against a device that does not exist. The engine's own CPU path is
+  // selected with `-g -1`; it works, but it is slow enough that saying so
+  // is not optional.
+  if (!gpu) {
+    studioActions.setCpuOnly(true);
+    studioActions.setSelectedGpu(CPU_DEVICE_ID);
+    studioActions.notify(
+      'warning',
+      'No compatible GPU found',
+      'Upscaly will run on the CPU, which is far slower. Video upscaling is unavailable. Installing or updating a Vulkan-capable graphics driver usually fixes this.'
+    );
+    return;
+  }
+
+  studioActions.setCpuOnly(false);
 
   studioActions.setSelectedGpu(gpu.id);
   if (reason === 'saved-name-missing') {
@@ -95,6 +128,12 @@ export function useSettingsSync() {
     startedRef.current = true;
 
     const bootstrap = async () => {
+      // The GPU probe is the slowest step by a wide margin on a first run
+      // -- it spawns the engine and waits for it -- and it is what used to
+      // leave the titlebar reading "GPU Acceleration" until it resolved.
+      // Naming it on the splash means the wait is explained rather than
+      // just endured.
+      bootStatus('DETECTING GPUS');
       let gpus: GpuInfo[] = [];
       try {
         gpus = await invoke<GpuInfo[]>('list_gpus');
@@ -103,6 +142,7 @@ export function useSettingsSync() {
         // No enumeration: applyGpuChoice below leaves the selection alone.
       }
 
+      bootStatus('LOADING SETTINGS');
       let saved: AppSettings | null = null;
       try {
         saved = await invoke<AppSettings>('get_app_settings');
@@ -121,13 +161,29 @@ export function useSettingsSync() {
       if (studioStore.getState().autoCheckUpdates) void checkForUpdates();
     };
 
-    void loadAppVersion();
+    // Armed before anything is awaited, so the splash decision is made as
+    // early as this bundle can manage. Not awaited: arming fetches the
+    // real launch time over IPC, and the bootstrap must not queue behind
+    // that round trip.
+    void bootArm();
+
+    void loadAppIdentity();
+
+    // Never let a hung startup strand the user on the splash. Any of these
+    // steps can block on something outside our control -- a wedged engine
+    // probe, an unreachable catalog -- and an app that is merely missing
+    // its GPU list is far better than one that never appears.
+    const failsafe = window.setTimeout(bootComplete, BOOT_FAILSAFE_MS);
 
     // The save effect stays gated until the whole bootstrap settles.
     // Ungating earlier meant a save could fire pairing the resolved GPU
     // with still-default scale, tile size and output directory, silently
     // clobbering saved preferences.
-    void bootstrap().finally(() => studioActions.setSettingsLoaded(true));
+    void bootstrap().finally(() => {
+      studioActions.setSettingsLoaded(true);
+      window.clearTimeout(failsafe);
+      bootComplete();
+    });
 
     void refreshCatalog();
   }, []);

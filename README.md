@@ -1,8 +1,10 @@
 <div align="center">
 
-# Upscaly
+<img src="docs/Design%20system%20production%20assets/assets/github-social-1280x640.png" alt="Upscaly Studio — local image and video upscaling. Nothing leaves your machine." width="820">
 
-**A free, open-source AI image and video upscaler for Windows. Runs entirely on your own GPU — nothing is uploaded, nothing is metered, no account required.**
+# Upscaly Studio
+
+**A free, open-source AI image and video upscaler for Windows. Runs entirely on your own GPU — your media is never uploaded, nothing is metered, no account required.**
 
 Real-ESRGAN super-resolution with a proper desktop UI: batch queues, a VRAM governor that keeps your machine alive, lossless video pipelines, and a curated model catalog you can extend with your own.
 
@@ -11,7 +13,7 @@ Real-ESRGAN super-resolution with a proper desktop UI: batch queues, a VRAM gove
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24C8DB)](https://tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-2021-orange?logo=rust)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev/)
-[![Offline](https://img.shields.io/badge/100%25-offline-brightgreen)](#privacy)
+[![Local processing](https://img.shields.io/badge/processing-100%25%20local-brightgreen)](#privacy)
 
 </div>
 
@@ -19,7 +21,7 @@ Real-ESRGAN super-resolution with a proper desktop UI: batch queues, a VRAM gove
 
 ## Table of contents
 
-- [Why Upscaly](#why-upscaly)
+- [Why Upscaly Studio](#why-upscaly-studio)
 - [Features](#features)
 - [Screenshots](#screenshots)
 - [Requirements](#requirements)
@@ -39,9 +41,9 @@ Real-ESRGAN super-resolution with a proper desktop UI: batch queues, a VRAM gove
 
 ---
 
-## Why Upscaly
+## Why Upscaly Studio
 
-Most AI upscalers are either a web service that wants your photos and your credit card, or a command-line tool that expects you to know what a tile size is. Upscaly is a desktop app that runs the same models locally, for free, and makes the decisions that matter visible instead of hiding them.
+Most AI upscalers are either a web service that wants your photos and your credit card, or a command-line tool that expects you to know what a tile size is. Upscaly Studio is a desktop app that runs the same models locally, for free, and makes the decisions that matter visible instead of hiding them.
 
 Concretely, it tries hard to never lie to you:
 
@@ -138,7 +140,7 @@ See [Building from source](#building-from-source).
 
 Drop several files at once to build a batch. Results land next to the input unless you set an output directory in Settings.
 
-> Models are fixed-factor. Asking for 2× from a 4×-only model produces a 4× image, and Upscaly will tell you rather than silently switching you to a model trained for different content.
+> Models are fixed-factor. Asking for 2× from a 4×-only model produces a 4× image, and Upscaly Studio will tell you rather than silently switching you to a model trained for different content.
 
 ---
 
@@ -177,7 +179,7 @@ No upscaler fixes colour casts, fading, or dust — those are restoration proble
 | **Balanced** | Engine-tuned            | Off               | 2             | **Default.** Everything else.                        |
 | **Speed**    | Engine-tuned            | Off               | 4             | Large batches — wider decode/encode, identical image |
 
-> **TTA is roughly 8× the GPU work.** On a single image that is seconds. On a 300-frame clip it is the difference between about an hour and about eight, so Upscaly asks for confirmation before starting a video run under Quality.
+> **TTA is roughly 8× the GPU work.** On a single image that is seconds. On a 300-frame clip it is the difference between about an hour and about eight, so Upscaly Studio asks for confirmation before starting a video run under Quality.
 
 Presets only ever _propose_ settings. The VRAM governor has the final say on tile size, and an explicit tile choice always overrides the preset.
 
@@ -207,7 +209,7 @@ Lists every Vulkan device with its VRAM. Your choice is stored **by name** and r
 
 Video works, and it is slow and disk-hungry. Both are inherent to the job, not bugs.
 
-**Disk.** Intermediate frames are lossless PNG. A 294-frame 1080p clip at 4× needs roughly **15 GB** of temporary space. Upscaly estimates this before extraction and refuses to start if the drive cannot hold it. Temporary files are deleted when the job finishes or is cancelled.
+**Disk.** Intermediate frames are lossless PNG. A 294-frame 1080p clip at 4× needs roughly **15 GB** of temporary space. Upscaly Studio estimates this before extraction and refuses to start if the drive cannot hold it. Temporary files are deleted when the job finishes or is cancelled.
 
 **Time.** A 4× upscale renders every frame at sixteen times the pixel count. Expect minutes per hundred frames on a discrete GPU, and considerably longer with TTA enabled.
 
@@ -223,7 +225,7 @@ Video works, and it is slow and disk-hungry. Both are inherent to the job, not b
 
 ## Custom models
 
-Upscaly runs any [ncnn](https://github.com/Tencent/ncnn)-format model — a matching `.param` + `.bin` pair.
+Upscaly Studio runs any [ncnn](https://github.com/Tencent/ncnn)-format model — a matching `.param` + `.bin` pair.
 
 1. Put your pairs in a folder.
 2. **Settings → Custom Model Folder → Browse**.
@@ -265,7 +267,7 @@ npm run fetch:sidecars
 
 This downloads `realesrgan-ncnn-vulkan`, `ffmpeg` and `ffprobe` into `src-tauri/binaries/` from the pinned, SHA-256-verified sources in [`src-tauri/sidecar-manifest.json`](src-tauri/sidecar-manifest.json), and skips anything already present. Re-run with `--force` to refetch even what's already there.
 
-> **Only the engine is bundled into releases.** `ffmpeg`/`ffprobe` are ~290 MB together and GPL-licensed, so the installer downloads them from upstream during installation (see `src-tauri/installer-hooks.nsh`) rather than shipping them — which keeps the installer at ~5 MB and means Upscaly never redistributes GPL binaries itself. If that download fails, installation still succeeds: image upscaling never needs ffmpeg, and the app fetches it when a video job is first started.
+> **Only the engine is bundled into releases.** `ffmpeg`/`ffprobe` are ~290 MB together and GPL-licensed, so the installer downloads them from upstream during installation (see `src-tauri/installer-hooks.nsh`) rather than shipping them — which keeps the installer at ~5 MB and means Upscaly Studio never redistributes GPL binaries itself. If that download fails, installation still succeeds: image upscaling never needs ffmpeg, and the app fetches it when a video job is first started.
 
 **Model weights are not committed either.** They are downloaded on demand from
 commit-pinned URLs with verified SHA-256 hashes, so a fresh clone has none and
@@ -280,8 +282,8 @@ npm run tauri:dev     # development, hot reload
 npm run tauri:build   # production installer in src-tauri/target/release/bundle
 ```
 
-`tauri:dev` runs under a separate app identifier (`com.shaya.ai-upscaler.dev`,
-window title "Upscaly Studio") via `src-tauri/tauri.dev.conf.json`, so a debug
+`tauri:dev` runs under a separate app identifier (`com.wexpa.upscaly.dev`,
+window title "Upscaly") via `src-tauri/tauri.dev.conf.json`, so a debug
 session never touches the installed release app's settings, history,
 downloaded models or WebView2 profile — they live in entirely separate
 `%APPDATA%`/`%LOCALAPPDATA%` folders. `src-tauri/src/app_paths.rs` backstops
@@ -426,7 +428,17 @@ Good first issues: screenshots for this README, additional model catalog entries
 
 ## Privacy
 
-Upscaly is **fully offline**. Your images and videos never leave your machine. There is no telemetry, no analytics, no account, and no network connection at all except when you explicitly download a model from the catalog.
+**Your images and videos never leave your machine.** All processing is local, on your own GPU. There is no telemetry, no analytics, and no account.
+
+Upscaly Studio makes exactly three kinds of network request, all of them for its own components and none of them carrying your media:
+
+| Request | When | Can you avoid it? |
+| --- | --- | --- |
+| Model weights | You pick a model that isn't installed yet | Yes — only on your explicit action |
+| FFmpeg | During installation, or before your first video job | Yes — not needed for image upscaling at all |
+| Update check | On launch | Yes — turn off **Auto-check for updates** in Settings |
+
+Once those are on disk, upscaling itself works with the network unplugged.
 
 ---
 
@@ -436,7 +448,7 @@ Released under the [MIT License](LICENSE) — free for personal and commercial u
 
 ### Third-party components
 
-Upscaly bundles software under its own licenses. Full details in [`docs/THIRD_PARTY_NOTICES.md`](docs/THIRD_PARTY_NOTICES.md).
+Upscaly Studio bundles software under its own licenses. Full details in [`docs/THIRD_PARTY_NOTICES.md`](docs/THIRD_PARTY_NOTICES.md).
 
 | Component                                                                     | License                                        |
 | ----------------------------------------------------------------------------- | ---------------------------------------------- |
@@ -445,7 +457,7 @@ Upscaly bundles software under its own licenses. Full details in [`docs/THIRD_PA
 | [FFmpeg / FFprobe](https://ffmpeg.org/)                                       | **GPL v3** — not bundled, fetched from upstream |
 | [Tauri](https://tauri.app)                                                    | MIT / Apache-2.0                               |
 
-> **FFmpeg is GPL v3 and Upscaly does not redistribute it.** Neither this repository nor the installer contains it; the installer downloads it from a pinned [BtbN](https://github.com/BtbN/FFmpeg-Builds) release during installation, so your copy comes straight from upstream. The GPL build is chosen deliberately: the encoder chain falls back to `libx264` software encoding when no hardware encoder works, and that rung does not exist in an LGPL build. If *you* mirror or bundle those binaries yourself, GPL v3 obligations apply to you — see [`docs/THIRD_PARTY_NOTICES.md`](docs/THIRD_PARTY_NOTICES.md).
+> **FFmpeg is GPL v3 and Upscaly Studio does not redistribute it.** Neither this repository nor the installer contains it; the installer downloads it from a pinned [BtbN](https://github.com/BtbN/FFmpeg-Builds) release during installation, so your copy comes straight from upstream. The GPL build is chosen deliberately: the encoder chain falls back to `libx264` software encoding when no hardware encoder works, and that rung does not exist in an LGPL build. If *you* mirror or bundle those binaries yourself, GPL v3 obligations apply to you — see [`docs/THIRD_PARTY_NOTICES.md`](docs/THIRD_PARTY_NOTICES.md).
 
 Model weights are the property of their respective authors: Remacri by **FoolhardyVEVO**, UltraSharp by **Kim2091**, and the Real-ESRGAN models by **Xintao Wang et al.**
 
@@ -460,7 +472,7 @@ Model weights are the property of their respective authors: Remacri by **Foolhar
 
 <div align="center">
 
-**If Upscaly is useful to you, a ⭐ helps other people find it.**
+**If Upscaly Studio is useful to you, a ⭐ helps other people find it.**
 
 [Report a bug](https://github.com/shayann07/Upscaly/issues) · [Request a feature](https://github.com/shayann07/Upscaly/issues) · [Discussions](https://github.com/shayann07/Upscaly/discussions)
 

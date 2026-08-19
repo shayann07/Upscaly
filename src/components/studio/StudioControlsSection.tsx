@@ -127,6 +127,7 @@ export const StudioControlsSection = memo(function StudioControlsSection() {
   return (
     <>
       <div
+        className="app-enter-content-centered"
         style={{
           position: 'absolute',
           bottom: 14,
