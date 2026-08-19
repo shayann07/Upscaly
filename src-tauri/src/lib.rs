@@ -97,17 +97,27 @@ fn sweep_old_logs(log_dir: &std::path::Path) {
 
 fn init_logging(app: &mut tauri::App) {
     let log_dir = crate::app_paths::app_data_dir(app.handle()).join("logs");
-    let _ = std::fs::create_dir_all(&log_dir);
+    if let Err(e) = std::fs::create_dir_all(&log_dir) {
+        let fallback = std::env::temp_dir().join("upscaly-logging-init-failed.txt");
+        let _ = std::fs::write(
+            fallback,
+            format!("failed to create log dir {}: {e}\n", log_dir.display()),
+        );
+    }
     sweep_old_logs(&log_dir);
 
     let appender = tracing_appender::rolling::daily(&log_dir, "upscaly.log");
     let (writer, guard) = tracing_appender::non_blocking(appender);
     // The guard must outlive the process or buffered lines are lost.
     app.manage(guard);
-    let _ = tracing_subscriber::fmt()
+    if let Err(e) = tracing_subscriber::fmt()
         .with_writer(writer)
         .with_ansi(false)
-        .try_init();
+        .try_init()
+    {
+        let err_file = log_dir.join("logging-init-failed.txt");
+        let _ = std::fs::write(err_file, format!("tracing init failed: {e}\n"));
+    }
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "upscaly starting");
 }
 

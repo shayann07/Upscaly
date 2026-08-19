@@ -44,9 +44,15 @@ async function updatesSupported(): Promise<boolean> {
 export async function loadAppIdentity(): Promise<void> {
   try {
     const [name, version] = await Promise.all([getName(), getVersion()]);
-    studioActions.setAppName(name);
-    studioActions.setAppVersion(version);
-    bootName(name);
+    if (typeof name === 'string' && name.length > 0) {
+      studioActions.setAppName(name);
+      bootName(name);
+    } else {
+      console.warn('[updater] getName() returned non-string or empty name:', name);
+    }
+    if (typeof version === 'string' && version.length > 0) {
+      studioActions.setAppVersion(version);
+    }
   } catch {
     // Non-Tauri context (vitest/jsdom, browser preview). The titlebar
     // simply renders default name and no version rather than a wrong one.

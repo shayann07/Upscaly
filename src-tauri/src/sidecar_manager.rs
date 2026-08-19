@@ -285,9 +285,7 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
     // 2. Perform raw discovery: native Vulkan first to avoid engine crashes and WER noise,
     // falling back to sidecar probe if ash cannot initialize the Vulkan loader.
     let gpus = probe_gpus_vulkan_native().unwrap_or_else(|| {
-        tracing::warn!(
-            "Native Vulkan enumeration unavailable; falling back to engine sidecar probe"
-        );
+        tracing::warn!("native Vulkan enumeration unavailable; falling back to engine probe");
         probe_gpus_raw(app).unwrap_or_default()
     });
 
@@ -380,6 +378,7 @@ fn probe_gpus_vulkan_native() -> Option<Vec<GpuDevice>> {
 
         instance.destroy_instance(None);
         devices.sort_by(cmp_by_discrete);
+        tracing::info!(count = devices.len(), "GPUs enumerated natively");
         Some(devices)
     }
 }

@@ -70,7 +70,9 @@ export function WindowControls() {
           </button>
         </div>
         <div className="w-px h-[15px] bg-[var(--border-default)]" />
-        <span className="font-bold text-[12.5px] tracking-[-0.01em]">{appName || 'Upscaly'}</span>
+        <span className="font-bold text-[12.5px] tracking-[-0.01em]">
+          {appName || 'Upscaly Studio'}
+        </span>
         {/*
           Read from Tauri's app metadata rather than written here. The
           literal that used to sit in this slot would have kept reporting

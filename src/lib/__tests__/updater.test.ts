@@ -1,14 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { checkForUpdates, downloadAndInstallUpdate, _resetDebugBuildForTesting } from '../updater';
+import {
+  checkForUpdates,
+  downloadAndInstallUpdate,
+  loadAppIdentity,
+  _resetDebugBuildForTesting,
+} from '../updater';
 import { resetStudioStore, studioActions, studioStore } from '../../store/studioStore';
 import { invoke } from '@tauri-apps/api/core';
+import { getName, getVersion } from '@tauri-apps/api/app';
 
 vi.mock('@tauri-apps/plugin-updater', () => ({ check: vi.fn() }));
 vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: vi.fn() }));
-vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn() }));
+vi.mock('@tauri-apps/api/app', () => ({ getName: vi.fn(), getVersion: vi.fn() }));
 
+const mockGetName = vi.mocked(getName);
+const mockGetVersion = vi.mocked(getVersion);
 const mockCheck = vi.mocked(check);
 const mockRelaunch = vi.mocked(relaunch);
 const mockInvoke = vi.mocked(invoke);
@@ -187,5 +195,43 @@ describe('downloadAndInstallUpdate', () => {
     await downloadAndInstallUpdate();
 
     expect(mockCheck).not.toHaveBeenCalled();
+  });
+});
+
+describe('loadAppIdentity', () => {
+  it('updates store appName and appVersion when valid metadata is returned', async () => {
+    mockGetName.mockResolvedValue('Upscaly Studio');
+    mockGetVersion.mockResolvedValue('1.0.1');
+
+    await loadAppIdentity();
+
+    expect(state().appName).toBe('Upscaly Studio');
+    expect(state().appVersion).toBe('1.0.1');
+  });
+
+  it('keeps default appName when getName() returns empty string or non-string', async () => {
+    mockGetName.mockResolvedValue('');
+    mockGetVersion.mockResolvedValue('1.0.1');
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await loadAppIdentity();
+
+    expect(state().appName).toBe('Upscaly Studio');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[updater] getName() returned non-string or empty name:'),
+      ''
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('ignores errors in non-Tauri environments gracefully', async () => {
+    mockGetName.mockRejectedValue(new Error('Tauri not running'));
+    mockGetVersion.mockRejectedValue(new Error('Tauri not running'));
+
+    await loadAppIdentity();
+
+    expect(state().appName).toBe('Upscaly Studio');
+    expect(state().appVersion).toBe('');
   });
 });
