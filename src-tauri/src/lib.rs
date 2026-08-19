@@ -51,9 +51,43 @@ pub struct UpscaleJobHandle {
     pub output_path: String,
 }
 
+/// When the process entered [`run`] -- as close to launch as anything in
+/// this process can observe. See `commands::window::launch_elapsed_ms` for
+/// why the frontend needs this instead of its own clock.
+static LAUNCHED_AT: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+pub(crate) fn launched_at() -> std::time::Instant {
+    *LAUNCHED_AT.get_or_init(std::time::Instant::now)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    launched_at();
     tauri::Builder::default()
+        // The window is created hidden (`visible: false` in the config)
+        // and shown by the frontend via `show_main_window`, once the first
+        // frame worth looking at -- splash or dashboard -- is painted.
+        // Showing it from here on any earlier signal put the window on
+        // screen before its contents: a flat fill before the first paint,
+        // or a bare striped page while the splash played out invisibly.
+        .setup(|app| {
+            // Failsafe for the above. A window that is never shown is an
+            // app the user cannot reach *and* cannot close, so a frontend
+            // that dies before asking -- a failed navigation, a bundle
+            // that throws at top level -- must not be able to strand it.
+            // Better a late window over the wrong backdrop than none.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                if let Some(window) = tauri::Manager::get_webview_window(&handle, "main") {
+                    if !window.is_visible().unwrap_or(false) {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+            });
+            Ok(())
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -79,7 +113,10 @@ pub fn run() {
             commands::files::close_window,
             commands::files::minimize_window,
             commands::files::toggle_maximize_window,
-            commands::files::get_file_size_bytes
+            commands::files::get_file_size_bytes,
+            commands::window::show_main_window,
+            commands::window::launch_elapsed_ms,
+            commands::window::is_debug_build
         ])
         .on_window_event(|_window, event| {
             if matches!(

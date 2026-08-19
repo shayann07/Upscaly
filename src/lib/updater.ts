@@ -1,24 +1,39 @@
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
+import { invoke } from '@tauri-apps/api/core';
 import { studioActions, studioStore } from '../store/studioStore';
+
+let debugBuild: boolean | null = null;
+
+/**
+ * Resets the cached debugBuild flag. Used in unit tests.
+ */
+export function _resetDebugBuildForTesting(): void {
+  debugBuild = null;
+}
 
 /**
  * Whether the updater can run at all in this build.
  *
- * A dev build has no signed installer behind it and its version comes from
- * whatever is in tauri.conf.json at the time, so a check would either find
- * "an update" for a version you are actively editing or fail against an
- * endpoint listing artifacts this binary was never built from. Neither is
- * useful, and installing over a dev build would replace it with the
+ * A dev or debug build has no signed installer behind it and its version
+ * comes from whatever is in tauri.conf.json at the time, so a check would
+ * either find "an update" for a version you are actively editing or fail
+ * against an endpoint listing artifacts this binary was never built from.
+ * Neither is useful, and installing over a dev build would replace it with the
  * released one mid-session.
  *
- * Read per call rather than captured once at module load, so it reflects
- * the environment at the moment it matters -- and so tests can exercise
- * both sides of it, which a module-level const would freeze shut.
+ * Consults both `import.meta.env.DEV` (Vite dev server) and `is_debug_build`
+ * (Rust debug assertions) because `tauri build --debug` runs a production Vite
+ * build where `import.meta.env.DEV` is false.
  */
-function updatesSupported(): boolean {
-  return !import.meta.env.DEV;
+async function updatesSupported(): Promise<boolean> {
+  if (import.meta.env.DEV) return false;
+  if (debugBuild === null) {
+    const res = await Promise.resolve(invoke<boolean>('is_debug_build')).catch(() => false);
+    debugBuild = typeof res === 'boolean' ? res : false;
+  }
+  return !debugBuild;
 }
 
 /**
@@ -46,7 +61,7 @@ export async function loadAppVersion(): Promise<void> {
  * are surfaced.
  */
 export async function checkForUpdates(manual = false): Promise<void> {
-  if (!updatesSupported()) {
+  if (!(await updatesSupported())) {
     if (manual) {
       studioActions.notify('info', 'Updates disabled in development', 'This is a dev build.');
     }
@@ -88,7 +103,7 @@ export async function checkForUpdates(manual = false): Promise<void> {
  * is gone. Re-checking costs one request and always yields a live handle.
  */
 export async function downloadAndInstallUpdate(): Promise<void> {
-  if (!updatesSupported()) return;
+  if (!(await updatesSupported())) return;
   if (studioStore.getState().updatePhase !== 'idle') return;
 
   studioActions.setUpdatePhase('downloading');

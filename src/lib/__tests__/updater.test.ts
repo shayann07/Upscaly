@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { checkForUpdates, downloadAndInstallUpdate } from '../updater';
+import { checkForUpdates, downloadAndInstallUpdate, _resetDebugBuildForTesting } from '../updater';
 import { resetStudioStore, studioActions, studioStore } from '../../store/studioStore';
+import { invoke } from '@tauri-apps/api/core';
 
 vi.mock('@tauri-apps/plugin-updater', () => ({ check: vi.fn() }));
 vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: vi.fn() }));
@@ -10,6 +11,7 @@ vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn() }));
 
 const mockCheck = vi.mocked(check);
 const mockRelaunch = vi.mocked(relaunch);
+const mockInvoke = vi.mocked(invoke);
 const state = () => studioStore.getState();
 
 /**
@@ -32,7 +34,9 @@ function fakeUpdate(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   resetStudioStore();
+  _resetDebugBuildForTesting();
   vi.clearAllMocks();
+  mockInvoke.mockResolvedValue(false);
 });
 
 afterEach(() => {
@@ -40,6 +44,16 @@ afterEach(() => {
 });
 
 describe('checkForUpdates', () => {
+  it('never contacts the update endpoint from a debug bundle', async () => {
+    asProductionBuild();
+    mockInvoke.mockResolvedValueOnce(true);
+
+    await checkForUpdates(true);
+    expect(mockCheck).not.toHaveBeenCalled();
+    expect(state().availableUpdate).toBeNull();
+    expect(state().toasts[0].message).toContain('Updates disabled in development');
+  });
+
   it('never contacts the update endpoint from a dev build', async () => {
     // Installing a release over a running dev build would replace the
     // binary being worked on, and the version it would compare against is

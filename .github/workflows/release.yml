@@ -56,6 +56,8 @@ jobs:
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -68,6 +70,9 @@ jobs:
       # manifest also describing them.
       - name: Fetch sidecar binaries
         run: npm ci && npm run fetch:sidecars
+
+      - name: Quality gate
+        run: npm run check:quality
 
       - name: Build installer
         env:
@@ -87,9 +92,16 @@ jobs:
           VERSION: ${{ needs.gate.outputs.version }}
         run: |
           set -euo pipefail
+          # NSIS names the artifact after productName, which contains a space.
+          # GitHub rewrites asset filenames on upload, so publish under a
+          # deterministic space-free name and point latest.json at exactly that.
           bundle="src-tauri/target/release/bundle/nsis"
-          setup=$(ls "$bundle"/*-setup.exe)
-          sig=$(cat "$bundle"/*-setup.exe.sig)
+          orig=$(ls "$bundle"/*-setup.exe)
+          asset="$bundle/Upscaly-Studio_${VERSION}_x64-setup.exe"
+          mv "$orig" "$asset"
+          mv "$orig.sig" "$asset.sig"
+          case "$(basename "$asset")" in (*' '*) echo "::error::asset name contains a space"; exit 1;; esac
+          sig=$(cat "$asset.sig")
           # Subject line only. `%B | head -20` cut long commit bodies at an
           # arbitrary line, and the v0.1.0 release shipped a notes field
           # ending mid-sentence -- which is the text the in-app update
@@ -105,7 +117,7 @@ jobs:
               platforms: { "windows-x86_64": { signature: sig, url } },
             }, null, 2));
           ' "$VERSION" "$sig" \
-            "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/$(basename "$setup")" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/$(basename "$asset")" \
             "$notes"
           cat latest.json
 
@@ -118,7 +130,7 @@ jobs:
           set -euo pipefail
           bundle="src-tauri/target/release/bundle/nsis"
           gh release create "v${VERSION}" \
-            --title "Upscaly v${VERSION}" \
+            --title "Upscaly Studio v${VERSION}" \
             --generate-notes \
             "$bundle"/*-setup.exe \
             "$bundle"/*-setup.exe.sig \
