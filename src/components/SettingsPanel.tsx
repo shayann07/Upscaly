@@ -86,31 +86,49 @@ function getRunButtonStyle(
   };
 }
 
+function selectCategoryModel(
+  cat: 'photo' | 'anime' | 'video',
+  modelsList: ModelInfo[],
+  selectedModel: string,
+  onSelectModel: (id: string) => void
+) {
+  const catModels = modelsList.filter((m: ModelInfo) => m.cat === cat);
+  if (catModels.length > 0 && !catModels.some((m) => m.id === selectedModel)) {
+    onSelectModel(catModels[0].id);
+  }
+}
+
+function getRunButtonLabel(isProcessing: boolean, isBatchMode: boolean): string {
+  if (isProcessing) return 'Processing...';
+  return isBatchMode ? 'Run queue' : 'Upscale';
+}
+
 function SettingsPanelImpl(props: SettingsPanelProps) {
   const {
     supportedModels,
-    modelCategory = 'photo',
+    modelCategory,
     onSetCategory,
-    category = 'photos',
+    category,
     onSelectCategory,
     selectedModel,
     onSelectModel,
     selectedScale,
-    scale = 4,
+    scale,
     onSelectScale,
     isProcessing = false,
     hasFiles = true,
     isBatchMode = false,
-    onRun = () => {},
+    onRun,
     onOpenCatalog = () => {},
     accentColor = 'var(--accent)',
+    installedModels = [],
   } = props;
 
   const [isHovered, setIsHovered] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
 
   const activeCategory = resolveActiveCategory(category, modelCategory);
-  const activeScale = selectedScale !== undefined ? selectedScale : scale;
+  const activeScale = selectedScale ?? scale ?? 4;
   const EASE = 'var(--ease-spring)';
 
   const { modelsList, model, filteredModels } = getModelListData(
@@ -120,19 +138,14 @@ function SettingsPanelImpl(props: SettingsPanelProps) {
   );
 
   const handleCategory = (cat: 'photo' | 'anime' | 'video') => {
-    if (onSetCategory) onSetCategory(cat);
-    if (onSelectCategory) {
-      onSelectCategory(cat === 'photo' ? 'photos' : cat);
-    }
-    const catModels = modelsList.filter((m: ModelInfo) => m.cat === cat);
-    if (catModels.length > 0 && !catModels.some((m) => m.id === selectedModel)) {
-      onSelectModel(catModels[0].id);
-    }
+    onSetCategory?.(cat);
+    onSelectCategory?.(cat === 'photo' ? 'photos' : cat);
+    selectCategoryModel(cat, modelsList, selectedModel, onSelectModel);
   };
 
   const pill = (active: boolean, isBig: boolean) => getPillStyle(active, isBig, accentColor, EASE);
-
   const runBtnStyle = getRunButtonStyle(isHovered, isProcessing, hasFiles);
+  const runLabel = getRunButtonLabel(isProcessing, isBatchMode);
 
   return (
     <div
@@ -166,6 +179,7 @@ function SettingsPanelImpl(props: SettingsPanelProps) {
         onSelectModel={onSelectModel}
         onOpenCatalog={onOpenCatalog}
         accentColor={accentColor}
+        installedModels={installedModels}
       />
 
       <ScaleSelectorSection
@@ -181,7 +195,7 @@ function SettingsPanelImpl(props: SettingsPanelProps) {
         className="flex-none flex items-center gap-2 font-['Archivo',sans-serif] font-semibold whitespace-nowrap transition-all duration-200 hover:scale-[1.05] hover:shadow-[0_4px_16px_rgba(255,255,255,0.25)]"
         style={runBtnStyle}
       >
-        <span>{isProcessing ? 'Processing...' : isBatchMode ? 'Run queue' : 'Upscale'}</span>
+        <span>{runLabel}</span>
         {isHovered && !isProcessing && (
           <span className="font-['Martian_Mono',monospace] text-[9px] opacity-50 tracking-[0.04em]">
             ⌘↩

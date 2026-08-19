@@ -118,14 +118,13 @@ export const useUpdateProgress = () => useSlice(selectUpdateProgress);
 const selectSupportedModels = (s: StudioState) => s.supportedModels;
 const selectInstalledModels = (s: StudioState) => s.installedModels;
 const selectSelectedModel = (s: StudioState) => s.selectedModel;
-const selectDownloadingModelId = (s: StudioState) => s.downloadingModelId;
-const selectDownloadProgress = (s: StudioState) => s.downloadProgress;
-
 export const useSupportedModels = () => useSlice(selectSupportedModels, arrayEqual);
 export const useInstalledModels = () => useSlice(selectInstalledModels, arrayEqual);
 export const useSelectedModel = () => useSlice(selectSelectedModel);
-export const useDownloadingModelId = () => useSlice(selectDownloadingModelId);
-export const useDownloadProgress = () => useSlice(selectDownloadProgress);
+
+const selectDownloadingModels = (s: StudioState) => s.downloadingModels;
+/** Percentage per model id currently downloading -- see studioStore. */
+export const useDownloadingModels = () => useSlice(selectDownloadingModels);
 
 // ------------------------------------------------------------------- ui
 

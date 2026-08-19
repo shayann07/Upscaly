@@ -6,6 +6,7 @@ import {
   checkResumableJobs,
   confirmSlowRunAndStart,
   dismissOfferedResume,
+  downloadModel,
   resumeOfferedJob,
   refreshCatalog,
   selectScale,
@@ -435,5 +436,72 @@ describe('machines with no compatible GPU', () => {
     await startUpscale();
 
     expect(mockInvoke).toHaveBeenCalledWith('run_upscale_batch', expect.anything());
+  });
+});
+
+describe('downloadModel', () => {
+  it('tracks two concurrent downloads independently, not through one shared slot', async () => {
+    // The bug this guards: `downloadingModelId`/`downloadProgress` used to
+    // be a single pair shared by every row, so two real downloads in
+    // flight at once stomped on each other's visible state. Each id must
+    // now keep its own entry regardless of what else is running.
+    let resolveA: (() => void) | undefined;
+    let resolveB: (() => void) | undefined;
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === 'download_model') {
+        // Neither promise settles until the assertions below have had a
+        // chance to observe both downloads in flight together.
+        return new Promise<void>((resolve) => {
+          if (!resolveA) resolveA = resolve;
+          else resolveB = resolve;
+        });
+      }
+      if (cmd === 'get_model_catalog') return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    const a = downloadModel('model-a');
+    const b = downloadModel('model-b');
+    // Both invokes fire synchronously up to their first await, so both
+    // ids are already registered by the time either promise is examined.
+    await Promise.resolve();
+
+    expect(state().downloadingModels).toEqual({ 'model-a': 0, 'model-b': 0 });
+
+    resolveA?.();
+    await a;
+
+    // Model A finishing must not touch model B's entry -- the single-slot
+    // version cleared the shared field unconditionally in `finally`,
+    // which would have wiped model B out here while it was still running.
+    expect(state().downloadingModels).toEqual({ 'model-b': 0 });
+
+    resolveB?.();
+    await b;
+
+    expect(state().downloadingModels).toEqual({});
+  });
+
+  it('refuses to re-trigger a model whose download is already in flight', async () => {
+    // The frontend guard mirrored against the backend's per-model lock
+    // (engine/model_store.rs): the Download button is hidden while a
+    // model's own entry exists, but a stale click queued before the row
+    // re-rendered must not fire a second invoke -- the backend has no
+    // second writer to protect against a fixed temp-file path otherwise.
+    let calls = 0;
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === 'download_model') {
+        calls += 1;
+        return new Promise(() => {}); // never resolves within this test
+      }
+      return Promise.resolve(undefined);
+    });
+
+    void downloadModel('model-a');
+    await Promise.resolve();
+    void downloadModel('model-a');
+    await Promise.resolve();
+
+    expect(calls).toBe(1);
   });
 });

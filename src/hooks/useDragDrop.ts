@@ -78,8 +78,14 @@ export function useDragDrop(
         console.warn('Failed to attach drag-drop listener:', err);
       });
 
+    const preventDefault = (e: DragEvent) => e.preventDefault();
+    window.addEventListener('dragover', preventDefault);
+    window.addEventListener('drop', preventDefault);
+
     return () => {
       isCancelled = true;
+      window.removeEventListener('dragover', preventDefault);
+      window.removeEventListener('drop', preventDefault);
       if (unlisten) unlisten();
     };
   }, []);

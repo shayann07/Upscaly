@@ -117,8 +117,11 @@ export function useJobSync() {
 
   const handleDownloadProgress = useCallback(
     (payload: { model_id: string; percentage: number }) => {
-      studioActions.setDownloadingModelId(payload.model_id);
-      studioActions.setDownloadProgress(payload.percentage);
+      // Keyed by the event's own model_id, not a shared slot -- two models
+      // downloading at once each stream their own events, and writing both
+      // into one global field meant whichever event landed last "won,"
+      // flickering the visible percentage between two unrelated downloads.
+      studioActions.setModelDownloadProgress(payload.model_id, payload.percentage);
     },
     []
   );
