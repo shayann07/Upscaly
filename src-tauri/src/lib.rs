@@ -60,10 +60,86 @@ pub(crate) fn launched_at() -> std::time::Instant {
     *LAUNCHED_AT.get_or_init(std::time::Instant::now)
 }
 
+use tauri::Manager;
+
+fn fatal_dialog(message: &str) {
+    #[cfg(windows)]
+    #[allow(unsafe_code)]
+    unsafe {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR};
+        let msg: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
+        let title: Vec<u16> = "Upscaly Studio"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        MessageBoxW(0, msg.as_ptr(), title.as_ptr(), MB_ICONERROR);
+    }
+    #[cfg(not(windows))]
+    eprintln!("FATAL: {message}");
+}
+
+fn sweep_old_logs(log_dir: &std::path::Path) {
+    if let Ok(entries) = std::fs::read_dir(log_dir) {
+        let cutoff = std::time::SystemTime::now()
+            .checked_sub(std::time::Duration::from_hours(14 * 24))
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        for entry in entries.flatten() {
+            if let Ok(meta) = entry.metadata() {
+                if let Ok(modified) = meta.modified() {
+                    if modified < cutoff {
+                        let _ = std::fs::remove_file(entry.path());
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn init_logging(app: &mut tauri::App) {
+    let log_dir = crate::app_paths::app_data_dir(app.handle()).join("logs");
+    let _ = std::fs::create_dir_all(&log_dir);
+    sweep_old_logs(&log_dir);
+
+    let appender = tracing_appender::rolling::daily(&log_dir, "upscaly.log");
+    let (writer, guard) = tracing_appender::non_blocking(appender);
+    // The guard must outlive the process or buffered lines are lost.
+    app.manage(guard);
+    let _ = tracing_subscriber::fmt()
+        .with_writer(writer)
+        .with_ansi(false)
+        .try_init();
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "upscaly starting");
+}
+
+fn spawn_visibility_failsafe(handle: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        if let Some(window) = tauri::Manager::get_webview_window(&handle, "main") {
+            if !window.is_visible().unwrap_or(false) {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_secs(15));
+        if !crate::commands::window::FRONTEND_SHOWED.load(std::sync::atomic::Ordering::SeqCst) {
+            if let Some(window) = tauri::Manager::get_webview_window(&handle, "main") {
+                let _ = window.set_decorations(true);
+            }
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     launched_at();
-    tauri::Builder::default()
+
+    std::panic::set_hook(Box::new(|info| {
+        fatal_dialog(&format!(
+            "Upscaly Studio crashed during startup:\n\n{info}\n\nPlease report this."
+        ));
+    }));
+
+    let builder = tauri::Builder::default()
         // The window is created hidden (`visible: false` in the config)
         // and shown by the frontend via `show_main_window`, once the first
         // frame worth looking at -- splash or dashboard -- is painted.
@@ -71,21 +147,8 @@ pub fn run() {
         // screen before its contents: a flat fill before the first paint,
         // or a bare striped page while the splash played out invisibly.
         .setup(|app| {
-            // Failsafe for the above. A window that is never shown is an
-            // app the user cannot reach *and* cannot close, so a frontend
-            // that dies before asking -- a failed navigation, a bundle
-            // that throws at top level -- must not be able to strand it.
-            // Better a late window over the wrong backdrop than none.
-            let handle = app.handle().clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(5));
-                if let Some(window) = tauri::Manager::get_webview_window(&handle, "main") {
-                    if !window.is_visible().unwrap_or(false) {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
-                }
-            });
+            init_logging(app);
+            spawn_visibility_failsafe(app.handle().clone());
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
@@ -116,7 +179,9 @@ pub fn run() {
             commands::files::get_file_size_bytes,
             commands::window::show_main_window,
             commands::window::launch_elapsed_ms,
-            commands::window::is_debug_build
+            commands::window::is_debug_build,
+            commands::sidecars::provision_ffmpeg,
+            commands::sidecars::ffmpeg_available
         ])
         .on_window_event(|_window, event| {
             if matches!(
@@ -126,16 +191,26 @@ pub fn run() {
                 kill_all_processes();
                 job_queue::kill_all_active_jobs();
             }
-        })
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|_app_handle, event| {
-            if matches!(
-                event,
-                tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
-            ) {
-                kill_all_processes();
-                job_queue::kill_all_active_jobs();
-            }
         });
+
+    let app = match builder.build(tauri::generate_context!()) {
+        Ok(app) => app,
+        Err(e) => {
+            fatal_dialog(&format!(
+                "Upscaly Studio failed to start:\n\n{e}\n\nThis usually means the Microsoft Edge \
+                 WebView2 Runtime is missing or damaged. Reinstalling the app repairs it."
+            ));
+            std::process::exit(1);
+        }
+    };
+
+    app.run(|_app_handle, event| {
+        if matches!(
+            event,
+            tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
+        ) {
+            kill_all_processes();
+            job_queue::kill_all_active_jobs();
+        }
+    });
 }

@@ -37,6 +37,7 @@ export const StudioPreviewSection = memo(function StudioPreviewSection({
 
   return (
     <div
+      className="app-enter-content"
       style={{
         position: 'absolute',
         inset: 0,
@@ -47,7 +48,22 @@ export const StudioPreviewSection = memo(function StudioPreviewSection({
         background: 'var(--bg-stripe)',
       }}
     >
-      <AnimatePresence mode="wait">
+      {/*
+        `initial={false}` so the drop zone is simply *there* on first
+        render rather than fading in.
+
+        Its entrance is driven by mount, but the app is revealed when the
+        GPU probe and settings load finish -- two unrelated clocks. The
+        reveal landed roughly 75ms into this 250ms animation, so the
+        dashboard became visible with the canvas still part-way through
+        fading and scaling, and the exact frame it was caught on differed
+        from launch to launch. That is the flicker on start-up: not the
+        reveal itself, but the app animating underneath it.
+
+        Media swaps after start-up still cross-fade -- this only opts out
+        the children present on the very first render.
+      */}
+      <AnimatePresence mode="wait" initial={false}>
         {!inputMedia ? (
           <motion.div
             key="empty-stage"

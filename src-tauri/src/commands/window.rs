@@ -10,10 +10,15 @@
 //! [`show_main_window`] at that moment and the window opens already
 //! painted.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+pub static FRONTEND_SHOWED: AtomicBool = AtomicBool::new(false);
+
 /// Puts the (hidden) main window on screen. Idempotent; showing a shown
 /// window is a no-op.
 #[tauri::command]
 pub async fn show_main_window(window: tauri::WebviewWindow) {
+    FRONTEND_SHOWED.store(true, Ordering::SeqCst);
     let _ = window.show();
     let _ = window.set_focus();
 }

@@ -100,7 +100,7 @@ impl ModelStore {
             .chain(manifest.models.into_iter().filter(|m| {
                 let shadows = bundled_ids.contains(&m.id);
                 if shadows {
-                    eprintln!(
+                    tracing::warn!(
                         "ignoring remote catalog entry '{}': it shadows a bundled model",
                         m.id
                     );
@@ -270,14 +270,26 @@ impl ModelStore {
         // file -- previously a tampered or truncated download landed in the
         // models dir unchecked and only surfaced later as an opaque NCNN
         // failure.
+        //
+        // The two files share one progress span so the user sees a single
+        // 0-100 sweep for the model, not one per file.
+        let param_size = item.param_size.unwrap_or(0);
+        let bin_size = item.bin_size.unwrap_or(0);
+        let grand_total = if param_size > 0 && bin_size > 0 {
+            param_size + bin_size
+        } else {
+            0
+        };
+
         crate::model_manager::download_file(
             app,
             &item.id,
             "param",
             &item.param_url,
             &param_target,
-            item.param_size.unwrap_or(0),
+            param_size,
             item.param_sha256.as_deref().unwrap_or(""),
+            (0, grand_total),
         )
         .await?;
 
@@ -287,8 +299,9 @@ impl ModelStore {
             "bin",
             &item.bin_url,
             &bin_target,
-            item.bin_size.unwrap_or(0),
+            bin_size,
             item.bin_sha256.as_deref().unwrap_or(""),
+            (param_size, grand_total),
         )
         .await?;
 

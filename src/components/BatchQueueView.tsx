@@ -132,7 +132,7 @@ function BatchQueueViewImpl(props: BatchQueueViewProps) {
     <div
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className="absolute left-3 top-14 z-[36] flex flex-col overflow-hidden"
+      className="app-enter-content absolute left-3 top-14 z-[36] flex flex-col overflow-hidden"
       style={{
         maxHeight: 'calc(100% - 148px)',
         width: open ? 264 : 56,

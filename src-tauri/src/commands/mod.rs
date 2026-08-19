@@ -3,5 +3,7 @@ pub mod gpu;
 pub mod models;
 pub mod resume;
 pub mod settings;
+pub mod sidecars;
 pub mod telemetry;
 pub mod upscale;
+pub mod window;

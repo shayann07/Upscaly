@@ -46,6 +46,13 @@ export async function ingestPaths(paths: string[]): Promise<void> {
     h: null,
   }));
 
+  // Scope is granted *before* the rows render. The asset protocol's scope
+  // starts empty, and adding first meant the thumbnail and canvas fired
+  // their loads while the grant was still in flight -- a race the preview
+  // lost often enough to show a broken image, and a failed <img> does not
+  // retry when the scope later catches up.
+  await Promise.all(staged.map((file) => allowMediaPath(file.filePath)));
+
   studioActions.addFiles(staged, paths.length === 1);
 
   if (paths.length === 1) {
@@ -57,9 +64,6 @@ export async function ingestPaths(paths: string[]): Promise<void> {
 
   await Promise.all(
     staged.map(async (file) => {
-      // The asset protocol scope starts empty, so the preview would fail to
-      // load and the probe below would see nothing without this.
-      await allowMediaPath(file.filePath);
       const dims = await getMediaDimensions(getMediaSrc(file.filePath), file.isVideo);
       // Unknown stays null rather than becoming a plausible-looking
       // default: a fabricated 1920x1080 would be rendered as fact.
@@ -270,6 +274,20 @@ export async function startUpscale(): Promise<void> {
     (item) => item.status === 'ready' || item.status === 'failed'
   );
 
+  // On the engine's CPU path a single 1080p frame takes minutes, so a clip
+  // of even a few hundred frames runs for days. Starting one would not be
+  // "slow but working", it would be a job the user abandons hours later
+  // having produced nothing -- so it is refused up front, while images are
+  // still allowed through.
+  if (snapshot.cpuOnly && pending.some((item) => item.isVideo)) {
+    studioActions.notify(
+      'error',
+      'Video needs a GPU',
+      'No compatible GPU was found, and CPU video upscaling would take days. Images still work. Installing or updating a Vulkan-capable graphics driver enables video.'
+    );
+    return;
+  }
+
   if (pending.length === 0) {
     studioActions.notify(
       'warning',
@@ -302,6 +320,28 @@ async function submitPending(): Promise<void> {
     (item) => item.status === 'ready' || item.status === 'failed'
   );
   if (pending.length === 0) return;
+
+  if (pending.some((item) => item.isVideo)) {
+    const ffmpegOk = await invoke<boolean>('ffmpeg_available').catch(() => true);
+    if (!ffmpegOk) {
+      studioActions.notify(
+        'warning',
+        'Video components missing',
+        'Downloading ffmpeg (~290 MB)...'
+      );
+      try {
+        await invoke('provision_ffmpeg');
+        studioActions.notify('success', 'Video components ready', 'ffmpeg is installed.');
+      } catch (provisionErr) {
+        studioActions.notify(
+          'error',
+          'ffmpeg download failed',
+          'Could not download ffmpeg for video upscaling: ' + formatIpcError(provisionErr)
+        );
+        return;
+      }
+    }
+  }
 
   studioActions.notify(
     'info',
@@ -463,12 +503,16 @@ export function selectScale(newScale: number): void {
 
 // --------------------------------------------------------------- history
 
-export function loadHistoryItem(entry: HistoryEntry): void {
+export async function loadHistoryItem(entry: HistoryEntry): Promise<void> {
   // Entries can predate this app session, so the asset scope (in-memory,
   // reset each launch) will not include their paths yet even though they
-  // were allowed when originally opened.
-  allowMediaPath(entry.originalPath ?? '');
-  allowMediaPath(entry.upscaledPath ?? '');
+  // were allowed when originally opened. Awaited before the rows render:
+  // fired-and-forgotten, the previews raced the grant and a lost race is a
+  // permanently broken thumbnail (a failed <img> does not retry).
+  await Promise.all([
+    allowMediaPath(entry.originalPath ?? ''),
+    allowMediaPath(entry.upscaledPath ?? ''),
+  ]);
 
   if (entry.originalPath) {
     const id = nextLocalId();
@@ -589,5 +633,15 @@ export async function showInExplorer(path: string): Promise<void> {
     await revealItemInDir(path);
   } catch (err) {
     console.error('Failed to reveal file in explorer:', err);
+  }
+}
+
+export async function provisionFfmpeg(): Promise<void> {
+  studioActions.notify('info', 'Downloading Video Components', 'Fetching ffmpeg (~290 MB)...');
+  try {
+    await invoke('provision_ffmpeg');
+    studioActions.notify('success', 'Video Components Ready', 'ffmpeg installed successfully.');
+  } catch (err) {
+    studioActions.notify('error', 'Download Failed', formatIpcError(err));
   }
 }

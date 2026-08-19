@@ -70,7 +70,7 @@ function TitlebarImpl(props: TitlebarProps) {
   const outDims = outputDims ? `${outputDims.w}×${outputDims.h}` : '';
 
   return (
-    <header className="absolute top-0 left-0 right-0 h-14 z-[40] flex items-center justify-between px-3 select-none pointer-events-none">
+    <header className="app-enter-titlebar absolute top-0 left-0 right-0 h-14 z-[40] flex items-center justify-between px-3 select-none pointer-events-none">
       <WindowControls />
 
       {hasFiles ? (
