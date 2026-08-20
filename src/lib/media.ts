@@ -13,7 +13,10 @@ export function getMediaSrc(path: string | undefined | null): string {
   }
 
   try {
-    return convertFileSrc(path);
+    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+      return convertFileSrc(path);
+    }
+    return path;
   } catch (err) {
     console.warn('convertFileSrc fallback to path:', err);
     return path;

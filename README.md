@@ -93,11 +93,18 @@ Concretely, it tries hard to never lie to you:
 
 ## Screenshots
 
-> **Contributors welcome here** — add screenshots to `docs/screenshots/` and link them below.
+<div align="center">
 
-|   Studio view    |  Model catalog   |     Settings     |
-| :--------------: | :--------------: | :--------------: |
-| _add screenshot_ | _add screenshot_ | _add screenshot_ |
+### Interactive Studio & Split Comparison Slider
+<img src="docs/screenshots/studio_view.png" alt="Upscaly Studio — Split comparison slider and batch queue" width="860">
+
+<br><br>
+
+| Model Catalog | Advanced Settings | Detail Zoom (Side-by-Side) |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/model_catalog.png" alt="Model Catalog" width="280"> | <img src="docs/screenshots/advanced_settings.png" alt="Advanced Settings" width="280"> | <img src="docs/screenshots/side_by_side_comparison.png" alt="Side by Side Detail Zoom" width="280"> |
+
+</div>
 
 ---
 
