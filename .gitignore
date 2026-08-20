@@ -47,3 +47,5 @@ src-tauri/models/*.param
 # Local test media. Personal photos and multi-MB sample outputs -- kept
 # on disk, never published.
 test/
+demo_samples/
+real_world_benchmarks/
