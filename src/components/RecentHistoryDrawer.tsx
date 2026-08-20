@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react';
 import { HistoryEntry, ModelInfo } from '../lib/types';
-import { getMediaSrc } from '../lib/media';
+import { getThumbnail } from '../lib/thumbnailCache';
 import { usePanelA11y } from '../hooks/usePanelA11y';
 
 interface RecentHistoryDrawerProps {
@@ -12,6 +13,76 @@ interface RecentHistoryDrawerProps {
   onSelectHistoryItem?: (item: HistoryEntry) => void;
   onClearHistory?: () => void;
   onRemoveItem?: (id: string) => void;
+}
+
+function HistoryThumbnail({
+  mediaPath,
+  isVideo,
+}: {
+  mediaPath: string;
+  isVideo?: boolean;
+}) {
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoadFailed(false);
+    if (!mediaPath) {
+      setThumbUrl(null);
+      return;
+    }
+
+    getThumbnail(mediaPath, isVideo).then((url) => {
+      if (active) {
+        setThumbUrl(url);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [mediaPath, isVideo]);
+
+  return (
+    <div className="w-[32px] h-[32px] flex-none border border-[var(--border-default)] rounded-lg overflow-hidden bg-[#1B1917] relative flex items-center justify-center">
+      {thumbUrl && !loadFailed ? (
+        isVideo && !thumbUrl.startsWith('data:') && !thumbUrl.startsWith('blob:') ? (
+          <video
+            src={`${thumbUrl}#t=0.001`}
+            preload="metadata"
+            muted
+            playsInline
+            onError={() => setLoadFailed(true)}
+            className="w-full h-full object-cover pointer-events-none"
+          />
+        ) : (
+          <img
+            src={thumbUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            onError={() => setLoadFailed(true)}
+            className="w-full h-full object-cover pointer-events-none"
+          />
+        )
+      ) : (
+        <div className="w-full h-full flex items-center justify-center bg-[#151413] text-[#5A544C]">
+          {isVideo ? (
+            <svg className="w-3.5 h-3.5 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function RecentHistoryDrawer({
@@ -88,7 +159,6 @@ export function RecentHistoryDrawer({
         ) : (
           history.map((h) => {
             const mediaPath = h.upscaledPath || h.originalPath || h.inputPath || '';
-            const src = mediaPath ? getMediaSrc(mediaPath) : '';
 
             return (
               <div
@@ -97,15 +167,10 @@ export function RecentHistoryDrawer({
                 className="flex items-center gap-2.5 p-2 rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
               >
                 {/* Real media thumbnail */}
-                <div className="w-[32px] h-[32px] flex-none border border-[var(--border-default)] rounded-lg overflow-hidden bg-[#1B1917] relative">
-                  {src && !h.isVideo ? (
-                    <img src={src} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center font-['Martian_Mono',monospace] text-[8px] text-[var(--text-muted)]">
-                      {h.isVideo ? 'VID' : 'IMG'}
-                    </div>
-                  )}
-                </div>
+                <HistoryThumbnail
+                  mediaPath={mediaPath}
+                  isVideo={h.isVideo}
+                />
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-medium text-[#EDEAE6] whitespace-nowrap overflow-hidden text-ellipsis mb-0.5">
                     {h.fileName || h.name || 'Upscaled Media'}

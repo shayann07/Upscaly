@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 import { resetStudioStore, studioActions, studioStore } from '../studioStore';
 import {
   cancelAll,
@@ -7,8 +8,10 @@ import {
   confirmSlowRunAndStart,
   dismissOfferedResume,
   downloadModel,
+  openFolder,
   resumeOfferedJob,
   refreshCatalog,
+  retryItem,
   selectScale,
   startUpscale,
 } from '../studioCommands';
@@ -19,7 +22,21 @@ vi.mock('@tauri-apps/api/core', () => ({
   convertFileSrc: (path: string) => `asset://${path}`,
 }));
 
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  open: vi.fn(),
+}));
+
+vi.mock('../../lib/media', () => ({
+  getMediaDimensions: vi.fn().mockResolvedValue({ w: 800, h: 600 }),
+  getMediaSrc: (path: string) => path,
+}));
+
+vi.mock('../../lib/sound', () => ({
+  playDropSound: vi.fn(),
+}));
+
 const mockInvoke = vi.mocked(invoke);
+const mockOpen = vi.mocked(open);
 const state = () => studioStore.getState();
 
 function staged(id: string): StagedFile {
@@ -503,5 +520,65 @@ describe('downloadModel', () => {
     await Promise.resolve();
 
     expect(calls).toBe(1);
+  });
+});
+
+describe('openFolder', () => {
+  it('enumerates media files inside folder and adds them to queue', async () => {
+    mockOpen.mockResolvedValue('C:/MyFolder' as any);
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === 'allow_media_path') return Promise.resolve();
+      if (cmd === 'list_media_files') {
+        return Promise.resolve(['C:/MyFolder/photo1.jpg', 'C:/MyFolder/photo2.png']);
+      }
+      return Promise.resolve();
+    });
+
+    await openFolder();
+
+    expect(mockInvoke).toHaveBeenCalledWith('list_media_files', { path: 'C:/MyFolder' });
+    expect(state().items.length).toBe(2);
+    expect(state().items[0].fileName).toBe('photo1.jpg');
+    expect(state().items[1].fileName).toBe('photo2.png');
+  });
+
+  it('notifies warning when folder has no media files', async () => {
+    mockOpen.mockResolvedValue('C:/EmptyFolder' as any);
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === 'allow_media_path') return Promise.resolve();
+      if (cmd === 'list_media_files') return Promise.resolve([]);
+      return Promise.resolve();
+    });
+
+    await openFolder();
+
+    expect(state().items.length).toBe(0);
+    expect(state().toasts.length).toBe(1);
+    expect(state().toasts[0].type).toBe('warning');
+    expect(state().toasts[0].message).toContain('No Media Found');
+  });
+});
+
+describe('retryItem', () => {
+  it('resets failed item to ready and re-submits upscale', async () => {
+    studioActions.addFiles([staged('failed-item')], true);
+    studioActions.updateItem('failed-item', {
+      status: 'failed',
+      error: 'Sidecar crashed',
+      progress: 45,
+    });
+
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === 'allow_media_path') return Promise.resolve();
+      if (cmd === 'run_upscale_batch') {
+        return Promise.resolve([{ job_id: 'job-123', output_path: 'C:/out/failed-item.png' }]);
+      }
+      return Promise.resolve();
+    });
+
+    await retryItem('failed-item');
+
+    expect(mockInvoke).toHaveBeenCalledWith('run_upscale_batch', expect.any(Object));
+    expect(state().items[0].error).toBeNull();
   });
 });

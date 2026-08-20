@@ -16,6 +16,7 @@ interface BatchQueueRowProps {
   onDragEnd: () => void;
   onRemoveItem?: ((id: string) => void) | undefined;
   onCancelItem?: ((id: string) => void) | undefined;
+  onRetryItem?: ((id: string) => void) | undefined;
 }
 
 function getItemColor(status: string, accentColor: string): string {
@@ -98,6 +99,7 @@ export const BatchQueueRow = memo(function BatchQueueRow({
   onDragEnd,
   onRemoveItem,
   onCancelItem,
+  onRetryItem,
 }: BatchQueueRowProps) {
   const st = file.status;
   const col = getItemColor(st, accentColor);
@@ -114,8 +116,6 @@ export const BatchQueueRow = memo(function BatchQueueRow({
       onDragEnd={onDragEnd}
       className="relative flex items-center cursor-pointer group hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
       style={getRowStyle(open, active, index, failed)}
-      // The error text is the row's tooltip in the collapsed rail too, so
-      // the reason is one hover away without expanding the queue.
       title={failed && file.error ? file.error : undefined}
     >
       <BatchQueueRowThumbnail
@@ -131,7 +131,11 @@ export const BatchQueueRow = memo(function BatchQueueRow({
         <div className="text-[11.5px] font-medium text-[#EDEAE6] whitespace-nowrap overflow-hidden text-ellipsis mb-0.5">
           {file.fileName || 'Untitled'}
         </div>
-        {file.w && file.h ? (
+        {failed && file.error ? (
+          <div className="font-['Martian_Mono',monospace] text-[8.5px] text-[var(--danger-text)] tracking-[0.02em] truncate">
+            {file.error}
+          </div>
+        ) : file.w && file.h ? (
           <div className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-muted)] tracking-[0.03em] whitespace-nowrap overflow-hidden text-ellipsis">
             {file.w}×{file.h}
           </div>
@@ -156,8 +160,10 @@ export const BatchQueueRow = memo(function BatchQueueRow({
         status={st}
         col={col}
         statusLabel={statusLabel}
+        error={file.error}
         onRemoveItem={onRemoveItem}
         onCancelItem={onCancelItem}
+        onRetryItem={onRetryItem}
       />
 
       {/*

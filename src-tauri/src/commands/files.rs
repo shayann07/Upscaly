@@ -21,6 +21,35 @@ pub async fn get_file_size_bytes(path: String) -> Result<u64, String> {
     Ok(meta.len())
 }
 
+const SUPPORTED_MEDIA_EXTS: &[&str] = &["png", "jpg", "jpeg", "webp", "mp4", "mkv", "mov", "avi"];
+
+/// Lists all supported media files directly inside the given directory.
+#[tauri::command]
+pub async fn list_media_files(path: String) -> Result<Vec<String>, String> {
+    let p = validate_safe_path(&path)?;
+    if !p.is_dir() {
+        return Err("Provided path is not a directory".to_string());
+    }
+
+    let entries = std::fs::read_dir(&p).map_err(|e| format!("Failed to read directory: {e}"))?;
+    let mut files = Vec::new();
+
+    for entry in entries.flatten() {
+        let entry_path = entry.path();
+        if entry_path.is_file() {
+            if let Some(ext) = entry_path.extension().and_then(|e| e.to_str()) {
+                let ext_lower = ext.to_lowercase();
+                if SUPPORTED_MEDIA_EXTS.contains(&ext_lower.as_str()) {
+                    files.push(entry_path.to_string_lossy().into_owned());
+                }
+            }
+        }
+    }
+
+    files.sort();
+    Ok(files)
+}
+
 /// Grants the webview's `asset:` protocol read access to the directory
 /// containing `path` (or `path` itself, if it is already a directory).
 ///

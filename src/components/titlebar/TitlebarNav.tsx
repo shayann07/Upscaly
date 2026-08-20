@@ -18,7 +18,10 @@ export function TitlebarNav({
   handleAbout,
 }: TitlebarNavProps) {
   return (
-    <div className="pointer-events-auto flex items-center gap-1.5 h-[34px] px-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]">
+    <div
+      data-nav-tab="true"
+      className="pointer-events-auto flex items-center gap-1.5 h-[34px] px-1.5 border border-[var(--border-subtle)] rounded-[11px] bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
+    >
       <button
         onClick={() => (onToggleNavTab ? onToggleNavTab('models') : handleCatalog())}
         className={`px-2.5 py-1 border-none rounded-lg font-['Archivo',sans-serif] text-[11.5px] font-semibold cursor-pointer transition-all duration-150 ${

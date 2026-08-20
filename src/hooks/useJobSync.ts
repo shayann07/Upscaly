@@ -80,10 +80,14 @@ export function useJobSync() {
     // per file -- a twenty-item batch should not play twenty chimes.
     if (item.status === 'succeeded' && remainingActive === 0) {
       playCompleteSound(studioStore.getState().isMuted);
+      // Auto-navigate to the finished result on the main canvas
+      studioActions.selectItem(item.id);
       studioActions.notify(
         'success',
         total > 1 ? 'Batch Complete' : 'Upscaling Complete',
-        total > 1 ? 'All items in queue have been processed.' : 'Enhanced output saved.'
+        total > 1
+          ? `All ${total} items processed. Viewing ${item.fileName}`
+          : `${item.fileName} upscaled successfully.`
       );
     }
   }, []);
@@ -143,8 +147,22 @@ export function useJobSync() {
     // the frontend half of the fix; writing them at the transition is the
     // backend half.
     invoke<Parameters<typeof mergeBackendHistory>[0]>('get_history_entries')
-      .then((records) => studioActions.setHistoryItems(mergeBackendHistory(records)))
+      .then((records) => {
+        const merged = mergeBackendHistory(records);
+        studioActions.setHistoryItems(merged);
+        for (const it of merged) {
+          if (it.upscaledPath) void allowMediaPath(it.upscaledPath);
+          if (it.originalPath) void allowMediaPath(it.originalPath);
+        }
+      })
       .catch(() => {});
+
+    // Also ensure initial localStorage history items have their scopes extended
+    const initialHistory = studioStore.getState().historyItems;
+    for (const it of initialHistory) {
+      if (it.upscaledPath) void allowMediaPath(it.upscaledPath);
+      if (it.originalPath) void allowMediaPath(it.originalPath);
+    }
 
     // And ask what crashed work survived on disk, once per launch.
     void checkResumableJobs();

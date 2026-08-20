@@ -90,7 +90,16 @@ export async function openFolder(): Promise<void> {
     const selected = await open({ directory: true, multiple: false });
     if (!selected || typeof selected !== 'string') return;
     await allowMediaPath(selected);
-    await ingestPaths([selected]);
+    const files = await invoke<string[]>('list_media_files', { path: selected });
+    if (files.length === 0) {
+      studioActions.notify(
+        'warning',
+        'No Media Found',
+        'The selected folder contains no supported media files.'
+      );
+      return;
+    }
+    await ingestPaths(files);
   } catch (err) {
     console.error('Failed to select folder:', err);
   }
@@ -394,6 +403,14 @@ export async function cancelItem(id: string): Promise<void> {
   } catch (err) {
     console.error('Cancel failed for', id, err);
   }
+}
+
+/** Retries a failed queue item. */
+export async function retryItem(id: string): Promise<void> {
+  const item = state().items.find((i) => i.id === id);
+  if (!item) return;
+  studioActions.updateItem(id, { status: 'ready', error: null, progress: 0 });
+  await startUpscale();
 }
 
 /**

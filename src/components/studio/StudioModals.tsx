@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useRef, useEffect } from 'react';
 import { AdvancedSettings } from '../AdvancedSettings';
 import { ModelCatalogModal } from '../ModelCatalogModal';
 import { RecentHistoryDrawer } from '../RecentHistoryDrawer';
@@ -40,6 +40,22 @@ const handleClearModelsDir = () => void clearCustomModelsDir();
 
 export const StudioModals = memo(function StudioModals() {
   const activeNavTab = useActiveNavTab();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!activeNavTab) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (containerRef.current && containerRef.current.contains(target)) return;
+      if (target.closest('[data-nav-tab]')) return;
+      if (target.closest('[data-toast-container]')) return;
+      studioActions.setActiveNavTab(null);
+    };
+    window.addEventListener('mousedown', handleClickOutside);
+    return () => window.removeEventListener('mousedown', handleClickOutside);
+  }, [activeNavTab]);
+
   const gpus = useGpus();
   const selectedGpu = useSelectedGpu();
   const tileSize = useTileSize();
@@ -48,10 +64,6 @@ export const StudioModals = memo(function StudioModals() {
   const outputFormat = useOutputFormat();
   const customModelsDir = useCustomModelsDir();
   const gentleMode = useGentleMode();
-  const gentle = useMemo(
-    () => ({ on: gentleMode, onToggle: studioActions.setGentleMode }),
-    [gentleMode]
-  );
   const customModels = useMemo(
     () => ({
       dir: customModelsDir,
@@ -85,6 +97,7 @@ export const StudioModals = memo(function StudioModals() {
     <>
       {activeNavTab && (
         <div
+          ref={containerRef}
           style={{
             position: 'absolute',
             top: 56,
@@ -99,16 +112,43 @@ export const StudioModals = memo(function StudioModals() {
             <AdvancedSettings
               gpus={gpus}
               selectedGpu={selectedGpu}
-              onSelectGpu={studioActions.setSelectedGpu}
+              onSelectGpu={(id) => {
+                studioActions.setSelectedGpu(id);
+                const gName = gpus.find((g) => g.id === id)?.name || `GPU ${id}`;
+                studioActions.notify('info', 'GPU Selected', gName);
+              }}
               tileSize={tileSize}
-              onSelectTileSize={studioActions.setTileSize}
+              onSelectTileSize={(size) => {
+                studioActions.setTileSize(size);
+                studioActions.notify(
+                  'info',
+                  'Tile Size Updated',
+                  size === 0 ? 'Tile size set to AUTO' : `Tile size set to ${size}px`
+                );
+              }}
               scale={scale}
               preset={preset}
-              onSelectPreset={studioActions.setPreset}
+              onSelectPreset={(p) => {
+                studioActions.setPreset(p);
+                studioActions.notify('info', 'Preset Updated', `Switched to ${p.toUpperCase()} mode`);
+              }}
               outputFormat={outputFormat}
-              onSelectOutputFormat={studioActions.setOutputFormat}
+              onSelectOutputFormat={(f) => {
+                studioActions.setOutputFormat(f);
+                studioActions.notify('info', 'Format Updated', `Output container set to ${f.toUpperCase()}`);
+              }}
               customModels={customModels}
-              gentle={gentle}
+              gentle={{
+                on: gentleMode,
+                onToggle: (on) => {
+                  studioActions.setGentleMode(on);
+                  studioActions.notify(
+                    'info',
+                    'Gentle Mode',
+                    on ? 'Enabled (reduced background thermal load)' : 'Disabled (full speed)'
+                  );
+                },
+              }}
               customOutputPath={customOutputPath}
               onSetOutputDir={studioActions.setCustomOutputPath}
               onSelectOutputPath={handleSelectOutputDir}
@@ -141,7 +181,12 @@ export const StudioModals = memo(function StudioModals() {
         </div>
       )}
 
-      <ToastContainer toasts={toasts} onDismiss={studioActions.dismissToast} />
+      <ToastContainer
+        toasts={toasts}
+        onDismiss={studioActions.dismissToast}
+        onCloseDrawer={closeNav}
+        drawerOpen={Boolean(activeNavTab)}
+      />
     </>
   );
 });

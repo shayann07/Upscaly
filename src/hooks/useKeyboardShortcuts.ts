@@ -6,7 +6,9 @@ interface KeyboardShortcutsOptions {
   confirmCancelOpen: boolean;
   itemCount: number;
   handleOpenFile: () => void;
+  handleOpenFolder?: () => void;
   handleStartUpscale: () => void;
+  handleRemoveSelected?: () => void;
   requestCancelConfirmation: () => void;
   dismissCancelConfirmation: () => void;
   toggleNavTab: (tab: NavTab) => void;
@@ -36,7 +38,9 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions) {
         confirmCancelOpen,
         itemCount,
         handleOpenFile,
+        handleOpenFolder,
         handleStartUpscale,
+        handleRemoveSelected,
         requestCancelConfirmation,
         dismissCancelConfirmation,
         toggleNavTab,
@@ -45,6 +49,12 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions) {
 
       const key = e.key.toLowerCase();
       const isCmd = e.metaKey || e.ctrlKey;
+
+      if (isCmd && e.shiftKey && key === 'o') {
+        e.preventDefault();
+        handleOpenFolder?.();
+        return;
+      }
 
       if (isCmd && key === 'o') {
         e.preventDefault();
@@ -60,15 +70,8 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions) {
 
       if (e.key === 'Escape') {
         if (confirmCancelOpen) {
-          // Close the topmost overlay first -- previously Escape fell
-          // through to the cancel/nav-close branch below even while the
-          // confirm dialog was open, instead of dismissing the dialog.
           dismissCancelConfirmation();
         } else if (hasActiveJob) {
-          // Route through the same confirm dialog the "X" button uses,
-          // instead of instantly killing a possibly hour-long job on an
-          // accidental keypress. This now covers batch runs too, which
-          // previously took an ungated branch straight to cancellation.
           requestCancelConfirmation();
         } else {
           setActiveNavTab(null);
@@ -85,6 +88,23 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions) {
       if (isCmd && key === 'h') {
         e.preventDefault();
         toggleNavTab('history');
+        return;
+      }
+
+      if (isCmd && key === 'm') {
+        e.preventDefault();
+        toggleNavTab('models');
+        return;
+      }
+
+      if ((isCmd && key === '/') || (key === '?' && !isCmd)) {
+        e.preventDefault();
+        toggleNavTab('about');
+        return;
+      }
+
+      if (e.key === 'Delete' || (isCmd && e.key === 'Backspace')) {
+        handleRemoveSelected?.();
       }
     };
 

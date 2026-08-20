@@ -1,5 +1,6 @@
-import { memo, useState } from 'react';
+import { memo, useState, useRef, useEffect } from 'react';
 import { GpuInfo } from '../../lib/types';
+import { studioActions } from '../../store/studioStore';
 
 interface TitlebarGpuIslandProps {
   selectedGpu: number;
@@ -17,12 +18,35 @@ function TitlebarGpuIslandImpl({
   accentColor,
 }: TitlebarGpuIslandProps) {
   const [gpuMenuOpen, setGpuMenuOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!gpuMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setGpuMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleClickOutside);
+    return () => window.removeEventListener('mousedown', handleClickOutside);
+  }, [gpuMenuOpen]);
 
   const currentGpu = availableGpus.find((g) => g.id === selectedGpu);
   const gpuLabel = currentGpu ? currentGpu.name : 'GPU Acceleration';
 
+  const handleToggle = () => {
+    setGpuMenuOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        studioActions.setActiveNavTab(null);
+      }
+      return next;
+    });
+  };
+
   return (
     <div
+      ref={containerRef}
       className={`pointer-events-auto absolute top-3 left-1/2 -translate-x-1/2 z-[41] border bg-[rgba(15,14,13,.94)] shadow-[var(--shadow-pill)] overflow-hidden transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)] ${
         isVramOverflowing
           ? 'border-[#E88A80] shadow-[0_0_12px_rgba(232,138,128,0.25)]'
@@ -35,7 +59,7 @@ function TitlebarGpuIslandImpl({
       }}
     >
       <button
-        onClick={() => setGpuMenuOpen((prev) => !prev)}
+        onClick={handleToggle}
         className="w-full flex items-center justify-between gap-2 h-[34px] px-3 border-none bg-transparent cursor-pointer transition-colors duration-150 pointer-events-auto"
       >
         <span className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.07em] text-[var(--text-dim)] flex-none">

@@ -43,6 +43,16 @@ const selectIsProcessing = (s: StudioState) =>
 const selectHasActiveJob = (s: StudioState) =>
   s.items.some((item) => item.status === 'running' || item.status === 'queued');
 
+const selectQueueBatchSummary = (s: StudioState) => {
+  const total = s.items.length;
+  const completed = s.items.filter((item) => item.status === 'succeeded').length;
+  const failed = s.items.filter((item) => item.status === 'failed').length;
+  const isProcessing = s.items.some(
+    (item) => item.status === 'running' || item.status === 'queued'
+  );
+  return { total, completed, failed, isProcessing };
+};
+
 export const useItems = () => useSlice(selectItems, arrayEqual);
 export const useItemCount = () => useSlice(selectItemCount);
 export const useSelectedId = () => useSlice(selectSelectedId);
@@ -50,6 +60,15 @@ export const useSelectedItem = () => useSlice(selectSelectedItem);
 export const useProgressItem = () => useSlice(selectProgressItem);
 export const useIsProcessing = () => useSlice(selectIsProcessing);
 export const useHasActiveJob = () => useSlice(selectHasActiveJob);
+export const useQueueBatchSummary = () =>
+  useSlice(
+    selectQueueBatchSummary,
+    (a, b) =>
+      a.total === b.total &&
+      a.completed === b.completed &&
+      a.failed === b.failed &&
+      a.isProcessing === b.isProcessing
+  );
 
 /**
  * The studio view's status: whatever the selected file's job is doing, or

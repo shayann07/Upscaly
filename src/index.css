@@ -157,3 +157,192 @@
     animation: none;
   }
 }
+
+/* ── Micro-Feedback Flash Animation ── */
+@keyframes control-pulse-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(168, 11, 36, 0.6);
+    transform: scale(0.97);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(168, 11, 36, 0.25);
+    transform: scale(1.03);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(168, 11, 36, 0);
+    transform: scale(1);
+  }
+}
+
+.animate-control-flash {
+  animation: control-pulse-glow 0.35s var(--ease-spring) both;
+}
+
+/* ── State-of-the-Art Liquid Plasma Progress ── */
+@keyframes liquid-plasma-shift {
+  0% {
+    transform: translate(-8%, -12%) scale(1);
+    opacity: 0.55;
+  }
+  33% {
+    transform: translate(12%, 8%) scale(1.15);
+    opacity: 0.8;
+  }
+  66% {
+    transform: translate(-4%, 14%) scale(0.94);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-8%, -12%) scale(1);
+    opacity: 0.55;
+  }
+}
+
+@keyframes liquid-plasma-counter {
+  0% {
+    transform: translate(12%, 10%) scale(1.1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate(-10%, -6%) scale(0.92);
+    opacity: 0.45;
+  }
+  100% {
+    transform: translate(12%, 10%) scale(1.1);
+    opacity: 0.7;
+  }
+}
+
+@keyframes liquid-shimmer-sweep {
+  0% {
+    transform: translateX(-100%) skewX(-20deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.55;
+  }
+  60% {
+    opacity: 0.3;
+  }
+  100% {
+    transform: translateX(250%) skewX(-20deg);
+    opacity: 0;
+  }
+}
+
+@keyframes liquid-meniscus-glow {
+  0%, 100% {
+    opacity: 0.85;
+    filter: drop-shadow(0 0 8px rgba(255, 140, 165, 0.8)) drop-shadow(0 0 18px rgba(168, 11, 36, 0.6));
+    transform: scaleX(0.95);
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 16px rgba(255, 180, 195, 0.95)) drop-shadow(0 0 28px rgba(232, 138, 128, 0.8));
+    transform: scaleX(1.15);
+  }
+}
+
+@keyframes liquid-bubble-float-1 {
+  0% {
+    transform: translateY(120%) translateX(0);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.7;
+    transform: translateY(80%) translateX(4px);
+  }
+  75% {
+    opacity: 0.5;
+    transform: translateY(20%) translateX(-3px);
+  }
+  100% {
+    transform: translateY(-20%) translateX(2px);
+    opacity: 0;
+  }
+}
+
+@keyframes liquid-bubble-float-2 {
+  0% {
+    transform: translateY(120%) translateX(0);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.75;
+    transform: translateY(70%) translateX(-5px);
+  }
+  70% {
+    opacity: 0.45;
+    transform: translateY(30%) translateX(3px);
+  }
+  100% {
+    transform: translateY(-20%) translateX(-2px);
+    opacity: 0;
+  }
+}
+
+.animate-plasma-1 {
+  animation: liquid-plasma-shift 4.8s ease-in-out infinite;
+}
+
+.animate-plasma-2 {
+  animation: liquid-plasma-counter 3.9s ease-in-out infinite;
+}
+
+.animate-shimmer-sweep {
+  animation: liquid-shimmer-sweep 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-meniscus-glow {
+  animation: liquid-meniscus-glow 2s ease-in-out infinite;
+}
+
+.animate-bubble-1 {
+  animation: liquid-bubble-float-1 3.2s ease-in-out infinite;
+}
+
+.animate-bubble-2 {
+  animation: liquid-bubble-float-2 4.1s ease-in-out infinite 1.2s;
+}
+
+/* ── Drag & Drop Premium Visual Tiers ── */
+@keyframes drag-glow-pulse {
+  0%, 100% {
+    box-shadow: inset 0 0 40px rgba(168, 11, 36, 0.05), 0 0 25px rgba(168, 11, 36, 0.08);
+    border-color: rgba(168, 11, 36, 0.3);
+  }
+  50% {
+    box-shadow: inset 0 0 60px rgba(168, 11, 36, 0.1), 0 0 35px rgba(168, 11, 36, 0.16);
+    border-color: rgba(168, 11, 36, 0.5);
+  }
+}
+
+@keyframes float-subtle {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes halo-rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-drag-glow {
+  animation: drag-glow-pulse 3s ease-in-out infinite;
+}
+
+.animate-float-subtle {
+  animation: float-subtle 3.4s ease-in-out infinite;
+}
+
+.animate-halo-rotate {
+  animation: halo-rotate 24s linear infinite;
+}

@@ -34,20 +34,20 @@ function resolveActiveCategory(cat?: string, modelCat?: string): 'photo' | 'anim
   return (modelCat as 'photo' | 'anime' | 'video') || 'photo';
 }
 
-function getPillStyle(active: boolean, isBig: boolean, accentColor: string, ease: string) {
+function getPillStyle(active: boolean, accentColor: string, ease: string) {
   return {
-    height: isBig ? 32 : 26,
-    padding: `0 ${isBig ? 14 : 11}px`,
-    borderRadius: 10,
+    height: 28,
+    padding: '0 12px',
+    borderRadius: 9,
     border: `1px solid ${active ? accentColor : 'transparent'}`,
     background: active ? 'var(--accent-bg)' : 'transparent',
     color: active ? 'var(--text-primary)' : 'var(--text-dim)',
     fontFamily: 'Archivo, sans-serif',
-    fontSize: isBig ? '12.5px' : '11.5px',
+    fontSize: '11.5px',
     fontWeight: 600 as const,
     cursor: 'pointer' as const,
     whiteSpace: 'nowrap' as const,
-    transition: `all .22s ${ease}`,
+    transition: `background-color .24s ${ease}, color .24s ${ease}, border-color .24s ${ease}`,
   };
 }
 
@@ -70,19 +70,19 @@ function getModelListData(
 }
 
 function getRunButtonStyle(
-  isHovered: boolean,
   isProcessing: boolean,
   hasFiles: boolean
 ): React.CSSProperties {
   return {
-    height: isHovered ? 36 : 30,
-    padding: `0 ${isHovered ? 18 : 14}px`,
+    height: 32,
+    padding: '0 16px',
     border: 'none',
-    borderRadius: 11,
+    borderRadius: 10,
     background: isProcessing ? '#1B1917' : hasFiles ? 'var(--text-primary)' : '#1B1917',
     color: isProcessing ? 'var(--text-dim)' : hasFiles ? 'var(--bg-base)' : 'var(--text-dim)',
-    fontSize: isHovered ? '13px' : '12px',
+    fontSize: '12px',
     cursor: hasFiles && !isProcessing ? 'pointer' : 'not-allowed',
+    transition: 'background-color .24s ease, opacity .24s ease, box-shadow .24s ease',
   };
 }
 
@@ -124,7 +124,6 @@ function SettingsPanelImpl(props: SettingsPanelProps) {
     installedModels = [],
   } = props;
 
-  const [isHovered, setIsHovered] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
 
   const activeCategory = resolveActiveCategory(category, modelCategory);
@@ -143,34 +142,29 @@ function SettingsPanelImpl(props: SettingsPanelProps) {
     selectCategoryModel(cat, modelsList, selectedModel, onSelectModel);
   };
 
-  const pill = (active: boolean, isBig: boolean) => getPillStyle(active, isBig, accentColor, EASE);
-  const runBtnStyle = getRunButtonStyle(isHovered, isProcessing, hasFiles);
+  const pill = (active: boolean) => getPillStyle(active, accentColor, EASE);
+  const runBtnStyle = getRunButtonStyle(isProcessing, hasFiles);
   const runLabel = getRunButtonLabel(isProcessing, isBatchMode);
 
   return (
     <div
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      className="flex items-center transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
+      className="flex items-center transition-all duration-300 hover:border-[var(--border-hover)]"
       style={{
-        gap: isHovered ? 8 : 6,
-        padding: isHovered ? 6 : 5,
+        gap: 6,
+        padding: 5,
         border: '1px solid var(--border-subtle)',
         borderRadius: 16,
         background: 'rgba(13,12,11,.96)',
-        boxShadow: `0 ${isHovered ? 22 : 14}px ${isHovered ? 50 : 34}px rgba(0,0,0,.6)`,
+        boxShadow: '0 16px 40px rgba(0,0,0,.6)',
       }}
     >
       <CategorySelectorSection
         activeCategory={activeCategory}
-        big={isHovered}
         pillStyle={pill}
         handleCategory={handleCategory}
       />
 
       <ModelSelectorDropdown
-        big={isHovered}
-        EASE={EASE}
         model={model}
         modelMenuOpen={modelMenuOpen}
         setModelMenuOpen={setModelMenuOpen}
@@ -184,7 +178,6 @@ function SettingsPanelImpl(props: SettingsPanelProps) {
 
       <ScaleSelectorSection
         activeScale={activeScale}
-        big={isHovered}
         pillStyle={pill}
         onSelectScale={onSelectScale}
       />
@@ -192,12 +185,12 @@ function SettingsPanelImpl(props: SettingsPanelProps) {
       <button
         disabled={isProcessing || !hasFiles}
         onClick={onRun}
-        className="flex-none flex items-center gap-2 font-['Archivo',sans-serif] font-semibold whitespace-nowrap transition-all duration-200 hover:scale-[1.05] hover:shadow-[0_4px_16px_rgba(255,255,255,0.25)]"
+        className="flex-none flex items-center gap-2 font-['Archivo',sans-serif] font-semibold whitespace-nowrap transition-all duration-200 hover:opacity-95 hover:shadow-[0_2px_12px_rgba(255,255,255,0.18)]"
         style={runBtnStyle}
       >
         <span>{runLabel}</span>
-        {isHovered && !isProcessing && (
-          <span className="font-['Martian_Mono',monospace] text-[9px] opacity-50 tracking-[0.04em]">
+        {!isProcessing && (
+          <span className="font-['Martian_Mono',monospace] text-[9px] opacity-40 tracking-[0.04em]">
             ⌘↩
           </span>
         )}
