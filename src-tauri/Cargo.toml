@@ -65,3 +65,9 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 must_use_candidate = "allow"
 semicolon_if_nothing_returned = "allow"
+
+[profile.release]
+opt-level = 3
+codegen-units = 16
+lto = "thin"
+strip = true
