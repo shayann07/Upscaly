@@ -35,10 +35,16 @@ pub async fn provision_ffmpeg(app: AppHandle) -> Result<(), String> {
     if output.status.success() {
         Ok(())
     } else {
-        Err(format!(
-            "ffmpeg download failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ))
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let detail = if !stderr.trim().is_empty() {
+            stderr.trim().to_string()
+        } else if !stdout.trim().is_empty() {
+            stdout.trim().to_string()
+        } else {
+            "Unknown provisioning error".to_string()
+        };
+        Err(format!("ffmpeg download failed: {detail}"))
     }
 }
 

@@ -4,12 +4,13 @@ import { useSettingsSync } from './useSettingsSync';
 import { useTelemetrySync } from './useTelemetry';
 import { useDragDrop } from './useDragDrop';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
-import { studioActions } from '../store/studioStore';
+import { studioActions, studioStore } from '../store/studioStore';
 import { useConfirmCancelOpen, useHasActiveJob, useItemCount } from '../store/selectors';
 import {
   dismissCancelConfirmation,
   ingestPaths,
   openFiles,
+  openFolder,
   requestCancelConfirmation,
   startUpscale,
 } from '../store/studioCommands';
@@ -48,13 +49,22 @@ export function useStudioContainerSetup() {
   const handleOpenFile = useCallback(() => {
     void openFiles();
   }, []);
+  const handleOpenFolder = useCallback(() => {
+    void openFolder();
+  }, []);
+  const handleRemoveSelected = useCallback(() => {
+    const id = studioStore.getState().selectedId;
+    if (id) studioActions.removeItem(id);
+  }, []);
 
   useKeyboardShortcuts({
     hasActiveJob,
     confirmCancelOpen,
     itemCount,
     handleOpenFile,
+    handleOpenFolder,
     handleStartUpscale,
+    handleRemoveSelected,
     requestCancelConfirmation,
     dismissCancelConfirmation,
     toggleNavTab: studioActions.toggleNavTab,

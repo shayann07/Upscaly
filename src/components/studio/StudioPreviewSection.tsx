@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { DropZone } from '../DropZone';
 import { ComparisonSlider } from '../ComparisonSlider';
 import { StudioGridOverlay } from './StudioGridOverlay';
+import { StudioDragOverlay } from './StudioDragOverlay';
 import { getMediaSrc } from '../../lib/media';
 import {
   useComparisonViewMode,
@@ -175,6 +176,8 @@ export const StudioPreviewSection = memo(function StudioPreviewSection({
           </motion.div>
         )}
       </AnimatePresence>
+
+      <StudioDragOverlay isDragOver={isDragOver} />
     </div>
   );
 });

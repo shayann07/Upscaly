@@ -183,6 +183,7 @@ pub fn run() {
             commands::settings::get_history_entries,
             commands::telemetry::get_gpu_telemetry,
             commands::files::allow_media_path,
+            commands::files::list_media_files,
             commands::files::close_window,
             commands::files::minimize_window,
             commands::files::toggle_maximize_window,

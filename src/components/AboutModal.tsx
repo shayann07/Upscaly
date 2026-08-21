@@ -8,13 +8,16 @@ interface AboutModalProps {
 }
 
 const HOTKEYS = [
-  { key: 'SPACE', desc: 'Hold to reveal the source frame' },
-  { key: 'S', desc: 'Switch split slider / side-by-side' },
-  { key: 'TAB', desc: 'Toggle the settings panel' },
-  { key: '1 2 3', desc: 'Set scale to 2×, 3× or 4×' },
-  { key: '⌘ O', desc: 'Add files to the queue' },
-  { key: '⌘ ↩', desc: 'Run the queue' },
-  { key: 'ESC', desc: 'Cancel job or close overlays' },
+  { key: 'Ctrl + O', desc: 'Open file(s) into queue' },
+  { key: 'Ctrl + ⇧ + O', desc: 'Open entire folder into queue' },
+  { key: 'Ctrl + ↩', desc: 'Start upscaling queue' },
+  { key: 'Ctrl + S', desc: 'Toggle Advanced Settings' },
+  { key: 'Ctrl + M', desc: 'Toggle Models Catalog' },
+  { key: 'Ctrl + H', desc: 'Toggle Recent History' },
+  { key: 'Ctrl + /', desc: 'Toggle Shortcuts & Info' },
+  { key: 'Delete', desc: 'Remove selected file from queue' },
+  { key: 'SPACE', desc: 'Hold to reveal source in comparison' },
+  { key: 'ESC', desc: 'Cancel job or close active drawer' },
 ];
 
 export function AboutModal({ onClose, isOpen = true }: AboutModalProps) {

@@ -21,8 +21,8 @@ export interface Toast {
   message: string;
 }
 
-/** How long a toast stays on screen before it removes itself. */
-export const TOAST_LIFETIME_MS = 5000;
+/** How long a toast stays on screen before it removes itself (4s for non-error notifications). */
+export const TOAST_LIFETIME_MS = 4000;
 
 export interface StudioState {
   /**
@@ -261,6 +261,13 @@ export const studioActions = {
         items,
         selectedId: prev.selectedId === id ? (items[0]?.id ?? null) : prev.selectedId,
       };
+    });
+  },
+
+  updateItem(id: string, patch: Partial<QueueItem>) {
+    setState((prev) => {
+      const items = prev.items.map((item) => (item.id === id ? { ...item, ...patch } : item));
+      return { ...prev, items };
     });
   },
 
@@ -534,7 +541,9 @@ export const studioActions = {
       ...prev,
       toasts: [...prev.toasts, { id, type, message: text }].slice(-MAX_VISIBLE_TOASTS),
     }));
-    setTimeout(() => studioActions.dismissToast(id), TOAST_LIFETIME_MS);
+    if (type !== 'error') {
+      setTimeout(() => studioActions.dismissToast(id), TOAST_LIFETIME_MS);
+    }
   },
 
   dismissToast(id: string) {

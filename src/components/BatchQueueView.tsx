@@ -25,6 +25,7 @@ interface BatchQueueViewProps {
   currentFileDims?: { w: number; h: number } | null;
   onRemoveItem?: (id: string) => void;
   onCancelItem?: (id: string) => void;
+  onRetryItem?: (id: string) => void;
 }
 
 function computeBatchStats(items: QueueItem[]) {
@@ -70,6 +71,7 @@ function BatchQueueViewImpl(props: BatchQueueViewProps) {
     currentFileDims,
     onRemoveItem,
     onCancelItem,
+    onRetryItem,
   } = props;
 
   const [isHovered, setIsHovered] = useState(false);
@@ -176,6 +178,7 @@ function BatchQueueViewImpl(props: BatchQueueViewProps) {
             onDragEnd={handleDragEnd}
             onRemoveItem={onRemoveItem}
             onCancelItem={onCancelItem}
+            onRetryItem={onRetryItem}
           />
         ))}
       </div>

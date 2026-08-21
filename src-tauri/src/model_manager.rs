@@ -148,7 +148,26 @@ pub fn resolve_model_dir(app: &AppHandle, model_name: &str) -> PathBuf {
     }
     if let Some(custom) = get_custom_models_dir(app) {
         if model_pair_exists(&custom, model_name) {
-            return custom;
+            // realesrgan-ncnn-vulkan strictly validates that its -m argument contains
+            // the lowercase substring "models" or "models2". If the user's custom folder
+            // has any other name (e.g. "Upscaly_Custom_Models" or "D:\AI_Models"), the engine
+            // aborts with "unknown model dir type".
+            // Linking or copying the pair into the app's models directory guarantees compatibility.
+            let param_src = custom.join(format!("{model_name}.param"));
+            let bin_src = custom.join(format!("{model_name}.bin"));
+            let param_dest = models_dir.join(format!("{model_name}.param"));
+            let bin_dest = models_dir.join(format!("{model_name}.bin"));
+
+            if !param_dest.exists() {
+                let _ = std::fs::hard_link(&param_src, &param_dest)
+                    .or_else(|_| std::fs::copy(&param_src, &param_dest).map(|_| ()));
+            }
+            if !bin_dest.exists() {
+                let _ = std::fs::hard_link(&bin_src, &bin_dest)
+                    .or_else(|_| std::fs::copy(&bin_src, &bin_dest).map(|_| ()));
+            }
+
+            return models_dir;
         }
     }
     models_dir
@@ -245,17 +264,31 @@ pub async fn download_file(
         }
     }
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .user_agent(format!(
+            "{}/{} (Windows; x64)",
+            env!("CARGO_PKG_NAME"),
+            env!("CARGO_PKG_VERSION")
+        ))
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .read_timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+
     let mut request = client.get(url);
 
     if downloaded > 0 {
         request = request.header("Range", format!("bytes={downloaded}-"));
     }
 
-    let response = request.send().await.map_err(|e| e.to_string())?;
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("Download request error: {e}"))?;
 
     if !response.status().is_success() && response.status() != reqwest::StatusCode::PARTIAL_CONTENT
     {
+        let _ = std::fs::remove_file(&temp_path);
         return Err(format!(
             "Download request failed with status: {}",
             response.status()

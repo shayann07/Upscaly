@@ -4,6 +4,7 @@ import { WindowControls } from './titlebar/WindowControls';
 import { TitlebarNav } from './titlebar/TitlebarNav';
 import { TitlebarGpuIsland } from './titlebar/TitlebarGpuIsland';
 import { TitlebarFileChip } from './titlebar/TitlebarFileChip';
+import { TitlebarProgressRing } from './titlebar/TitlebarProgressRing';
 
 interface TitlebarProps {
   hasFiles?: boolean;
@@ -92,15 +93,18 @@ function TitlebarImpl(props: TitlebarProps) {
         />
       )}
 
-      <TitlebarNav
-        activeNavTab={activeNavTab}
-        onToggleNavTab={onToggleNavTab}
-        inspectorActive={inspectorActive}
-        handleCatalog={handleCatalog}
-        handleHistory={handleHistory}
-        handleToggleInspector={handleToggleInspector}
-        handleAbout={handleAbout}
-      />
+      <div className="flex items-center gap-2">
+        <TitlebarProgressRing accentColor={accentColor} />
+        <TitlebarNav
+          activeNavTab={activeNavTab}
+          onToggleNavTab={onToggleNavTab}
+          inspectorActive={inspectorActive}
+          handleCatalog={handleCatalog}
+          handleHistory={handleHistory}
+          handleToggleInspector={handleToggleInspector}
+          handleAbout={handleAbout}
+        />
+      </div>
     </header>
   );
 }

@@ -31,10 +31,12 @@ import {
   dismissSlowRunConfirmation,
   resumeOfferedJob,
   openFiles,
+  retryItem,
 } from '../../store/studioCommands';
 
 const handleOpenFile = () => void openFiles();
 const handleCancelItem = (id: string) => void cancelItem(id);
+const handleRetryItem = (id: string) => void retryItem(id);
 const handleConfirmCancel = () => void confirmCancelAndClear();
 const handleConfirmSlowRun = () => void confirmSlowRunAndStart();
 const handleResumeOffered = () => void resumeOfferedJob();
@@ -110,6 +112,7 @@ export const StudioCanvas = memo(function StudioCanvas({ isDragOver }: { isDragO
         onClear={clearFile}
         onRemoveItem={studioActions.removeItem}
         onCancelItem={handleCancelItem}
+        onRetryItem={handleRetryItem}
       />
 
       <StudioControlsSection />

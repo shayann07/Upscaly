@@ -1,4 +1,4 @@
-﻿import { createServer } from 'vite';
+import { createServer } from 'vite';
 import puppeteer from 'puppeteer-core';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,7 +57,7 @@ async function run() {
       window.studioStore.setState((prev) => ({
         ...prev,
         appName: 'Upscaly Studio',
-        appVersion: '1.0.2',
+        appVersion: '1.0.3',
         gpus: [
           {
             id: 0,

@@ -68,10 +68,10 @@ export function TileSizeSection({
       >
         {statusMessage ||
           (usedVramGb === null || totalVramGb === null
-            ? `Selected tile size: ${tileSize}px.`
+            ? `Selected tile size: ${tileSize === 0 ? 'AUTO' : `${tileSize}px`}.`
             : isOverflowing
               ? `Projected VRAM usage (${usedVramGb.toFixed(1)} GB) exceeds GPU memory (${totalVramGb.toFixed(1)} GB). Consider selecting 256px or 128px.`
-              : `Selected tile size: ${tileSize}px. Projected VRAM usage: ${usedVramGb.toFixed(1)} GB.`)}
+              : `Selected tile size: ${tileSize === 0 ? 'AUTO' : `${tileSize}px`}. Projected VRAM usage: ${usedVramGb.toFixed(1)} GB.`)}
       </div>
     </div>
   );

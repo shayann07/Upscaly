@@ -126,12 +126,10 @@ export function AdvancedSettings({
   const handleAutoTuneClick = () => {
     // Nothing to tune against until the profile has arrived.
     if (autoTileSize === null || totalVramGb === null) return;
-    handleTileSize(autoTileSize);
     if (onAutoTune) {
-      onAutoTune(
-        autoTileSize,
-        `${totalVramGb.toFixed(1)} GB VRAM (Adaptive Tuned: ${autoTileSize}px)`
-      );
+      onAutoTune(autoTileSize, `${totalVramGb.toFixed(1)} GB VRAM`);
+    } else {
+      handleTileSize(autoTileSize);
     }
   };
 

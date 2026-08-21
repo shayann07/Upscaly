@@ -1,8 +1,8 @@
+import { useRef, useEffect } from 'react';
 import { ModelInfo } from '../../lib/types';
+import { studioActions } from '../../store/studioStore';
 
 interface ModelSelectorDropdownProps {
-  big: boolean;
-  EASE: string;
   model: ModelInfo;
   modelMenuOpen: boolean;
   setModelMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -15,8 +15,6 @@ interface ModelSelectorDropdownProps {
 }
 
 export function ModelSelectorDropdown({
-  big,
-  EASE,
   model,
   modelMenuOpen,
   setModelMenuOpen,
@@ -27,27 +25,44 @@ export function ModelSelectorDropdown({
   accentColor,
   installedModels = [],
 }: ModelSelectorDropdownProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!modelMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setModelMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleClickOutside);
+    return () => window.removeEventListener('mousedown', handleClickOutside);
+  }, [modelMenuOpen, setModelMenuOpen]);
+
+  const handleToggle = () => {
+    setModelMenuOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        studioActions.setActiveNavTab(null);
+      }
+      return next;
+    });
+  };
+
   return (
-    <div
-      className="relative flex-none"
-      style={{ width: big ? 206 : 162, transition: `width .24s ${EASE}` }}
-    >
+    <div ref={containerRef} className="relative flex-none w-[184px]">
       <button
-        onClick={() => setModelMenuOpen((prev) => !prev)}
-        className="w-full flex items-center gap-[9px] border border-[var(--border-default)] rounded-[11px] bg-[var(--bg-elevated)] cursor-pointer transition-all duration-200 hover:scale-[1.03] hover:border-[var(--border-hover)] hover:shadow-[var(--shadow-pill-hover)]"
-        style={{ height: big ? 36 : 30, padding: '0 11px' }}
+        onClick={handleToggle}
+        className="w-full h-[32px] flex items-center gap-2 px-2.5 border border-[var(--border-default)] rounded-[10px] bg-[var(--bg-elevated)] cursor-pointer transition-all duration-200 hover:border-[var(--border-hover)] hover:bg-[#1C1A18]"
       >
         <div className="flex-1 min-w-0 text-left">
-          <div className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis">
+          <div className="text-[11.5px] font-semibold text-[var(--text-primary)] whitespace-nowrap overflow-hidden text-ellipsis leading-tight">
             {model.name}
           </div>
-          {big && (
-            <div className="font-['Martian_Mono',monospace] text-[9px] text-[var(--text-dim)] tracking-[0.04em] mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis">
-              {model.id.toUpperCase()} · {model.size}
-            </div>
-          )}
+          <div className="font-['Martian_Mono',monospace] text-[8px] text-[var(--text-dim)] tracking-[0.03em] whitespace-nowrap overflow-hidden text-ellipsis leading-none mt-0.5">
+            {model.id.toUpperCase()}
+          </div>
         </div>
-        <span className="flex-none text-[var(--text-dim)] text-[9px]">▲</span>
+        <span className="flex-none text-[var(--text-dim)] text-[8px] opacity-70">▲</span>
       </button>
 
       {modelMenuOpen && (
