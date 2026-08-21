@@ -49,10 +49,7 @@ export function ModelSelectorDropdown({
   };
 
   return (
-    <div
-      ref={containerRef}
-      className="relative flex-none w-[184px]"
-    >
+    <div ref={containerRef} className="relative flex-none w-[184px]">
       <button
         onClick={handleToggle}
         className="w-full h-[32px] flex items-center gap-2 px-2.5 border border-[var(--border-default)] rounded-[10px] bg-[var(--bg-elevated)] cursor-pointer transition-all duration-200 hover:border-[var(--border-hover)] hover:bg-[#1C1A18]"

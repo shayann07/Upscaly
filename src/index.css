@@ -231,14 +231,17 @@
 }
 
 @keyframes liquid-meniscus-glow {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.85;
-    filter: drop-shadow(0 0 8px rgba(255, 140, 165, 0.8)) drop-shadow(0 0 18px rgba(168, 11, 36, 0.6));
+    filter: drop-shadow(0 0 8px rgba(255, 140, 165, 0.8))
+      drop-shadow(0 0 18px rgba(168, 11, 36, 0.6));
     transform: scaleX(0.95);
   }
   50% {
     opacity: 1;
-    filter: drop-shadow(0 0 16px rgba(255, 180, 195, 0.95)) drop-shadow(0 0 28px rgba(232, 138, 128, 0.8));
+    filter: drop-shadow(0 0 16px rgba(255, 180, 195, 0.95))
+      drop-shadow(0 0 28px rgba(232, 138, 128, 0.8));
     transform: scaleX(1.15);
   }
 }
@@ -307,18 +310,24 @@
 
 /* ── Drag & Drop Premium Visual Tiers ── */
 @keyframes drag-glow-pulse {
-  0%, 100% {
-    box-shadow: inset 0 0 40px rgba(168, 11, 36, 0.05), 0 0 25px rgba(168, 11, 36, 0.08);
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 40px rgba(168, 11, 36, 0.05),
+      0 0 25px rgba(168, 11, 36, 0.08);
     border-color: rgba(168, 11, 36, 0.3);
   }
   50% {
-    box-shadow: inset 0 0 60px rgba(168, 11, 36, 0.1), 0 0 35px rgba(168, 11, 36, 0.16);
+    box-shadow:
+      inset 0 0 60px rgba(168, 11, 36, 0.1),
+      0 0 35px rgba(168, 11, 36, 0.16);
     border-color: rgba(168, 11, 36, 0.5);
   }
 }
 
 @keyframes float-subtle {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0px);
   }
   50% {

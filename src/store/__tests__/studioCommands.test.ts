@@ -525,7 +525,7 @@ describe('downloadModel', () => {
 
 describe('openFolder', () => {
   it('enumerates media files inside folder and adds them to queue', async () => {
-    mockOpen.mockResolvedValue('C:/MyFolder' as any);
+    mockOpen.mockResolvedValue('C:/MyFolder' as unknown as string[] | string | null);
     mockInvoke.mockImplementation((cmd) => {
       if (cmd === 'allow_media_path') return Promise.resolve();
       if (cmd === 'list_media_files') {
@@ -543,7 +543,7 @@ describe('openFolder', () => {
   });
 
   it('notifies warning when folder has no media files', async () => {
-    mockOpen.mockResolvedValue('C:/EmptyFolder' as any);
+    mockOpen.mockResolvedValue('C:/EmptyFolder' as unknown as string[] | string | null);
     mockInvoke.mockImplementation((cmd) => {
       if (cmd === 'allow_media_path') return Promise.resolve();
       if (cmd === 'list_media_files') return Promise.resolve([]);

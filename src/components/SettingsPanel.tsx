@@ -69,10 +69,7 @@ function getModelListData(
   return { modelsList, model, filteredModels };
 }
 
-function getRunButtonStyle(
-  isProcessing: boolean,
-  hasFiles: boolean
-): React.CSSProperties {
+function getRunButtonStyle(isProcessing: boolean, hasFiles: boolean): React.CSSProperties {
   return {
     height: 32,
     padding: '0 16px',

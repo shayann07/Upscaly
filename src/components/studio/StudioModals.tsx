@@ -38,6 +38,91 @@ const handleSelectOutputDir = () => void selectOutputDirectory();
 const handleSelectModelsDir = () => void selectCustomModelsDir();
 const handleClearModelsDir = () => void clearCustomModelsDir();
 
+function SettingsDrawerContent() {
+  const gpus = useGpus();
+  const selectedGpu = useSelectedGpu();
+  const tileSize = useTileSize();
+  const scale = useScale();
+  const preset = usePreset();
+  const outputFormat = useOutputFormat();
+  const customModelsDir = useCustomModelsDir();
+  const gentleMode = useGentleMode();
+  const customOutputPath = useCustomOutputPath();
+  const isProcessing = useIsProcessing();
+
+  const customModels = useMemo(
+    () => ({
+      dir: customModelsDir,
+      onSelect: handleSelectModelsDir,
+      onClear: handleClearModelsDir,
+    }),
+    [customModelsDir]
+  );
+
+  const handleAutoTune = useCallback((recTile: number, vramText: string) => {
+    studioActions.setTileSize(recTile);
+    studioActions.notify(
+      'info',
+      'Auto-Tuned Tile Size',
+      `Set to ${recTile === 0 ? 'AUTO' : `${recTile}px`} based on ${vramText}`
+    );
+  }, []);
+
+  return (
+    <AdvancedSettings
+      gpus={gpus}
+      selectedGpu={selectedGpu}
+      onSelectGpu={(id) => {
+        studioActions.setSelectedGpu(id);
+        const gName = gpus.find((g) => g.id === id)?.name || `GPU ${id}`;
+        studioActions.notify('info', 'GPU Selected', gName);
+      }}
+      tileSize={tileSize}
+      onSelectTileSize={(size) => {
+        studioActions.setTileSize(size);
+        studioActions.notify(
+          'info',
+          'Tile Size Updated',
+          size === 0 ? 'Tile size set to AUTO' : `Tile size set to ${size}px`
+        );
+      }}
+      scale={scale}
+      preset={preset}
+      onSelectPreset={(p) => {
+        studioActions.setPreset(p);
+        studioActions.notify('info', 'Preset Updated', `Switched to ${p.toUpperCase()} mode`);
+      }}
+      outputFormat={outputFormat}
+      onSelectOutputFormat={(f) => {
+        studioActions.setOutputFormat(f);
+        studioActions.notify(
+          'info',
+          'Format Updated',
+          `Output container set to ${f.toUpperCase()}`
+        );
+      }}
+      customModels={customModels}
+      gentle={{
+        on: gentleMode,
+        onToggle: (on) => {
+          studioActions.setGentleMode(on);
+          studioActions.notify(
+            'info',
+            'Gentle Mode',
+            on ? 'Enabled (reduced background thermal load)' : 'Disabled (full speed)'
+          );
+        },
+      }}
+      customOutputPath={customOutputPath}
+      onSetOutputDir={studioActions.setCustomOutputPath}
+      onSelectOutputPath={handleSelectOutputDir}
+      isProcessing={isProcessing}
+      onAutoTune={handleAutoTune}
+      onClose={closeNav}
+    />
+  );
+}
+
 export const StudioModals = memo(function StudioModals() {
   const activeNavTab = useActiveNavTab();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -56,38 +141,11 @@ export const StudioModals = memo(function StudioModals() {
     return () => window.removeEventListener('mousedown', handleClickOutside);
   }, [activeNavTab]);
 
-  const gpus = useGpus();
-  const selectedGpu = useSelectedGpu();
-  const tileSize = useTileSize();
-  const scale = useScale();
-  const preset = usePreset();
-  const outputFormat = useOutputFormat();
-  const customModelsDir = useCustomModelsDir();
-  const gentleMode = useGentleMode();
-  const customModels = useMemo(
-    () => ({
-      dir: customModelsDir,
-      onSelect: handleSelectModelsDir,
-      onClear: handleClearModelsDir,
-    }),
-    [customModelsDir]
-  );
-  const customOutputPath = useCustomOutputPath();
-  const isProcessing = useIsProcessing();
   const supportedModels = useSupportedModels();
   const installedModels = useInstalledModels();
   const downloadingModels = useDownloadingModels();
   const historyItems = useHistoryItems();
   const toasts = useToasts();
-
-  const handleAutoTune = useCallback((recTile: number, vramText: string) => {
-    studioActions.setTileSize(recTile);
-    studioActions.notify(
-      'info',
-      'Auto-Tuned Tile Size',
-      `Set to ${recTile === 0 ? 'AUTO' : `${recTile}px`} based on ${vramText}`
-    );
-  }, []);
 
   const handleSelectHistoryItem = useCallback((item: HistoryEntry) => {
     void loadHistoryItem(item);
@@ -108,55 +166,7 @@ export const StudioModals = memo(function StudioModals() {
             animation: 'slidein .3s var(--ease-spring) both',
           }}
         >
-          {activeNavTab === 'settings' && (
-            <AdvancedSettings
-              gpus={gpus}
-              selectedGpu={selectedGpu}
-              onSelectGpu={(id) => {
-                studioActions.setSelectedGpu(id);
-                const gName = gpus.find((g) => g.id === id)?.name || `GPU ${id}`;
-                studioActions.notify('info', 'GPU Selected', gName);
-              }}
-              tileSize={tileSize}
-              onSelectTileSize={(size) => {
-                studioActions.setTileSize(size);
-                studioActions.notify(
-                  'info',
-                  'Tile Size Updated',
-                  size === 0 ? 'Tile size set to AUTO' : `Tile size set to ${size}px`
-                );
-              }}
-              scale={scale}
-              preset={preset}
-              onSelectPreset={(p) => {
-                studioActions.setPreset(p);
-                studioActions.notify('info', 'Preset Updated', `Switched to ${p.toUpperCase()} mode`);
-              }}
-              outputFormat={outputFormat}
-              onSelectOutputFormat={(f) => {
-                studioActions.setOutputFormat(f);
-                studioActions.notify('info', 'Format Updated', `Output container set to ${f.toUpperCase()}`);
-              }}
-              customModels={customModels}
-              gentle={{
-                on: gentleMode,
-                onToggle: (on) => {
-                  studioActions.setGentleMode(on);
-                  studioActions.notify(
-                    'info',
-                    'Gentle Mode',
-                    on ? 'Enabled (reduced background thermal load)' : 'Disabled (full speed)'
-                  );
-                },
-              }}
-              customOutputPath={customOutputPath}
-              onSetOutputDir={studioActions.setCustomOutputPath}
-              onSelectOutputPath={handleSelectOutputDir}
-              isProcessing={isProcessing}
-              onAutoTune={handleAutoTune}
-              onClose={closeNav}
-            />
-          )}
+          {activeNavTab === 'settings' && <SettingsDrawerContent />}
 
           {activeNavTab === 'models' && (
             <ModelCatalogModal
@@ -185,7 +195,6 @@ export const StudioModals = memo(function StudioModals() {
         toasts={toasts}
         onDismiss={studioActions.dismissToast}
         onCloseDrawer={closeNav}
-        drawerOpen={Boolean(activeNavTab)}
       />
     </>
   );

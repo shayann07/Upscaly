@@ -281,7 +281,10 @@ pub async fn download_file(
         request = request.header("Range", format!("bytes={downloaded}-"));
     }
 
-    let response = request.send().await.map_err(|e| format!("Download request error: {e}"))?;
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("Download request error: {e}"))?;
 
     if !response.status().is_success() && response.status() != reqwest::StatusCode::PARTIAL_CONTENT
     {

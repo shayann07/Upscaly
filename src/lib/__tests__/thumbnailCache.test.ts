@@ -6,7 +6,9 @@ vi.mock('../assetScope', () => ({
 }));
 
 vi.mock('../media', () => ({
-  getMediaSrc: vi.fn((path: string) => (path ? `asset://localhost/${encodeURIComponent(path)}` : '')),
+  getMediaSrc: vi.fn((path: string) =>
+    path ? `asset://localhost/${encodeURIComponent(path)}` : ''
+  ),
 }));
 
 describe('thumbnailCache', () => {

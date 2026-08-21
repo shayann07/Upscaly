@@ -15,6 +15,61 @@ interface KeyboardShortcutsOptions {
   setActiveNavTab: (tab: NavTab | null) => void;
 }
 
+function handleNavShortcuts(
+  key: string,
+  isCmd: boolean,
+  toggleNavTab: (tab: NavTab) => void
+): boolean {
+  if (isCmd && key === 's') {
+    toggleNavTab('settings');
+    return true;
+  }
+  if (isCmd && key === 'h') {
+    toggleNavTab('history');
+    return true;
+  }
+  if (isCmd && key === 'm') {
+    toggleNavTab('models');
+    return true;
+  }
+  if ((isCmd && key === '/') || (key === '?' && !isCmd)) {
+    toggleNavTab('about');
+    return true;
+  }
+  return false;
+}
+
+function handleFileShortcuts(
+  key: string,
+  isCmd: boolean,
+  shiftKey: boolean,
+  options: KeyboardShortcutsOptions
+): boolean {
+  if (isCmd && shiftKey && key === 'o') {
+    options.handleOpenFolder?.();
+    return true;
+  }
+  if (isCmd && key === 'o') {
+    options.handleOpenFile();
+    return true;
+  }
+  if (isCmd && key === 'enter') {
+    if (options.itemCount > 0) options.handleStartUpscale();
+    return true;
+  }
+  return false;
+}
+
+function handleEscapeKey(options: KeyboardShortcutsOptions) {
+  if (options.confirmCancelOpen) {
+    options.dismissCancelConfirmation();
+  } else if (options.hasActiveJob) {
+    options.requestCancelConfirmation();
+  } else {
+    options.setActiveNavTab(null);
+  }
+}
+
 export function useKeyboardShortcuts(options: KeyboardShortcutsOptions) {
   // The listener is attached once and reads the latest options through a
   // ref, rather than being torn down and re-attached every time a queue
@@ -33,78 +88,27 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions) {
 
       if (isInput) return;
 
-      const {
-        hasActiveJob,
-        confirmCancelOpen,
-        itemCount,
-        handleOpenFile,
-        handleOpenFolder,
-        handleStartUpscale,
-        handleRemoveSelected,
-        requestCancelConfirmation,
-        dismissCancelConfirmation,
-        toggleNavTab,
-        setActiveNavTab,
-      } = optionsRef.current;
-
+      const opts = optionsRef.current;
       const key = e.key.toLowerCase();
       const isCmd = e.metaKey || e.ctrlKey;
 
-      if (isCmd && e.shiftKey && key === 'o') {
+      if (handleFileShortcuts(key, isCmd, e.shiftKey, opts)) {
         e.preventDefault();
-        handleOpenFolder?.();
-        return;
-      }
-
-      if (isCmd && key === 'o') {
-        e.preventDefault();
-        handleOpenFile();
-        return;
-      }
-
-      if (isCmd && e.key === 'Enter') {
-        e.preventDefault();
-        if (itemCount > 0) handleStartUpscale();
         return;
       }
 
       if (e.key === 'Escape') {
-        if (confirmCancelOpen) {
-          dismissCancelConfirmation();
-        } else if (hasActiveJob) {
-          requestCancelConfirmation();
-        } else {
-          setActiveNavTab(null);
-        }
+        handleEscapeKey(opts);
         return;
       }
 
-      if (isCmd && key === 's') {
+      if (handleNavShortcuts(key, isCmd, opts.toggleNavTab)) {
         e.preventDefault();
-        toggleNavTab('settings');
-        return;
-      }
-
-      if (isCmd && key === 'h') {
-        e.preventDefault();
-        toggleNavTab('history');
-        return;
-      }
-
-      if (isCmd && key === 'm') {
-        e.preventDefault();
-        toggleNavTab('models');
-        return;
-      }
-
-      if ((isCmd && key === '/') || (key === '?' && !isCmd)) {
-        e.preventDefault();
-        toggleNavTab('about');
         return;
       }
 
       if (e.key === 'Delete' || (isCmd && e.key === 'Backspace')) {
-        handleRemoveSelected?.();
+        opts.handleRemoveSelected?.();
       }
     };
 
