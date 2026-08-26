@@ -1,0 +1,21 @@
+﻿name: WinGet Release
+
+on:
+  release:
+    types: [released]
+  workflow_dispatch:
+
+concurrency:
+  group: winget-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  winget:
+    runs-on: windows-latest
+    steps:
+      - name: Publish release to WinGet
+        uses: vedantmgoyal9/winget-releaser@latest
+        with:
+          identifier: Wexpa.UpscalyStudio
+          installers-regex: 'Upscaly-Studio_.*_x64-setup\.exe$'
+          token: ${{ secrets.WINGET_TOKEN }}
