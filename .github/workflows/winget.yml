@@ -1,4 +1,4 @@
-﻿name: WinGet Release
+name: WinGet Release
 
 on:
   release:
@@ -14,7 +14,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Publish release to WinGet
-        uses: vedantmgoyal9/winget-releaser@latest
+        uses: vedantmgoyal9/winget-releaser@v2
         with:
           identifier: Wexpa.UpscalyStudio
           installers-regex: 'Upscaly-Studio_.*_x64-setup\.exe$'

@@ -117,7 +117,7 @@ jobs:
 
       - name: Publish release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN || secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.gate.outputs.version }}
         shell: bash
         run: |
