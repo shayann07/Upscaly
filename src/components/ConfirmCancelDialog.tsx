@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { STRINGS } from '../lib/strings';
 
 interface ConfirmCancelDialogProps {
   isOpen: boolean;
@@ -31,10 +32,10 @@ interface ConfirmCancelDialogProps {
 
 export function ConfirmCancelDialog({
   isOpen,
-  title = 'Cancel Active Upscale?',
-  message = 'An upscaling job is currently in progress. Removing this file will terminate the background engine and release all GPU VRAM resources.',
-  confirmText = 'Cancel & Free GPU',
-  cancelText = 'Keep Running',
+  title = STRINGS.CANCEL_TITLE,
+  message = STRINGS.CANCEL_MESSAGE,
+  confirmText = STRINGS.CANCEL_AND_FREE_GPU,
+  cancelText = STRINGS.KEEP_RUNNING,
   secondaryText,
   onSecondary,
   confirmIsPositive = false,

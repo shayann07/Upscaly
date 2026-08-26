@@ -41,6 +41,7 @@ export function ComparisonSideView({
       className="absolute inset-0 grid grid-cols-2 gap-0.5 bg-[var(--bg-base)] select-none"
       style={{
         cursor: zoom > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default',
+        touchAction: 'none',
       }}
     >
       <div className="relative overflow-hidden">

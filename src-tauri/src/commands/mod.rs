@@ -1,9 +1,13 @@
 pub mod files;
+#[cfg(feature = "desktop")]
 pub mod gpu;
 pub mod models;
+#[cfg(feature = "desktop")]
 pub mod resume;
 pub mod settings;
+#[cfg(feature = "desktop")]
 pub mod sidecars;
+#[cfg(feature = "desktop")]
 pub mod telemetry;
 pub mod upscale;
 pub mod window;

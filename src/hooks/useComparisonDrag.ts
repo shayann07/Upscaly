@@ -6,29 +6,13 @@ interface UseComparisonDragOptions {
   activeMode: 'split' | 'side';
 }
 
-export function useComparisonDrag({
-  zoom = 1,
-  onZoomChange,
-  activeMode,
-}: UseComparisonDragOptions) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [sliderPct, setSliderPct] = useState(52);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isPanning, setIsPanning] = useState(false);
+interface PointerCoord {
+  clientX: number;
+  clientY: number;
+}
+
+function useSpaceKeyHold(): boolean {
   const [isHolding, setIsHolding] = useState(false);
-  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
-  const [startPan, setStartPan] = useState({ x: 0, y: 0 });
-
-  const zoomRef = useRef(zoom);
-  zoomRef.current = zoom;
-  const onZoomChangeRef = useRef(onZoomChange);
-  onZoomChangeRef.current = onZoomChange;
-
-  useEffect(() => {
-    if (zoom <= 1) {
-      setPanOffset({ x: 0, y: 0 });
-    }
-  }, [zoom]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -40,10 +24,6 @@ export function useComparisonDrag({
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') setIsHolding(false);
     };
-    // A key-up while the window is unfocused (e.g. Space held, then
-    // alt-tabbing away) never reaches this handler, leaving isHolding
-    // stuck true -- the comparison slider would stay pinned to 100% until
-    // another Space press, with no way to tell why.
     const handleBlur = () => setIsHolding(false);
 
     window.addEventListener('keydown', handleKeyDown);
@@ -56,11 +36,15 @@ export function useComparisonDrag({
     };
   }, []);
 
-  // React attaches wheel listeners passively on the root as of React 17+,
-  // so e.preventDefault() inside a JSX onWheel handler is a silent no-op
-  // (with a console warning). A native, explicitly non-passive listener on
-  // the actual container is required to suppress default scroll/zoom
-  // behavior while wheeling to zoom.
+  return isHolding;
+}
+
+function useWheelZoom(
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  zoomRef: React.RefObject<number>,
+  onZoomChangeRef: React.RefObject<((newZoom: number) => void) | undefined>,
+  activeMode: 'split' | 'side'
+) {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -68,21 +52,168 @@ export function useComparisonDrag({
     const handleNativeWheel = (e: WheelEvent) => {
       e.preventDefault();
       const delta = e.deltaY < 0 ? 1.25 : 0.8;
-      const newZoom = Math.max(1, Math.min(10, Math.round(zoomRef.current * delta * 10) / 10));
+      const currentZoom = zoomRef.current ?? 1;
+      const newZoom = Math.max(1, Math.min(10, Math.round(currentZoom * delta * 10) / 10));
       onZoomChangeRef.current?.(newZoom);
     };
 
     container.addEventListener('wheel', handleNativeWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleNativeWheel);
-  }, [activeMode]);
+  }, [containerRef, zoomRef, onZoomChangeRef, activeMode]);
+}
+
+interface PointerGestureParams {
+  activePointersRef: React.RefObject<Map<number, PointerCoord>>;
+  initialPinchDistRef: React.RefObject<number | null>;
+  initialPinchZoomRef: React.RefObject<number>;
+  initialMidpointRef: React.RefObject<{ x: number; y: number } | null>;
+  initialPanRef: React.RefObject<{ x: number; y: number }>;
+  onZoomChangeRef: React.RefObject<((newZoom: number) => void) | undefined>;
+  isPanning: boolean;
+  isDragging: boolean;
+  startPan: { x: number; y: number };
+  setPanOffset: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
+  setIsPanning: (val: boolean) => void;
+  setIsDragging: (val: boolean) => void;
+  updateSlider: (clientX: number) => void;
+}
+
+function usePointerGestureListeners(params: PointerGestureParams) {
+  const {
+    activePointersRef,
+    initialPinchDistRef,
+    initialPinchZoomRef,
+    initialMidpointRef,
+    initialPanRef,
+    onZoomChangeRef,
+    isPanning,
+    isDragging,
+    startPan,
+    setPanOffset,
+    setIsPanning,
+    setIsDragging,
+    updateSlider,
+  } = params;
+
+  useEffect(() => {
+    const handlePointerMove = (e: PointerEvent) => {
+      const activePointers = activePointersRef.current;
+      if (!activePointers) return;
+      if (activePointers.has(e.pointerId)) {
+        activePointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+      }
+
+      if (activePointers.size === 2) {
+        const [p1, p2] = Array.from(activePointers.values());
+        const currentDist = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+        const currentMid = { x: (p1.clientX + p2.clientX) / 2, y: (p1.clientY + p2.clientY) / 2 };
+
+        if (initialPinchDistRef.current && initialPinchDistRef.current > 0) {
+          const scale = currentDist / initialPinchDistRef.current;
+          const newZoom = Math.max(
+            1,
+            Math.min(10, Math.round((initialPinchZoomRef.current ?? 1) * scale * 10) / 10)
+          );
+          onZoomChangeRef.current?.(newZoom);
+        }
+
+        if (initialMidpointRef.current && initialPanRef.current) {
+          const dx = currentMid.x - initialMidpointRef.current.x;
+          const dy = currentMid.y - initialMidpointRef.current.y;
+          setPanOffset({ x: initialPanRef.current.x + dx, y: initialPanRef.current.y + dy });
+        }
+      } else if (isPanning) {
+        setPanOffset({ x: e.clientX - startPan.x, y: e.clientY - startPan.y });
+      } else if (isDragging) {
+        updateSlider(e.clientX);
+      }
+    };
+
+    const endDrag = (e: PointerEvent) => {
+      const activePointers = activePointersRef.current;
+      if (!activePointers) return;
+      activePointers.delete(e.pointerId);
+      if (activePointers.size < 2) {
+        initialPinchDistRef.current = null;
+        initialMidpointRef.current = null;
+      }
+      if (activePointers.size === 0) {
+        setIsDragging(false);
+        setIsPanning(false);
+      }
+    };
+
+    const handleWindowBlur = () => {
+      activePointersRef.current?.clear();
+      initialPinchDistRef.current = null;
+      initialMidpointRef.current = null;
+      setIsDragging(false);
+      setIsPanning(false);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
+    window.addEventListener('blur', handleWindowBlur);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', endDrag);
+      window.removeEventListener('pointercancel', endDrag);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [
+    activePointersRef,
+    initialPinchDistRef,
+    initialPinchZoomRef,
+    initialMidpointRef,
+    initialPanRef,
+    onZoomChangeRef,
+    isPanning,
+    isDragging,
+    startPan,
+    setPanOffset,
+    setIsPanning,
+    setIsDragging,
+    updateSlider,
+  ]);
+}
+
+export function useComparisonDrag({
+  zoom = 1,
+  onZoomChange,
+  activeMode,
+}: UseComparisonDragOptions) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [sliderPct, setSliderPct] = useState(52);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [startPan, setStartPan] = useState({ x: 0, y: 0 });
+
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const onZoomChangeRef = useRef(onZoomChange);
+  onZoomChangeRef.current = onZoomChange;
+  const panOffsetRef = useRef(panOffset);
+  panOffsetRef.current = panOffset;
+
+  const activePointersRef = useRef<Map<number, PointerCoord>>(new Map());
+  const initialPinchDistRef = useRef<number | null>(null);
+  const initialPinchZoomRef = useRef<number>(1);
+  const initialMidpointRef = useRef<{ x: number; y: number } | null>(null);
+  const initialPanRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const isHolding = useSpaceKeyHold();
+  useWheelZoom(containerRef, zoomRef, onZoomChangeRef, activeMode);
+
+  useEffect(() => {
+    if (zoom <= 1) setPanOffset({ x: 0, y: 0 });
+  }, [zoom]);
 
   const rafRef = useRef<number | null>(null);
   const pendingClientXRef = useRef<number | null>(null);
 
   const updateSlider = useCallback((clientX: number) => {
-    // Coalesce to at most one state update per animation frame instead of
-    // one per raw pointermove tick, which can fire far faster than the
-    // display refreshes.
     pendingClientXRef.current = clientX;
     if (rafRef.current !== null) return;
 
@@ -106,14 +237,33 @@ export function useComparisonDrag({
 
   const handleCanvasMouseDown = useCallback(
     (e: React.PointerEvent) => {
-      if (e.button !== 0) return;
-      e.currentTarget.setPointerCapture(e.pointerId);
-      if (zoom > 1) {
-        setIsPanning(true);
-        setStartPan({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
-      } else if (activeMode === 'split') {
-        setIsDragging(true);
-        updateSlider(e.clientX);
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Safe fallback
+      }
+      activePointersRef.current.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+
+      if (activePointersRef.current.size === 1) {
+        if (zoom > 1) {
+          setIsPanning(true);
+          setStartPan({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+        } else if (activeMode === 'split') {
+          setIsDragging(true);
+          updateSlider(e.clientX);
+        }
+      } else if (activePointersRef.current.size === 2) {
+        setIsDragging(false);
+        setIsPanning(false);
+        const [p1, p2] = Array.from(activePointersRef.current.values());
+        initialPinchDistRef.current = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+        initialPinchZoomRef.current = zoomRef.current;
+        initialMidpointRef.current = {
+          x: (p1.clientX + p2.clientX) / 2,
+          y: (p1.clientY + p2.clientY) / 2,
+        };
+        initialPanRef.current = { ...panOffsetRef.current };
       }
     },
     [zoom, panOffset, activeMode, updateSlider]
@@ -121,53 +271,35 @@ export function useComparisonDrag({
 
   const handleHandleMouseDown = useCallback(
     (e: React.PointerEvent) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
       e.stopPropagation();
-      e.currentTarget.setPointerCapture(e.pointerId);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Safe fallback
+      }
+      activePointersRef.current.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
       setIsDragging(true);
       updateSlider(e.clientX);
     },
     [updateSlider]
   );
 
-  useEffect(() => {
-    // Once setPointerCapture has been called (in the handlers above), the
-    // capturing element keeps receiving pointermove/pointerup for this
-    // pointer even when the cursor moves outside its bounds or outside the
-    // window -- and these still bubble to window as normal, so listening
-    // here continues to work. Plain mousemove/mouseup (the previous
-    // implementation) has no such guarantee: releasing the button after
-    // the cursor has left the OS window is easy to do near a split-view
-    // edge, and the drag would stay glued to the cursor until another
-    // click. pointercancel (fired if the OS interrupts the gesture, e.g.
-    // an alt-tab mid-drag) is handled the same as pointerup.
-    const handlePointerMove = (e: PointerEvent) => {
-      if (isPanning) {
-        setPanOffset({
-          x: e.clientX - startPan.x,
-          y: e.clientY - startPan.y,
-        });
-      } else if (isDragging) {
-        updateSlider(e.clientX);
-      }
-    };
-
-    const endDrag = () => {
-      setIsDragging(false);
-      setIsPanning(false);
-    };
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', endDrag);
-    window.addEventListener('pointercancel', endDrag);
-    window.addEventListener('blur', endDrag);
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', endDrag);
-      window.removeEventListener('pointercancel', endDrag);
-      window.removeEventListener('blur', endDrag);
-    };
-  }, [isDragging, isPanning, startPan, updateSlider]);
+  usePointerGestureListeners({
+    activePointersRef,
+    initialPinchDistRef,
+    initialPinchZoomRef,
+    initialMidpointRef,
+    initialPanRef,
+    onZoomChangeRef,
+    isPanning,
+    isDragging,
+    startPan,
+    setPanOffset,
+    setIsPanning,
+    setIsDragging,
+    updateSlider,
+  });
 
   return {
     containerRef,

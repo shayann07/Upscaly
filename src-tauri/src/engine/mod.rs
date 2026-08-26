@@ -1,3 +1,4 @@
+pub mod memory_budget;
 pub mod model_store;
 pub mod output_format;
 pub mod param_parser;

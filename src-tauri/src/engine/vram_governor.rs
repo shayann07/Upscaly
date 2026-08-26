@@ -186,23 +186,37 @@ pub fn safe_vram_ceiling_mb(gpu_vram_mb: u64) -> u64 {
 ///
 /// Ensures total VRAM stays strictly below `0.75 * gpu_vram_mb` to leave generous headroom for OS/DWM.
 #[must_use]
+pub fn calculate_safe_execution_profile(
+    gpu_vram_mb: u64,
+    requested_tile: i32,
+    scale: i32,
+    is_video: bool,
+) -> ExecutionProfile {
+    let budget = crate::engine::memory_budget::DesktopVram {
+        total_vram_mb: gpu_vram_mb,
+    };
+    calculate_safe_execution_profile_with_budget(&budget, requested_tile, scale, is_video)
+}
+
+/// Determine the safe execution profile for any [`MemoryBudget`] implementation.
+#[must_use]
 #[allow(
     clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss
 )]
-pub fn calculate_safe_execution_profile(
-    gpu_vram_mb: u64,
+pub fn calculate_safe_execution_profile_with_budget(
+    budget: &dyn crate::engine::memory_budget::MemoryBudget,
     requested_tile: i32,
     scale: i32,
     _is_video: bool,
 ) -> ExecutionProfile {
-    let safe_ceiling_mb = safe_vram_ceiling_mb(gpu_vram_mb);
+    let safe_ceiling_mb = budget.budget_mb();
 
     if requested_tile <= 0 {
-        let (thread_arg, proc_threads, projected_vram_mb) = if gpu_vram_mb >= 10240 {
+        let (thread_arg, proc_threads, projected_vram_mb) = if safe_ceiling_mb >= 7680 {
             ("1:2:2".to_string(), 2, 4500)
-        } else if gpu_vram_mb <= 2048 {
+        } else if safe_ceiling_mb <= 1600 {
             ("1:1:1".to_string(), 1, 900)
         } else {
             ("1:1:2".to_string(), 1, 2300)
@@ -226,24 +240,9 @@ pub fn calculate_safe_execution_profile(
             continue;
         }
 
-        // Dual GPU pipelines (proc = 2) ONLY allowed for large desktop GPUs >= 10GB (10240MB).
-        //
-        // estimate_total_vram_mb was previously overstating dual-proc usage
-        // (double-counting the model's base weights per thread instead of
-        // once per process), which an audit flagged as the likely reason
-        // this 10GB floor is more conservative than it needs to be -- on
-        // paper, 6-8GB GPUs have headroom for dual-proc once the estimate
-        // is corrected. That floor was deliberately hardened in a prior
-        // commit specifically because dual-proc caused real stability
-        // problems on 6-8GB GPUs, and this fix has no way to validate
-        // "corrected math == actually safe on that hardware" without
-        // testing on it. So: the math bug above is fixed (it was simply
-        // wrong, independent of any policy question, and every existing
-        // profile below this gate is proc=1, where the bug had no effect
-        // at all), but this floor stays as the prior commit set it rather
-        // than being loosened on an unverified assumption.
+        // Dual GPU pipelines (proc = 2) ONLY allowed for large budgets (>= 10GB desktop / safe_ceiling >= 7680MB).
         let dual_thread_vram = estimate_total_vram_mb(tile, 2, scale);
-        if dual_thread_vram <= safe_ceiling_mb && gpu_vram_mb >= 10240 {
+        if dual_thread_vram <= safe_ceiling_mb && safe_ceiling_mb >= 7680 {
             return ExecutionProfile {
                 tile_size: tile,
                 thread_arg: "1:2:2".to_string(),

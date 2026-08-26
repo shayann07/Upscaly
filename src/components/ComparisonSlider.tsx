@@ -2,6 +2,7 @@ import { useComparisonDrag } from '../hooks/useComparisonDrag';
 import { useComparisonMedia } from '../hooks/useComparisonMedia';
 import { ComparisonSideView } from './comparison/ComparisonSideView';
 import { ComparisonMediaOverlay } from './comparison/ComparisonMediaOverlay';
+import { STRINGS } from '../lib/strings';
 
 interface ComparisonSliderProps {
   inputPath?: string;
@@ -91,6 +92,7 @@ export function ComparisonSlider(props: ComparisonSliderProps) {
       className="absolute inset-0 overflow-hidden select-none"
       style={{
         cursor: zoom > 1 ? (isPanning ? 'grabbing' : 'grab') : 'ew-resize',
+        touchAction: 'none',
       }}
     >
       {/* Output (upscaled) layer — full frame */}
@@ -149,13 +151,15 @@ export function ComparisonSlider(props: ComparisonSliderProps) {
 
       {/* Labels */}
       <div className="absolute bottom-3 left-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] text-[var(--text-tertiary)] tracking-[0.06em] z-10 pointer-events-none">
-        ORIGINAL{inputDims ? ` · ${inputDims.w}×${inputDims.h}` : ''}
+        {STRINGS.ORIGINAL}
+        {inputDims ? ` · ${inputDims.w}×${inputDims.h}` : ''}
       </div>
       <div
         className="absolute bottom-3 right-3 px-2 py-1 rounded bg-[rgba(11,10,9,.8)] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] z-10 pointer-events-none"
         style={{ color: accentColor }}
       >
-        UPSCALED{outputDims ? ` · ${outputDims.w}×${outputDims.h}` : ''}
+        {STRINGS.UPSCALED}
+        {outputDims ? ` · ${outputDims.w}×${outputDims.h}` : ''}
       </div>
     </div>
   );

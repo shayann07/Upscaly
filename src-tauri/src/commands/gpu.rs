@@ -1,3 +1,5 @@
+#![cfg(feature = "desktop")]
+
 use crate::engine::vram_governor::{build_vram_profile, VramProfile};
 use crate::error::AppError;
 use crate::job_queue::get_gpu_vram_mb_for_id;

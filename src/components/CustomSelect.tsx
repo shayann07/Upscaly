@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CaretDown, Check } from '@phosphor-icons/react';
+import { STRINGS } from '../lib/strings';
 
 export interface SelectOption {
   value: string | number;
@@ -25,7 +26,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   options,
   value,
   onChange,
-  placeholder = 'Select option...',
+  placeholder = STRINGS.SELECT_OPTION,
   icon,
   className = '',
   width = '100%',
@@ -58,11 +59,16 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#181820] hover:bg-[#22222B] border border-[#272730] hover:border-[var(--border-hover)] text-xs font-medium text-white transition-all duration-200 hover:scale-[1.02] hover:shadow-[var(--shadow-pill-hover)] cursor-pointer group"
+          className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-all duration-200 hover:scale-[1.02] cursor-pointer group"
+          style={{
+            background: 'var(--bg-elevated)',
+            borderColor: 'var(--border-default)',
+            color: 'var(--text-primary)',
+          }}
         >
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {icon && (
-              <span className="text-zinc-400 group-hover:text-zinc-300 transition-colors">
+              <span className="transition-colors" style={{ color: 'var(--text-secondary)' }}>
                 {icon}
               </span>
             )}
@@ -70,9 +76,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           </div>
           <CaretDown
             size={14}
-            className={`text-zinc-400 transition-transform duration-200 shrink-0 ${
-              isOpen ? 'rotate-180 text-white' : ''
-            }`}
+            className={`transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180' : ''}`}
+            style={{ color: isOpen ? 'var(--text-primary)' : 'var(--text-secondary)' }}
           />
         </button>
       )}
@@ -85,13 +90,17 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
             animate={{ opacity: 1, y: isUp ? -4 : 4 }}
             exit={{ opacity: 0, y: isUp ? 4 : -4 }}
             transition={{ duration: 0.15 }}
-            className={`absolute left-0 min-w-[320px] max-w-[380px] z-50 max-h-64 overflow-y-auto rounded-xl bg-[#141419] border border-[#272730] shadow-2xl p-1.5 space-y-1 ${
+            className={`absolute left-0 min-w-[320px] max-w-[380px] z-50 max-h-64 overflow-y-auto rounded-xl border shadow-2xl p-1.5 space-y-1 ${
               isUp ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
             }`}
+            style={{
+              background: 'var(--bg-elevated)',
+              borderColor: 'var(--border-default)',
+            }}
           >
             {options.length === 0 ? (
-              <div className="px-3 py-2 text-center text-xs text-zinc-500">
-                No options available
+              <div className="px-3 py-2 text-center text-xs" style={{ color: 'var(--text-muted)' }}>
+                {STRINGS.NO_OPTIONS}
               </div>
             ) : (
               options.map((opt) => {
@@ -105,25 +114,40 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                       onChange(opt.value);
                       setIsOpen(false);
                     }}
-                    className={`group/opt w-full flex items-start justify-between gap-2.5 px-3 py-2 rounded-lg text-xs text-left transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-indigo-600/20 text-indigo-300 font-semibold border border-indigo-500/40'
-                        : 'text-zinc-300 hover:bg-[#22222B] hover:text-white border border-transparent'
-                    }`}
+                    className="group/opt w-full flex items-start justify-between gap-2.5 px-3 py-2 rounded-lg text-xs text-left transition-all cursor-pointer border"
+                    style={{
+                      background: isSelected ? 'var(--accent-bg)' : 'transparent',
+                      color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      borderColor: isSelected ? 'var(--accent)' : 'transparent',
+                      fontWeight: isSelected ? 600 : 400,
+                    }}
                   >
                     <div className="flex items-start gap-2.5 min-w-0 flex-1">
                       {opt.icon && <span className="shrink-0 mt-0.5">{opt.icon}</span>}
                       <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-white truncate">{opt.label}</p>
+                        <p
+                          className="font-semibold truncate"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          {opt.label}
+                        </p>
                         {opt.sublabel && (
-                          <p className="text-[11px] text-zinc-400 group-hover/opt:text-zinc-100 font-normal mt-0.5 leading-snug transition-all line-clamp-1 group-hover/opt:line-clamp-none">
+                          <p
+                            className="text-[11px] font-normal mt-0.5 leading-snug transition-all line-clamp-1 group-hover/opt:line-clamp-none"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
                             {opt.sublabel}
                           </p>
                         )}
                       </div>
                     </div>
                     {isSelected && (
-                      <Check size={14} className="text-indigo-400 shrink-0 mt-0.5" weight="bold" />
+                      <Check
+                        size={14}
+                        className="shrink-0 mt-0.5"
+                        weight="bold"
+                        style={{ color: 'var(--accent)' }}
+                      />
                     )}
                   </button>
                 );

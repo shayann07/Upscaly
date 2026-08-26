@@ -355,3 +355,21 @@
 .animate-halo-rotate {
   animation: halo-rotate 24s linear infinite;
 }
+
+/* ── Touch input adaptation ───────────────────────────────────────────
+   Android WebView latches :hover after a tap: the style applies on
+   touchstart and is never cleared until the user taps elsewhere, so every
+   hover treatment reads as a stuck control. Tailwind's `hover:` variant
+   compiles to a bare :hover with no pointer query, so the gate is applied
+   globally rather than at 177 call sites. `@media (hover: hover)` is true
+   only for real pointing devices, so desktop is unaffected. */
+@media (hover: none) {
+  *:hover {
+    transition-duration: 0s !important;
+  }
+  button:active,
+  [role='button']:active {
+    transform: scale(0.97);
+    transition: transform 0.08s var(--ease-spring) !important;
+  }
+}

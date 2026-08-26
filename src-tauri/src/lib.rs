@@ -3,18 +3,23 @@ pub mod commands;
 pub mod engine;
 pub mod error;
 pub mod history;
+#[cfg(feature = "desktop")]
 pub mod image_batch;
 pub mod job_queue;
 pub mod job_state;
 pub mod job_store;
 mod model_manager;
 pub mod output_paths;
+#[cfg(feature = "desktop")]
 pub mod process_runner;
 mod settings;
+#[cfg(feature = "desktop")]
 mod sidecar_manager;
+#[cfg(feature = "desktop")]
 pub mod video_pipeline;
 
 pub use error::AppError;
+#[cfg(feature = "desktop")]
 use sidecar_manager::kill_all_processes;
 
 #[derive(Debug, serde::Deserialize, ts_rs::TS)]
@@ -60,8 +65,10 @@ pub(crate) fn launched_at() -> std::time::Instant {
     *LAUNCHED_AT.get_or_init(std::time::Instant::now)
 }
 
+#[cfg(feature = "desktop")]
 use tauri::Manager;
 
+#[cfg(feature = "desktop")]
 fn fatal_dialog(message: &str) {
     #[cfg(windows)]
     #[allow(unsafe_code)]
@@ -78,6 +85,7 @@ fn fatal_dialog(message: &str) {
     eprintln!("FATAL: {message}");
 }
 
+#[cfg(feature = "desktop")]
 fn sweep_old_logs(log_dir: &std::path::Path) {
     if let Ok(entries) = std::fs::read_dir(log_dir) {
         let cutoff = std::time::SystemTime::now()
@@ -95,6 +103,7 @@ fn sweep_old_logs(log_dir: &std::path::Path) {
     }
 }
 
+#[cfg(feature = "desktop")]
 fn init_logging(app: &mut tauri::App) {
     let log_dir = crate::app_paths::app_data_dir(app.handle()).join("logs");
     if let Err(e) = std::fs::create_dir_all(&log_dir) {
@@ -121,6 +130,7 @@ fn init_logging(app: &mut tauri::App) {
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "upscaly starting");
 }
 
+#[cfg(feature = "desktop")]
 fn spawn_visibility_failsafe(handle: tauri::AppHandle) {
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(5));
@@ -139,7 +149,7 @@ fn spawn_visibility_failsafe(handle: tauri::AppHandle) {
     });
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[cfg(feature = "desktop")]
 pub fn run() {
     launched_at();
 
@@ -149,7 +159,8 @@ pub fn run() {
         ));
     }));
 
-    let builder = tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default()
         // The window is created hidden (`visible: false` in the config)
         // and shown by the frontend via `show_main_window`, once the first
         // frame worth looking at -- splash or dashboard -- is painted.
