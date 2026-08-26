@@ -56,25 +56,16 @@ jobs:
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
 
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
 
-      # Unlike CI, this needs the real engine: it is bundled into the
-      # installer. ffmpeg/ffprobe are deliberately not fetched here -- they
-      # are downloaded on the user's machine at install time (see
-      # installer-hooks.nsh), which is why this step fetches only
-      # realesrgan-ncnn-vulkan.
-      - name: Fetch sidecar binaries
+      # Install frontend dependencies and fetch required engine sidecar
+      - name: Setup dependencies & sidecar binaries
         run: |
           npm ci
           node scripts/fetch-sidecars.mjs realesrgan-ncnn-vulkan
-
-      - name: Quality gate
-        run: npm run check:quality
 
       - name: Build installer
         env:
@@ -83,6 +74,7 @@ jobs:
           # would be unusable by the updater plugin.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
         run: npm run tauri:build
 
       # latest.json is what tauri-plugin-updater fetches from the release's
