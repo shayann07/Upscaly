@@ -1,3 +1,5 @@
+#![cfg(feature = "desktop")]
+
 use crate::error::AppError;
 use crate::job_queue::add_jobs_to_queue;
 use crate::output_paths::{ensure_output_dir, reserve_output_path};

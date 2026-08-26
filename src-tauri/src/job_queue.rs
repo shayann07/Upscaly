@@ -4,16 +4,21 @@ use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+#[cfg(feature = "desktop")]
 use std::thread;
 use tauri::AppHandle;
 
 use crate::error::AppError;
+#[cfg(feature = "desktop")]
 use crate::image_batch::{can_group_with, run_image_batch, BatchMember, MAX_BATCH_SIZE};
 use crate::job_state::JobState;
 use crate::job_store::JobStore;
 use crate::output_paths::release_output_path;
+#[cfg(feature = "desktop")]
 use crate::process_runner::{ProcessHandle, ProcessRunner, StdProcessRunner};
+#[cfg(feature = "desktop")]
 use crate::sidecar_manager::resolve_sidecar_path;
+#[cfg(feature = "desktop")]
 use crate::video_pipeline::run_video_job;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -69,12 +74,14 @@ pub fn generate_job_id() -> String {
 
 pub struct JobControl {
     pub cancel_requested: Arc<AtomicBool>,
+    #[cfg(feature = "desktop")]
     pub process_handle: Arc<Mutex<Option<Box<dyn ProcessHandle>>>>,
 }
 
 pub struct JobQueueService {
     queue: Mutex<VecDeque<Job>>,
     registry: Mutex<HashMap<String, JobControl>>,
+    #[allow(dead_code)]
     is_processing: Mutex<bool>,
     // A job that was popped off `queue` but not yet inserted into
     // `registry` is, for a brief window, in neither -- cancel() would
@@ -107,6 +114,7 @@ impl JobQueueService {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    #[allow(dead_code)]
     fn lock_processing(&self) -> std::sync::MutexGuard<'_, bool> {
         self.is_processing
             .lock()
@@ -127,6 +135,7 @@ impl JobQueueService {
     /// queue, and the settings that make jobs groupable are the same ones
     /// that make them adjacent in practice (a batch is submitted with one
     /// model, GPU, scale and tile size).
+    #[allow(dead_code)]
     fn take_compatible_group(&self, first: Job) -> Vec<Job> {
         let mut q = self.lock_queue();
         drain_compatible_group(&mut q, first)
@@ -185,6 +194,7 @@ impl JobQueueService {
         let reg = self.lock_registry();
         if let Some(control) = reg.get(job_id) {
             control.cancel_requested.store(true, Ordering::SeqCst);
+            #[cfg(feature = "desktop")]
             if let Ok(mut handle_guard) = control.process_handle.lock() {
                 if let Some(ref mut handle) = *handle_guard {
                     let _ = handle.kill();
@@ -219,6 +229,7 @@ impl JobQueueService {
         let mut reg = self.lock_registry();
         for (_, control) in reg.drain() {
             control.cancel_requested.store(true, Ordering::SeqCst);
+            #[cfg(feature = "desktop")]
             if let Ok(mut handle_guard) = control.process_handle.lock() {
                 if let Some(ref mut handle) = *handle_guard {
                     let _ = handle.kill();
@@ -227,6 +238,7 @@ impl JobQueueService {
         }
     }
 
+    #[allow(dead_code)]
     fn cleanup_job(&self, job_id: &str, output_path: &str) {
         let mut reg = self.lock_registry();
         reg.remove(job_id);
@@ -240,159 +252,167 @@ impl JobQueueService {
     // function signature for no real gain in clarity.
     #[allow(clippy::too_many_lines)]
     fn process_next(&self, app: AppHandle) {
-        let mut processing_guard = self.lock_processing();
-        if *processing_guard {
-            return;
-        }
-        *processing_guard = true;
-        drop(processing_guard);
+        #[cfg(feature = "desktop")]
+        {
+            let mut processing_guard = self.lock_processing();
+            if *processing_guard {
+                return;
+            }
+            *processing_guard = true;
+            drop(processing_guard);
 
-        thread::spawn(move || {
-            let service = JobQueueService::global();
-            loop {
-                let next_job = {
-                    let mut q = service.lock_queue();
-                    q.pop_front()
-                };
+            thread::spawn(move || {
+                let service = JobQueueService::global();
+                loop {
+                    let next_job = {
+                        let mut q = service.lock_queue();
+                        q.pop_front()
+                    };
 
-                let Some(job) = next_job else {
-                    // Decide "stop processing" and "queue is empty" atomically
-                    // by holding the processing lock while re-checking the
-                    // queue. Without this, a concurrent enqueue() that runs
-                    // between our pop_front() returning None and us setting
-                    // is_processing = false would see is_processing == true,
-                    // skip spawning a new worker, and its job would sit in
-                    // the queue forever with nothing left to drain it.
-                    let mut processing_lock = service.lock_processing();
-                    let q = service.lock_queue();
-                    if q.is_empty() {
-                        *processing_lock = false;
-                        break;
-                    }
-                    // Something was enqueued in the gap; keep this worker
-                    // alive (is_processing stays true) and loop back to
-                    // pop it instead of racing a fresh process_next() call.
-                    drop(q);
-                    drop(processing_lock);
-                    continue;
-                };
-
-                // Compatible image jobs waiting behind this one join it in a
-                // single process rather than each paying Vulkan init and
-                // model load again. A video, or an image with nothing
-                // compatible behind it, yields a group of one -- the path
-                // below is the same either way.
-                let group = service.take_compatible_group(job);
-                let shared_handle: Arc<Mutex<Option<Box<dyn ProcessHandle>>>> =
-                    Arc::new(Mutex::new(None));
-                // A group's members share one process, so cancelling one of
-                // them must not be able to kill it out from under the
-                // others: their registry entries get a handle that is never
-                // populated, leaving cancel() to do nothing but raise the
-                // flag. The batch runner watches those flags and kills the
-                // process only once every member is cancelled. A group of
-                // one is the existing behaviour untouched -- its cancel
-                // reaches the process directly.
-                let is_group = group.len() > 1;
-
-                // A cancel() call that arrived in the window between a job
-                // leaving the queue (above) and being registered (below)
-                // recorded itself in pending_cancellations instead of being
-                // silently dropped. Consume it now so the cancel_requested
-                // check further down catches it, exactly as if cancel() had
-                // found the job already in the registry.
-                let members: Vec<BatchMember> = group
-                    .into_iter()
-                    .map(|job| {
-                        let already_cancelled =
-                            service.lock_pending_cancellations().remove(&job.id);
-                        let cancel_requested = Arc::new(AtomicBool::new(already_cancelled));
-
-                        let mut reg = service.lock_registry();
-                        reg.insert(
-                            job.id.clone(),
-                            JobControl {
-                                cancel_requested: Arc::clone(&cancel_requested),
-                                process_handle: if is_group {
-                                    Arc::new(Mutex::new(None))
-                                } else {
-                                    Arc::clone(&shared_handle)
-                                },
-                            },
-                        );
-                        BatchMember {
-                            job,
-                            cancel_requested,
+                    let Some(job) = next_job else {
+                        // Decide "stop processing" and "queue is empty" atomically
+                        // by holding the processing lock while re-checking the
+                        // queue. Without this, a concurrent enqueue() that runs
+                        // between our pop_front() returning None and us setting
+                        // is_processing = false would see is_processing == true,
+                        // skip spawning a new worker, and its job would sit in
+                        // the queue forever with nothing left to drain it.
+                        let mut processing_lock = service.lock_processing();
+                        let q = service.lock_queue();
+                        if q.is_empty() {
+                            *processing_lock = false;
+                            break;
                         }
-                    })
-                    .collect();
+                        // Something was enqueued in the gap; keep this worker
+                        // alive (is_processing stays true) and loop back to
+                        // pop it instead of racing a fresh process_next() call.
+                        drop(q);
+                        drop(processing_lock);
+                        continue;
+                    };
 
-                if members
-                    .iter()
-                    .all(|m| m.cancel_requested.load(Ordering::SeqCst))
-                {
+                    // Compatible image jobs waiting behind this one join it in a
+                    // single process rather than each paying Vulkan init and
+                    // model load again. A video, or an image with nothing
+                    // compatible behind it, yields a group of one -- the path
+                    // below is the same either way.
+                    let group = service.take_compatible_group(job);
+                    let shared_handle: Arc<Mutex<Option<Box<dyn ProcessHandle>>>> =
+                        Arc::new(Mutex::new(None));
+                    // A group's members share one process, so cancelling one of
+                    // them must not be able to kill it out from under the
+                    // others: their registry entries get a handle that is never
+                    // populated, leaving cancel() to do nothing but raise the
+                    // flag. The batch runner watches those flags and kills the
+                    // process only once every member is cancelled. A group of
+                    // one is the existing behaviour untouched -- its cancel
+                    // reaches the process directly.
+                    let is_group = group.len() > 1;
+
+                    // A cancel() call that arrived in the window between a job
+                    // leaving the queue (above) and being registered (below)
+                    // recorded itself in pending_cancellations instead of being
+                    // silently dropped. Consume it now so the cancel_requested
+                    // check further down catches it, exactly as if cancel() had
+                    // found the job already in the registry.
+                    let members: Vec<BatchMember> = group
+                        .into_iter()
+                        .map(|job| {
+                            let already_cancelled =
+                                service.lock_pending_cancellations().remove(&job.id);
+                            let cancel_requested = Arc::new(AtomicBool::new(already_cancelled));
+
+                            let mut reg = service.lock_registry();
+                            reg.insert(
+                                job.id.clone(),
+                                JobControl {
+                                    cancel_requested: Arc::clone(&cancel_requested),
+                                    process_handle: if is_group {
+                                        Arc::new(Mutex::new(None))
+                                    } else {
+                                        Arc::clone(&shared_handle)
+                                    },
+                                },
+                            );
+                            BatchMember {
+                                job,
+                                cancel_requested,
+                            }
+                        })
+                        .collect();
+
+                    if members
+                        .iter()
+                        .all(|m| m.cancel_requested.load(Ordering::SeqCst))
+                    {
+                        for member in &members {
+                            service.cleanup_job(&member.job.id, &member.job.output_path);
+                            JobStore::global().transition(
+                                &app,
+                                &member.job.id,
+                                JobState::Cancelled,
+                                Some("Cancelled while queued"),
+                            );
+                        }
+                        continue;
+                    }
+
                     for member in &members {
-                        service.cleanup_job(&member.job.id, &member.job.output_path);
                         JobStore::global().transition(
                             &app,
                             &member.job.id,
-                            JobState::Cancelled,
-                            Some("Cancelled while queued"),
+                            JobState::Running,
+                            Some("Initializing GPU Pipeline..."),
                         );
                     }
-                    continue;
-                }
 
-                for member in &members {
-                    JobStore::global().transition(
-                        &app,
-                        &member.job.id,
-                        JobState::Running,
-                        Some("Initializing GPU Pipeline..."),
-                    );
-                }
+                    let results = run_group(&app, &members, &shared_handle);
 
-                let results = run_group(&app, &members, &shared_handle);
+                    for (member, res) in members.iter().zip(results) {
+                        let job = &member.job;
 
-                for (member, res) in members.iter().zip(results) {
-                    let job = &member.job;
-
-                    // A batch member the runner already finalised -- handed
-                    // over the moment its own image finished, or cancelled
-                    // mid-run -- is terminal in the store already. Re-running
-                    // the finalisation below would let a cancel that arrived
-                    // afterwards delete an output that was delivered before
-                    // it. Work that is done is done.
-                    if JobStore::global()
-                        .state_of(&job.id)
-                        .is_some_and(|state| state.is_terminal())
-                    {
+                        // A batch member the runner already finalised -- handed
+                        // over the moment its own image finished, or cancelled
+                        // mid-run -- is terminal in the store already. Re-running
+                        // the finalisation below would let a cancel that arrived
+                        // afterwards delete an output that was delivered before
+                        // it. Work that is done is done.
+                        if JobStore::global()
+                            .state_of(&job.id)
+                            .is_some_and(|state| state.is_terminal())
+                        {
+                            service.cleanup_job(&job.id, &job.output_path);
+                            continue;
+                        }
+                        // Cancellation is carried by the error type rather than
+                        // by a magic message: `AppError::Cancelled` says exactly
+                        // this and cannot be confused with a failure that
+                        // happens to mention the word.
+                        let is_cancelled = member.cancel_requested.load(Ordering::SeqCst)
+                            || res.as_ref().err().is_some_and(AppError::is_cancellation);
                         service.cleanup_job(&job.id, &job.output_path);
-                        continue;
+                        let final_state = finalize_job_output(job, is_cancelled, res);
+                        let phase = match final_state {
+                            JobState::Succeeded => "Complete",
+                            JobState::Cancelled => "Cancelled by user",
+                            _ => "Failed",
+                        };
+                        JobStore::global().transition(&app, &job.id, final_state, Some(phase));
                     }
-                    // Cancellation is carried by the error type rather than
-                    // by a magic message: `AppError::Cancelled` says exactly
-                    // this and cannot be confused with a failure that
-                    // happens to mention the word.
-                    let is_cancelled = member.cancel_requested.load(Ordering::SeqCst)
-                        || res.as_ref().err().is_some_and(AppError::is_cancellation);
-                    service.cleanup_job(&job.id, &job.output_path);
-                    let final_state = finalize_job_output(job, is_cancelled, res);
-                    let phase = match final_state {
-                        JobState::Succeeded => "Complete",
-                        JobState::Cancelled => "Cancelled by user",
-                        _ => "Failed",
-                    };
-                    JobStore::global().transition(&app, &job.id, final_state, Some(phase));
                 }
-            }
-        });
+            });
+        }
+        #[cfg(not(feature = "desktop"))]
+        {
+            let _ = app;
+        }
     }
 }
 
 /// Dispatches a group to whichever runner fits it.
 ///
 /// Returns one result per member, in the same order.
+#[cfg(feature = "desktop")]
 fn run_group(
     app: &AppHandle,
     members: &[BatchMember],
@@ -427,6 +447,7 @@ fn run_group(
 /// what keeps "the output path exists" a reliable signal rather than a maybe.
 /// A run that reported success but produced nothing (or an empty file) is a
 /// failure regardless of what the engine's exit code claimed.
+#[allow(dead_code)]
 fn finalize_job_output(job: &Job, is_cancelled: bool, res: Result<(), AppError>) -> JobState {
     let out_path = Path::new(&job.output_path);
 
@@ -465,6 +486,7 @@ fn finalize_job_output(job: &Job, is_cancelled: bool, res: Result<(), AppError>)
 /// queue, and the settings that make jobs groupable are the same ones that
 /// make them adjacent in practice (a batch is submitted with one model, GPU,
 /// scale and tile size).
+#[cfg(feature = "desktop")]
 fn drain_compatible_group(queue: &mut VecDeque<Job>, first: Job) -> Vec<Job> {
     let mut group = vec![first];
     if group[0].is_video {
@@ -484,6 +506,11 @@ fn drain_compatible_group(queue: &mut VecDeque<Job>, first: Job) -> Vec<Job> {
     group
 }
 
+#[cfg(not(feature = "desktop"))]
+fn drain_compatible_group(_queue: &mut VecDeque<Job>, first: Job) -> Vec<Job> {
+    vec![first]
+}
+
 pub fn add_jobs_to_queue(app: AppHandle, jobs: Vec<Job>) {
     JobQueueService::global().enqueue_all(app, jobs);
 }
@@ -497,6 +524,7 @@ pub fn kill_all_active_jobs() {
 }
 
 pub fn get_gpu_vram_mb_for_id(app: &AppHandle, gpu_id: i32) -> u64 {
+    #[cfg(feature = "desktop")]
     if let Ok(gpus) = crate::sidecar_manager::get_gpu_list(app) {
         if let Some(gpu) = gpus.iter().find(|g| g.id == gpu_id) {
             if gpu.vram_mb > 0 {
@@ -504,6 +532,9 @@ pub fn get_gpu_vram_mb_for_id(app: &AppHandle, gpu_id: i32) -> u64 {
             }
         }
     }
+    #[cfg(not(feature = "desktop"))]
+    let _ = (app, gpu_id);
+
     get_estimated_vram_mb()
 }
 
@@ -517,9 +548,12 @@ pub fn get_estimated_vram_mb() -> u64 {
     // same DXGI adapter query the primary GPU-detection path already
     // relies on instead; an empty target name matches the first adapter
     // that reports any dedicated VRAM.
-    let dxgi_vram = crate::sidecar_manager::query_dxgi_vram_mb("", true);
-    if dxgi_vram > 0 {
-        return dxgi_vram;
+    #[cfg(feature = "desktop")]
+    {
+        let dxgi_vram = crate::sidecar_manager::query_dxgi_vram_mb("", true);
+        if dxgi_vram > 0 {
+            return dxgi_vram;
+        }
     }
     6144 // Default fallback for modern 6GB GPUs
 }
@@ -566,6 +600,7 @@ pub fn compute_workload_threads(_input_path: &str, _is_video: bool) -> &'static 
 // Owned Arc clones (rather than references) intentionally match
 // run_video_job's signature -- both are dispatched from the same call site
 // in process_next behind a shared `if job.is_video` branch.
+#[cfg(feature = "desktop")]
 #[allow(clippy::too_many_lines, clippy::needless_pass_by_value)]
 fn run_single_image_job(
     app: &AppHandle,

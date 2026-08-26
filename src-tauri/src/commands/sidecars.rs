@@ -1,3 +1,5 @@
+#![cfg(feature = "desktop")]
+
 use tauri::{path::BaseDirectory, AppHandle, Manager};
 
 /// Runs the same provisioning script the installer runs, on demand.

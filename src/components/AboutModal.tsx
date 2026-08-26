@@ -1,6 +1,7 @@
 import { usePanelA11y } from '../hooks/usePanelA11y';
 import { useAppVersion, useUpdatePhase } from '../store/selectors';
 import { checkForUpdates } from '../lib/updater';
+import { STRINGS } from '../lib/strings';
 
 interface AboutModalProps {
   onClose: () => void;
@@ -42,7 +43,7 @@ export function AboutModal({ onClose, isOpen = true }: AboutModalProps) {
           id="about-panel-title"
           className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.1em] text-[#6B655E]"
         >
-          SHORTCUTS & INFO
+          {STRINGS.SHORTCUTS_AND_INFO}
         </span>
         <button
           type="button"
@@ -56,9 +57,7 @@ export function AboutModal({ onClose, isOpen = true }: AboutModalProps) {
 
       <div className="flex-1 overflow-y-auto min-h-0 p-3">
         <div className="text-[11.5px] text-[var(--text-tertiary)] leading-[1.6] mb-3 pb-3 border-b border-[#232120]">
-          Local image and video upscaling on Vulkan. Your media never leaves the machine — the only
-          network requests Upscaly Studio makes are for model weights you choose to download and its
-          own update check.
+          {STRINGS.APP_DESCRIPTION}
         </div>
 
         {/*
@@ -68,7 +67,7 @@ export function AboutModal({ onClose, isOpen = true }: AboutModalProps) {
         */}
         <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-b border-[#232120]">
           <div className="font-['Martian_Mono',monospace] text-[9.5px] tracking-[0.06em] text-[var(--text-muted)]">
-            VERSION {appVersion || '—'}
+            {STRINGS.VERSION} {appVersion || '—'}
           </div>
           <button
             type="button"
@@ -76,12 +75,12 @@ export function AboutModal({ onClose, isOpen = true }: AboutModalProps) {
             disabled={updatePhase !== 'idle'}
             className="h-[22px] px-2 rounded-md border border-[var(--border-default)] bg-[var(--bg-elevated)] font-['Martian_Mono',monospace] text-[9px] tracking-[0.04em] text-[var(--text-secondary)] cursor-pointer transition-all duration-200 hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] disabled:opacity-40 disabled:cursor-default"
           >
-            {updatePhase === 'checking' ? 'CHECKING…' : 'CHECK FOR UPDATES'}
+            {updatePhase === 'checking' ? STRINGS.CHECKING_UPDATES : STRINGS.CHECK_FOR_UPDATES}
           </button>
         </div>
 
         <div className="font-['Martian_Mono',monospace] text-[8.5px] tracking-[0.1em] text-[#6B655E] mb-2">
-          SHORTCUTS
+          {STRINGS.SHORTCUTS}
         </div>
         <div className="space-y-1">
           {HOTKEYS.map((k) => (
