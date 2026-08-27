@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { check } from '@tauri-apps/plugin-updater';
-import { relaunch } from '@tauri-apps/plugin-process';
+import { exit } from '@tauri-apps/plugin-process';
 import {
   checkForUpdates,
   downloadAndInstallUpdate,
@@ -12,13 +12,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { getName, getVersion } from '@tauri-apps/api/app';
 
 vi.mock('@tauri-apps/plugin-updater', () => ({ check: vi.fn() }));
-vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: vi.fn() }));
+vi.mock('@tauri-apps/plugin-process', () => ({ exit: vi.fn() }));
 vi.mock('@tauri-apps/api/app', () => ({ getName: vi.fn(), getVersion: vi.fn() }));
 
 const mockGetName = vi.mocked(getName);
 const mockGetVersion = vi.mocked(getVersion);
 const mockCheck = vi.mocked(check);
-const mockRelaunch = vi.mocked(relaunch);
+const mockExit = vi.mocked(exit);
 const mockInvoke = vi.mocked(invoke);
 const state = () => studioStore.getState();
 
@@ -135,7 +135,7 @@ describe('checkForUpdates', () => {
 });
 
 describe('downloadAndInstallUpdate', () => {
-  it('reports real download progress and relaunches when finished', async () => {
+  it('reports real download progress and exits when finished', async () => {
     asProductionBuild();
     // Sampled mid-flight, not after the run: reaching `installing` zeroes
     // the bar on purpose, so that a later download cannot briefly paint a
@@ -155,7 +155,12 @@ describe('downloadAndInstallUpdate', () => {
 
     expect(observed).toEqual([25, 100]);
     expect(state().updatePhase).toBe('installing');
-    expect(mockRelaunch).toHaveBeenCalledOnce();
+    // Exit, never relaunch. A relaunch spawns a second upscaly.exe that
+    // holds the binary the NSIS installer is mid-way through overwriting,
+    // which is what broke the 1.0.4 -> 1.0.5 update with "Error opening
+    // file for writing".
+    expect(mockExit).toHaveBeenCalledOnce();
+    expect(mockExit).toHaveBeenCalledWith(0);
   });
 
   it('leaves progress at zero when the server sends no content length', async () => {
@@ -185,7 +190,7 @@ describe('downloadAndInstallUpdate', () => {
 
     expect(state().updatePhase).toBe('idle');
     expect(state().toasts[0].message).toContain('Update failed');
-    expect(mockRelaunch).not.toHaveBeenCalled();
+    expect(mockExit).not.toHaveBeenCalled();
   });
 
   it('does not start a second download while one is already running', async () => {

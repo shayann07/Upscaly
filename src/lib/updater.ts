@@ -1,5 +1,5 @@
 import { check } from '@tauri-apps/plugin-updater';
-import { relaunch } from '@tauri-apps/plugin-process';
+import { exit } from '@tauri-apps/plugin-process';
 import { getName, getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { bootName } from './boot';
@@ -104,7 +104,7 @@ export async function checkForUpdates(manual = false): Promise<void> {
 }
 
 /**
- * Downloads and installs the pending update, then relaunches.
+ * Downloads and installs the pending update, then exits.
  *
  * `check()` is called a second time rather than holding the earlier
  * `Update` object in the store: it owns a Rust-side resource handle, and
@@ -143,7 +143,21 @@ export async function downloadAndInstallUpdate(): Promise<void> {
       }
     });
 
-    await relaunch();
+    // Exit -- never relaunch. `relaunch()` starts a *new* upscaly.exe and
+    // then quits this one, so the fresh process holds the very binary the
+    // NSIS installer is trying to overwrite. Not theoretical: on 2026-08-27
+    // the 1.0.4 -> 1.0.5 update died on "Error opening file for writing:
+    // ...\upscaly.exe", and the log shows the app still writing entries
+    // three minutes after the installer launched -- the relaunched instance,
+    // holding the lock.
+    //
+    // Tauri's guidance is that no relaunch call belongs here at all: "On
+    // Windows the application is automatically exited when the install step
+    // is executed due to a limitation of Windows installers." The NSIS
+    // installer restarts the app itself once finished. Exiting explicitly
+    // rather than trusting that keeps the binary unlocked even when the
+    // automatic exit is late -- which is the window this bug fell through.
+    await exit(0);
   } catch (err) {
     studioActions.setUpdatePhase('idle');
     studioActions.notify('error', 'Update failed', String(err));
