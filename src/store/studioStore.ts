@@ -58,6 +58,7 @@ export interface StudioState {
    * addition to the app's own. Empty when unset.
    */
   customModelsDir: string;
+  scratchDir: string;
   /**
    * Slower but cooler: a pause between video batches and one tile step
    * below the governor's pick. For machines whose GPU resets under hours
@@ -165,6 +166,7 @@ function createInitialState(): StudioState {
     preset: 'balanced',
     outputFormat: 'png',
     customModelsDir: '',
+    scratchDir: '',
     gentleMode: false,
     customOutputPath: '',
     isMuted: readMutedPreference(),
@@ -392,6 +394,9 @@ export const studioActions = {
   },
   setCustomModelsDir(customModelsDir: string) {
     setState((prev) => ({ ...prev, customModelsDir }));
+  },
+  setScratchDir(scratchDir: string) {
+    setState((prev) => ({ ...prev, scratchDir }));
   },
   setGentleMode(gentleMode: boolean) {
     setState((prev) => ({ ...prev, gentleMode }));

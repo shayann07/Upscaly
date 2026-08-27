@@ -50,12 +50,46 @@ pub fn app_local_data_dir(app: &AppHandle) -> PathBuf {
 
 /// Replaces `app.path().app_cache_dir()`. Per-job video/batch staging
 /// directories live under this; everything in it is disposable.
+///
+/// Honours the `scratch_dir` setting when one is configured. A 4x video job
+/// keeps every upscaled PNG frame resident until reassembly, which runs to
+/// tens of GB -- a 1080p clip of a couple of thousand frames needs ~83 GB.
+/// The platform cache directory is on the system drive, which on a laptop is
+/// routinely the *smallest* volume, so the job is refused for want of space
+/// while a data drive sits empty. Letting the user point staging at that
+/// drive is the difference between the feature working and not.
+///
+/// A configured directory that cannot be created is ignored rather than
+/// fatal: a path can go missing with an unplugged drive, and falling back to
+/// the platform default degrades to "works, but might be short on space"
+/// instead of "every video job fails until you visit Settings".
 pub fn app_cache_dir(app: &AppHandle) -> PathBuf {
+    if let Some(dir) = configured_scratch_dir(app) {
+        return dir;
+    }
     let dir = app
         .path()
         .app_cache_dir()
         .unwrap_or_else(|_| std::env::temp_dir().join("upscaly"));
     debug_suffixed(dir)
+}
+
+/// The user's chosen staging root, if set, usable, and writable.
+///
+/// Debug-suffixed like every other path here, so a debug build pointed at
+/// the same folder as the release one still cannot share its staging.
+fn configured_scratch_dir(app: &AppHandle) -> Option<PathBuf> {
+    let configured = crate::settings::load_settings(app).scratch_dir?;
+    let trimmed = configured.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let dir = debug_suffixed(PathBuf::from(trimmed).join("UpscalyScratch"));
+    // Create eagerly: an unwritable or vanished path has to fall back now,
+    // not fail later with the staging directory half-built.
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
 }
 
 #[cfg(test)]
