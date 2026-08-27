@@ -440,10 +440,7 @@ fn merge_engine_ids_with_native_metadata(
             native
                 .iter()
                 .find(|n| n.name.eq_ignore_ascii_case(&device.name))
-                .map_or(device, |rich| GpuDevice {
-                    id,
-                    ..rich.clone()
-                })
+                .map_or(device, |rich| GpuDevice { id, ..rich.clone() })
         })
         .collect();
 
@@ -1025,11 +1022,29 @@ mod tests {
         // measured 2.5-6.5x slower, with the UI still naming the NVIDIA.
         let engine = vec![
             device(0, "Intel(R) UHD Graphics", "Integrated Graphics", 0, 2),
-            device(1, "NVIDIA GeForce RTX 3050 6GB Laptop GPU", "Discrete GPU", 0, 16),
+            device(
+                1,
+                "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+                "Discrete GPU",
+                0,
+                16,
+            ),
         ];
         let native = vec![
-            device(0, "NVIDIA GeForce RTX 3050 6GB Laptop GPU", "NVIDIA (Discrete GPU)", 6001, 24),
-            device(1, "Intel(R) UHD Graphics", "Intel (Integrated GPU)", 16198, 1),
+            device(
+                0,
+                "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+                "NVIDIA (Discrete GPU)",
+                6001,
+                24,
+            ),
+            device(
+                1,
+                "Intel(R) UHD Graphics",
+                "Intel (Integrated GPU)",
+                16198,
+                1,
+            ),
         ];
 
         let merged = merge_engine_ids_with_native_metadata(engine, &native);
@@ -1038,7 +1053,10 @@ mod tests {
         let intel = merged.iter().find(|g| g.name.contains("Intel")).unwrap();
 
         // The id is what `-g` receives, so it must be the engine's.
-        assert_eq!(nvidia.id, 1, "NVIDIA must carry the engine's index, not ash's");
+        assert_eq!(
+            nvidia.id, 1,
+            "NVIDIA must carry the engine's index, not ash's"
+        );
         assert_eq!(intel.id, 0);
 
         // ...while the metadata ash alone can measure survives the swap.
@@ -1054,7 +1072,13 @@ mod tests {
         // ash failing to initialise must not cost us the device list: the
         // engine's coarser numbers are worse than no numbers only in detail,
         // whereas losing the device loses the ability to run at all.
-        let engine = vec![device(1, "NVIDIA GeForce RTX 3050", "Discrete GPU", 4096, 16)];
+        let engine = vec![device(
+            1,
+            "NVIDIA GeForce RTX 3050",
+            "Discrete GPU",
+            4096,
+            16,
+        )];
 
         let merged = merge_engine_ids_with_native_metadata(engine, &[]);
 
@@ -1068,9 +1092,21 @@ mod tests {
         // A device absent from the engine banner cannot be addressed by `-g`
         // at any index, so offering it would offer a selection that silently
         // runs somewhere else.
-        let engine = vec![device(0, "Intel(R) UHD Graphics", "Integrated Graphics", 0, 2)];
+        let engine = vec![device(
+            0,
+            "Intel(R) UHD Graphics",
+            "Integrated Graphics",
+            0,
+            2,
+        )];
         let native = vec![
-            device(0, "Intel(R) UHD Graphics", "Intel (Integrated GPU)", 16198, 1),
+            device(
+                0,
+                "Intel(R) UHD Graphics",
+                "Intel (Integrated GPU)",
+                16198,
+                1,
+            ),
             device(1, "Llvmpipe (LLVM 15.0.7, 256 bits)", "CPU", 8192, 4),
         ];
 
