@@ -49,3 +49,7 @@ src-tauri/models/*.param
 test/
 demo_samples/
 real_world_benchmarks/
+
+# Local model weights and experiment scratch -- never committed
+custom_models/
+scratch/
