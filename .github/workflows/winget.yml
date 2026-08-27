@@ -19,3 +19,81 @@ jobs:
           identifier: Wexpa.UpscalyStudio
           installers-regex: 'Upscaly-Studio_.*_x64-setup\.exe$'
           token: ${{ secrets.WINGET_TOKEN }}
+
+  # winget-releaser generates the manifest with komac, which copies
+  # DisplayVersion out of the installer's Add/Remove Programs registry entry.
+  # Ours always equals PackageVersion, and the installer schema says so:
+  # "When the PackageVersion and DisplayVersion are the same, the
+  # DisplayVersion should be omitted from the AppsAndFeaturesEntries."
+  # A reviewer asked us to remove it by hand on 1.0.3; this stops that
+  # recurring every release.
+  #
+  # The line is dropped from the *manifest* only. The installer must keep
+  # writing DisplayVersion to the registry -- that is the value winget reads
+  # to decide which version is installed, so removing it there would break
+  # upgrade detection and blank the version in Windows Apps & features.
+  #
+  # The action exposes no input for this (checked: identifier, version,
+  # installers-regex, max-versions-to-keep, release-tag, fork-user, token,
+  # release-notes-url) and v2 is its latest release, so editing after the
+  # fact is the only lever available.
+  strip-display-version:
+    needs: winget
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove redundant DisplayVersion from the generated manifest
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          VERSION: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${VERSION#v}"
+          path="manifests/w/Wexpa/UpscalyStudio/${version}/Wexpa.UpscalyStudio.installer.yaml"
+
+          # The PR is opened asynchronously by the job above, and the branch
+          # appears with it. Poll rather than assume it is already there.
+          # Found via the search API, not by listing open PRs: winget-pkgs
+          # carries thousands of them, so any paged listing would miss ours.
+          for attempt in $(seq 1 20); do
+            number=$(gh api -X GET search/issues               -f q="repo:microsoft/winget-pkgs type:pr state:open author:${GITHUB_REPOSITORY_OWNER} Wexpa.UpscalyStudio ${version}"               --jq '.items[0].number // empty')
+            if [ -n "$number" ]; then
+              branch=$(gh api "repos/microsoft/winget-pkgs/pulls/${number}" --jq '.head.ref')
+              [ -n "$branch" ] && break
+            fi
+            echo "attempt ${attempt}: no PR yet for ${version}; waiting"
+            sleep 30
+          done
+
+          if [ -z "${branch:-}" ]; then
+            echo "::warning::No winget PR found for ${version}; nothing to patch."
+            exit 0
+          fi
+          echo "found branch: ${branch}"
+
+          resp=$(gh api "repos/${GITHUB_REPOSITORY_OWNER}/winget-pkgs/contents/${path}?ref=${branch}")
+          sha=$(jq -r .sha <<<"$resp")
+          jq -r .content <<<"$resp" | tr -d '\n' | base64 -d > installer.yaml
+
+          if ! grep -q '^[[:space:]]*DisplayVersion:' installer.yaml; then
+            echo "DisplayVersion already absent; nothing to do."
+            exit 0
+          fi
+
+          # Byte-level edit so the UTF-8 BOM winget manifests carry survives.
+          python3 - <<'PY'
+          raw = open('installer.yaml', 'rb').read()
+          kept = [l for l in raw.split(b'\n')
+                  if not l.strip().startswith(b'DisplayVersion:')]
+          out = b'\n'.join(kept)
+          assert out[:3] == b'\xef\xbb\xbf', 'BOM lost'
+          assert b'DisplayVersion' not in out
+          open('installer.yaml', 'wb').write(out)
+          PY
+
+          gh api -X PUT "repos/${GITHUB_REPOSITORY_OWNER}/winget-pkgs/contents/${path}" \
+            -f message="Remove DisplayVersion, which duplicates PackageVersion" \
+            -f content="$(base64 -w0 installer.yaml)" \
+            -f sha="$sha" \
+            -f branch="$branch"
+          echo "patched ${path} on ${branch}"
