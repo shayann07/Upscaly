@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { SUPPORTED_MODELS, ModelInfo } from '../lib/types';
+import { SUPPORTED_MODELS, SUPPORTED_SCALES, ModelInfo } from '../lib/types';
 import { ModelSelectorDropdown } from './settings/ModelSelectorDropdown';
 import { CategorySelectorSection } from './settings/CategorySelectorSection';
 import { ScaleSelectorSection } from './settings/ScaleSelectorSection';
@@ -66,7 +66,27 @@ function getModelListData(
     activeCategory === 'video'
       ? modelsList
       : modelsList.filter((m: ModelInfo) => m.cat === activeCategory);
-  return { modelsList, model, filteredModels };
+
+  // Which factors the scale pills may actually offer.
+  //
+  // `selectScale` only ever swaps within the selected model's own category:
+  // asking for 2x when nothing photographic runs at 2x used to keep the 4x
+  // model and explain itself in a toast, which left the pill reading 2x
+  // while the job ran at 4x. Disabling the unreachable factors says the same
+  // thing before the click instead of contradicting it after.
+  //
+  // Keyed off `model.cat` rather than `activeCategory` so it matches what
+  // `selectScale` actually does -- the video category lists every model, but
+  // a swap still has to stay inside the selected one's category.
+  const reachable = new Set(
+    modelsList.filter((m: ModelInfo) => m.cat === model.cat).map((m: ModelInfo) => m.scale)
+  );
+  // The selected model's own factor is always reachable: choosing it is a
+  // no-op that keeps the model exactly as it is.
+  reachable.add(model.scale);
+  const availableScales = SUPPORTED_SCALES.filter((n) => reachable.has(n));
+
+  return { modelsList, model, filteredModels, availableScales };
 }
 
 function getRunButtonStyle(isProcessing: boolean, hasFiles: boolean): React.CSSProperties {
@@ -127,7 +147,7 @@ function SettingsPanelImpl(props: SettingsPanelProps) {
   const activeScale = selectedScale ?? scale ?? 4;
   const EASE = 'var(--ease-spring)';
 
-  const { modelsList, model, filteredModels } = getModelListData(
+  const { modelsList, model, filteredModels, availableScales } = getModelListData(
     supportedModels,
     selectedModel,
     activeCategory
@@ -177,6 +197,7 @@ function SettingsPanelImpl(props: SettingsPanelProps) {
         activeScale={activeScale}
         pillStyle={pill}
         onSelectScale={onSelectScale}
+        availableScales={availableScales}
       />
 
       <button
