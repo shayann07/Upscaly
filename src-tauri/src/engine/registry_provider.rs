@@ -258,6 +258,40 @@ impl GitHubReleaseProvider {
             // The two 108,039-byte .param files legitimately share a
             // hash: same architecture definition, different weights.
             // Their .bin hashes are distinct.
+            // Trained on *real-world* degradation (sensor noise, compression,
+            // resampling) rather than the synthetic bicubic+blur+JPEG pipeline
+            // the x4plus family was fit to, which is why it holds up on phone
+            // footage where the stock photo models mostly upscale the blur.
+            //
+            // Measured here on a 576x1024 JPEG at 4x on an RTX 3050, warm
+            // shader cache: 1.86s against x4plus's 10.1s, hence speed 5.4. On
+            // a still that trade is not obviously worth it -- x4plus resolves
+            // visibly more eyelash detail -- but across a few thousand video
+            // frames it is the difference between 25 minutes and over 2 hours.
+            //
+            // Provenance note: upstream ships this model as PyTorch `.pth`
+            // only, so the ncnn conversion comes from realesrgan-gui's
+            // `additional-models` release. That is a *tag*, not a commit, and
+            // a tag can be repointed at different bytes. The sha256 below is
+            // what makes that safe: a substituted asset fails verification
+            // rather than installing silently. Both hashes were computed from
+            // the bytes these exact URLs served.
+            RegistryModelEntry {
+                id: "realesr-general-x4v3".to_string(),
+                name: "General Real-World".to_string(),
+                version: "v0.3.0".to_string(),
+                note: Some("Built for real camera footage -- noise, compression and phone video. Roughly 5x faster than RealESRGAN Ultra for a small loss of fine detail".to_string()),
+                cat: Some("photo".to_string()),
+                scale: Some(4),
+                size: Some("4.9 MB".to_string()),
+                speed: Some(5.4),
+                param_url: "https://github.com/TransparentLC/realesrgan-gui/releases/download/additional-models/realesr-general-x4v3.param".to_string(),
+                param_sha256: Some("33950f36822fd37786502db9bd6a3638f677c13b23814c8e5a6e8fd9bcea2163".to_string()),
+                param_size: Some(9015),
+                bin_url: "https://github.com/TransparentLC/realesrgan-gui/releases/download/additional-models/realesr-general-x4v3.bin".to_string(),
+                bin_sha256: Some("bfdfaebf0b26be9442faa30b8cec617fe04a808ae2aa3616ece85b92d81ae0ce".to_string()),
+                bin_size: Some(4853320),
+            },
             RegistryModelEntry {
                 id: "remacri-4x".to_string(),
                 name: "Remacri".to_string(),
