@@ -20,8 +20,18 @@ pub struct GpuDevice {
     pub compute_queue_count: u32,
 }
 
+/// Bumped whenever a `devices` list cached by an older build can no longer be
+/// trusted. Version 1 is the first to derive `GpuDevice.id` from the engine's
+/// own enumeration; anything written before it holds `ash` indices that can
+/// name a different card, so those caches must be discarded outright rather
+/// than left to age out over 24 hours.
+const GPU_CACHE_SCHEMA_VERSION: u32 = 1;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GpuCacheEnvelope {
+    /// `0` in caches written before schema versioning existed.
+    #[serde(default)]
+    pub schema_version: u32,
     pub timestamp: u64,
     pub sidecar_hash: String,
     pub devices: Vec<GpuDevice>,
@@ -271,8 +281,9 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
                 let age = now_secs.saturating_sub(cache.timestamp);
                 let hash_matches =
                     cache.sidecar_hash.is_empty() || cache.sidecar_hash == current_hash;
+                let schema_matches = cache.schema_version == GPU_CACHE_SCHEMA_VERSION;
 
-                if age < 86400 && hash_matches && !cache.devices.is_empty() {
+                if schema_matches && age < 86400 && hash_matches && !cache.devices.is_empty() {
                     if let Ok(mut guard) = IN_MEMORY_GPU_CACHE.lock() {
                         *guard = Some(cache.devices.clone());
                     }
@@ -282,12 +293,38 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
         }
     }
 
-    // 2. Perform raw discovery: native Vulkan first to avoid engine crashes and WER noise,
-    // falling back to sidecar probe if ash cannot initialize the Vulkan loader.
-    let gpus = probe_gpus_vulkan_native().unwrap_or_else(|| {
-        tracing::warn!("native Vulkan enumeration unavailable; falling back to engine probe");
-        probe_gpus_raw(app).unwrap_or_default()
-    });
+    // 2. Perform raw discovery.
+    //
+    // `GpuDevice.id` is only ever used as the `-g` argument to
+    // realesrgan-ncnn-vulkan, so it has to mean what *that binary* means by it.
+    // ncnn performs its own Vulkan enumeration, and its order need not match
+    // the one `ash` reports: on the reference laptop ash enumerated
+    // `[0 NVIDIA][1 Intel]` while the engine enumerated `[0 Intel][1 NVIDIA]`
+    // -- exactly reversed. Passing ash's index to `-g` therefore ran every job
+    // on the iGPU while the UI named the discrete card, at a measured 2.5-6.5x
+    // slowdown, and nothing about it was visible short of watching per-device
+    // utilization. `resolveGpu` on the frontend already re-derives the index
+    // from a fresh enumeration every launch precisely so a stale index cannot
+    // pick the wrong card; that only works if the enumeration it is handed
+    // counts the way the engine does.
+    //
+    // So the engine's enumeration decides `id`, and the native ash probe is
+    // demoted to what it is uniquely good at: true VRAM heap sizes, compute
+    // queue counts and fp16 capability, none of which the engine banner
+    // prints. The cost is spawning the engine on every cache miss -- the very
+    // thing native-first was introduced to avoid -- but a crashy probe is
+    // recoverable (the parser deliberately reads the device banner however the
+    // child ends) and a wrong device id is not.
+    let native = probe_gpus_vulkan_native().unwrap_or_default();
+    let gpus = match probe_gpus_raw(app) {
+        Ok(engine) if !engine.is_empty() => merge_engine_ids_with_native_metadata(engine, &native),
+        _ => {
+            tracing::warn!(
+                "engine GPU probe unavailable; falling back to native enumeration, whose                  indices may not agree with the engine's own"
+            );
+            native
+        }
+    };
 
     // 3. Write cache envelope to disk and memory if GPUs were successfully discovered
     if !gpus.is_empty() {
@@ -297,6 +334,7 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
 
         let _ = std::fs::create_dir_all(&app_dir);
         let envelope = GpuCacheEnvelope {
+            schema_version: GPU_CACHE_SCHEMA_VERSION,
             timestamp: now_secs,
             sidecar_hash: current_hash,
             devices: gpus.clone(),
@@ -381,6 +419,33 @@ fn probe_gpus_vulkan_native() -> Option<Vec<GpuDevice>> {
         tracing::info!(count = devices.len(), "GPUs enumerated natively");
         Some(devices)
     }
+}
+
+/// Rebuilds the device list on the engine's enumeration, enriched with the
+/// metadata only the native Vulkan probe can supply.
+///
+/// `engine` decides both membership and `id`: a device the engine never
+/// printed cannot be reached through `-g` at all, so listing it would offer a
+/// selection that silently runs elsewhere. `native` contributes VRAM, queue
+/// counts and fp16 flags for each device whose name it also reported; where it
+/// reported nothing, the engine's own coarser values stand.
+fn merge_engine_ids_with_native_metadata(
+    engine: Vec<GpuDevice>,
+    native: &[GpuDevice],
+) -> Vec<GpuDevice> {
+    let mut merged: Vec<GpuDevice> = engine
+        .into_iter()
+        .map(|device| {
+            let id = device.id;
+            native
+                .iter()
+                .find(|n| n.name.eq_ignore_ascii_case(&device.name))
+                .map_or(device, |rich| GpuDevice { id, ..rich.clone() })
+        })
+        .collect();
+
+    merged.sort_by(cmp_by_discrete);
+    merged
 }
 
 #[allow(clippy::similar_names)]
@@ -936,6 +1001,131 @@ pub fn kill_all_processes() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn device(id: i32, name: &str, detail: &str, vram_mb: u64, queues: u32) -> GpuDevice {
+        GpuDevice {
+            id,
+            name: name.to_string(),
+            detail: detail.to_string(),
+            vram_mb,
+            fp16_storage_supported: true,
+            fp16_arithmetic_supported: true,
+            compute_queue_count: queues,
+        }
+    }
+
+    #[test]
+    fn test_merge_takes_ids_from_the_engine_not_the_native_probe() {
+        // The exact inversion observed on the reference laptop: `ash` put the
+        // discrete card at index 0, the engine put the iGPU there. Selecting
+        // "RTX 3050" therefore sent `-g 0` and ran the job on the Intel chip,
+        // measured 2.5-6.5x slower, with the UI still naming the NVIDIA.
+        let engine = vec![
+            device(0, "Intel(R) UHD Graphics", "Integrated Graphics", 0, 2),
+            device(
+                1,
+                "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+                "Discrete GPU",
+                0,
+                16,
+            ),
+        ];
+        let native = vec![
+            device(
+                0,
+                "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+                "NVIDIA (Discrete GPU)",
+                6001,
+                24,
+            ),
+            device(
+                1,
+                "Intel(R) UHD Graphics",
+                "Intel (Integrated GPU)",
+                16198,
+                1,
+            ),
+        ];
+
+        let merged = merge_engine_ids_with_native_metadata(engine, &native);
+
+        let nvidia = merged.iter().find(|g| g.name.contains("NVIDIA")).unwrap();
+        let intel = merged.iter().find(|g| g.name.contains("Intel")).unwrap();
+
+        // The id is what `-g` receives, so it must be the engine's.
+        assert_eq!(
+            nvidia.id, 1,
+            "NVIDIA must carry the engine's index, not ash's"
+        );
+        assert_eq!(intel.id, 0);
+
+        // ...while the metadata ash alone can measure survives the swap.
+        assert_eq!(nvidia.vram_mb, 6001);
+        assert_eq!(nvidia.compute_queue_count, 24);
+
+        // Discrete still sorts first for display.
+        assert!(merged[0].name.contains("NVIDIA"));
+    }
+
+    #[test]
+    fn test_merge_keeps_engine_values_when_native_probe_is_silent() {
+        // ash failing to initialise must not cost us the device list: the
+        // engine's coarser numbers are worse than no numbers only in detail,
+        // whereas losing the device loses the ability to run at all.
+        let engine = vec![device(
+            1,
+            "NVIDIA GeForce RTX 3050",
+            "Discrete GPU",
+            4096,
+            16,
+        )];
+
+        let merged = merge_engine_ids_with_native_metadata(engine, &[]);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].id, 1);
+        assert_eq!(merged[0].vram_mb, 4096);
+    }
+
+    #[test]
+    fn test_merge_drops_devices_the_engine_never_reported() {
+        // A device absent from the engine banner cannot be addressed by `-g`
+        // at any index, so offering it would offer a selection that silently
+        // runs somewhere else.
+        let engine = vec![device(
+            0,
+            "Intel(R) UHD Graphics",
+            "Integrated Graphics",
+            0,
+            2,
+        )];
+        let native = vec![
+            device(
+                0,
+                "Intel(R) UHD Graphics",
+                "Intel (Integrated GPU)",
+                16198,
+                1,
+            ),
+            device(1, "Llvmpipe (LLVM 15.0.7, 256 bits)", "CPU", 8192, 4),
+        ];
+
+        let merged = merge_engine_ids_with_native_metadata(engine, &native);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].name, "Intel(R) UHD Graphics");
+    }
+
+    #[test]
+    fn test_stale_schema_cache_is_rejected() {
+        // Caches written before version 1 hold ash indices. Ageing them out
+        // over 24h would leave the wrong card selected for a whole day.
+        let legacy = r#"{"timestamp":123,"sidecar_hash":"abc","devices":[]}"#;
+        let envelope: GpuCacheEnvelope = serde_json::from_str(legacy).unwrap();
+
+        assert_eq!(envelope.schema_version, 0);
+        assert_ne!(envelope.schema_version, GPU_CACHE_SCHEMA_VERSION);
+    }
 
     #[test]
     fn test_gpu_device_struct() {

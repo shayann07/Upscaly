@@ -13,6 +13,8 @@
 //! em-dash, per the project rule that unmeasured values are never
 //! substituted with plausible-looking ones.
 
+#![cfg(feature = "desktop")]
+
 use std::process::Command;
 
 use crate::error::AppError;

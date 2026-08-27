@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { STRINGS } from '../lib/strings';
 interface DropZoneProps {
   isDragOver: boolean;
   onAddFiles?: () => void;
@@ -63,13 +64,13 @@ function DropZoneImpl({
         </div>
 
         <div className="text-[21px] font-semibold tracking-[-0.02em] mb-2">
-          {isDragOver ? 'Release to queue' : 'Drop media to upscale'}
+          {isDragOver ? STRINGS.DROP_ACTIVE : STRINGS.DROP_IDLE}
         </div>
         <div className="text-[12.5px] text-[var(--text-tertiary)] leading-[1.5] max-w-[300px]">
-          Images or video, a single file or a whole folder. Nothing leaves your machine.
+          {STRINGS.DROP_SUBTITLE}
         </div>
         <div className="font-['Martian_Mono',monospace] text-[9px] tracking-[0.07em] text-[var(--text-ghost)] mt-3.5">
-          PNG JPG WEBP &nbsp;·&nbsp; MP4 MKV MOV
+          {STRINGS.DROP_FORMATS}
         </div>
 
         <div className="flex items-center gap-2 mt-6">
@@ -77,13 +78,13 @@ function DropZoneImpl({
             onClick={handleAdd}
             className="h-[38px] px-5 flex items-center gap-[9px] border-none rounded-[9px] bg-[var(--text-primary)] text-[var(--bg-base)] font-['Archivo',sans-serif] text-[12.5px] font-semibold cursor-pointer transition-all duration-200 hover:scale-[1.04] hover:shadow-[0_4px_16px_rgba(255,255,255,0.25)]"
           >
-            Choose files
+            {STRINGS.CHOOSE_FILES}
           </button>
           <button
             onClick={handleBatch}
             className="h-[38px] px-4 border border-[var(--border-subtle)] rounded-[9px] bg-transparent text-[var(--text-secondary)] font-['Archivo',sans-serif] text-[12.5px] font-semibold cursor-pointer transition-all duration-200 hover:scale-[1.04] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)] hover:bg-[#161514] hover:shadow-[var(--shadow-pill-hover)]"
           >
-            Folder
+            {STRINGS.CHOOSE_FOLDER}
           </button>
         </div>
       </div>

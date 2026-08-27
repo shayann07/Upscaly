@@ -1,5 +1,6 @@
 import React from 'react';
 import { Play, Sparkle } from '@phosphor-icons/react';
+import { STRINGS } from '../lib/strings';
 
 interface UpscaleButtonProps {
   disabled: boolean;
@@ -12,23 +13,38 @@ export const UpscaleButton: React.FC<UpscaleButtonProps> = ({
   onClick,
   isProcessing,
 }) => {
+  const isButtonDisabled = disabled || isProcessing;
+
   return (
     <button
       type="button"
-      disabled={disabled || isProcessing}
+      disabled={isButtonDisabled}
       onClick={onClick}
-      className={`h-[42px] px-6 rounded-xl font-semibold text-xs tracking-wide select-none transition-all flex items-center justify-center gap-2 border ${
-        disabled
-          ? 'bg-[#181820] text-zinc-600 border-[#272730] cursor-not-allowed'
-          : 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500/50 shadow-sm active:scale-98 cursor-pointer'
-      }`}
+      className="h-[42px] px-6 font-semibold text-xs tracking-wide select-none transition-all flex items-center justify-center gap-2 border active:scale-[0.98]"
+      style={{
+        borderRadius: 'var(--radius-xl)',
+        background: isButtonDisabled ? 'var(--bg-elevated)' : 'var(--accent)',
+        color: isButtonDisabled ? 'var(--text-ghost)' : 'var(--text-primary)',
+        borderColor: isButtonDisabled ? 'var(--border-default)' : 'var(--border-subtle)',
+        cursor: isButtonDisabled ? 'not-allowed' : 'pointer',
+        boxShadow: isButtonDisabled ? 'none' : 'var(--shadow-pill)',
+      }}
     >
       {isProcessing ? (
-        <Sparkle size={16} weight="fill" className="text-white animate-spin" />
+        <Sparkle
+          size={16}
+          weight="fill"
+          className="animate-spin"
+          style={{ color: 'var(--text-primary)' }}
+        />
       ) : (
-        <Play size={15} weight="fill" className={disabled ? 'text-zinc-600' : 'text-white'} />
+        <Play
+          size={15}
+          weight="fill"
+          style={{ color: disabled ? 'var(--text-ghost)' : 'var(--text-primary)' }}
+        />
       )}
-      <span>{isProcessing ? 'Processing...' : 'Upscale Media'}</span>
+      <span>{isProcessing ? STRINGS.PROCESSING : STRINGS.UPSCALE_MEDIA}</span>
     </button>
   );
 };

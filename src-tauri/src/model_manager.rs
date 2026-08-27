@@ -28,6 +28,7 @@ extern "system" {
 }
 
 /// Queries free disk space available in bytes.
+#[allow(dead_code)]
 pub fn get_available_disk_space(dir: &Path) -> Result<u64, String> {
     #[cfg(windows)]
     #[allow(unsafe_code)]
@@ -61,6 +62,7 @@ pub fn get_available_disk_space(dir: &Path) -> Result<u64, String> {
     }
     #[cfg(not(windows))]
     {
+        let _ = dir;
         Ok(u64::MAX)
     }
 }
@@ -141,6 +143,7 @@ pub fn get_custom_models_dir(app: &AppHandle) -> Option<PathBuf> {
 /// a bundled model of the same name and quietly change what a saved
 /// selection runs.
 #[must_use]
+#[allow(dead_code)]
 pub fn resolve_model_dir(app: &AppHandle, model_name: &str) -> PathBuf {
     let models_dir = get_models_dir(app);
     if model_pair_exists(&models_dir, model_name) {
@@ -177,6 +180,7 @@ pub fn resolve_model_dir(app: &AppHandle, model_name: &str) -> PathBuf {
 /// is not a usable model, and reporting it as one produces a job that fails
 /// at spawn time with an engine error rather than a clear message.
 #[must_use]
+#[allow(dead_code)]
 pub fn model_pair_exists(dir: &Path, model_name: &str) -> bool {
     dir.join(format!("{model_name}.param")).is_file()
         && dir.join(format!("{model_name}.bin")).is_file()

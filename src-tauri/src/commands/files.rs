@@ -85,19 +85,43 @@ pub async fn allow_media_path(app: AppHandle, path: String) -> Result<(), String
 
 #[tauri::command]
 pub async fn close_window(window: tauri::Window) -> Result<(), String> {
-    window.close().map_err(|e| e.to_string())
+    #[cfg(not(target_os = "android"))]
+    {
+        window.close().map_err(|e| e.to_string())
+    }
+    #[cfg(target_os = "android")]
+    {
+        let _ = window;
+        Ok(())
+    }
 }
 
 #[tauri::command]
 pub async fn minimize_window(window: tauri::Window) -> Result<(), String> {
-    window.minimize().map_err(|e| e.to_string())
+    #[cfg(not(target_os = "android"))]
+    {
+        window.minimize().map_err(|e| e.to_string())
+    }
+    #[cfg(target_os = "android")]
+    {
+        let _ = window;
+        Ok(())
+    }
 }
 
 #[tauri::command]
 pub async fn toggle_maximize_window(window: tauri::Window) -> Result<(), String> {
-    if window.is_maximized().unwrap_or(false) {
-        window.unmaximize().map_err(|e| e.to_string())
-    } else {
-        window.maximize().map_err(|e| e.to_string())
+    #[cfg(not(target_os = "android"))]
+    {
+        if window.is_maximized().unwrap_or(false) {
+            window.unmaximize().map_err(|e| e.to_string())
+        } else {
+            window.maximize().map_err(|e| e.to_string())
+        }
+    }
+    #[cfg(target_os = "android")]
+    {
+        let _ = window;
+        Ok(())
     }
 }
