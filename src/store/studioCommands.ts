@@ -141,6 +141,29 @@ export async function clearCustomModelsDir(): Promise<void> {
   await refreshCatalog();
 }
 
+/**
+ * Points per-job staging at a different drive.
+ *
+ * A 4x video job holds every upscaled PNG frame until reassembly -- tens of
+ * GB, and ~83 GB for a couple of thousand 1080p frames. That lands on the
+ * system drive by default, which on a laptop is routinely the smallest
+ * volume, so the job is refused for space while a data drive sits empty.
+ */
+export async function selectScratchDir(): Promise<void> {
+  try {
+    const selected = await open({ directory: true, multiple: false });
+    if (selected && typeof selected === 'string') {
+      studioActions.setScratchDir(selected);
+    }
+  } catch (err) {
+    console.error('Failed to select scratch folder:', err);
+  }
+}
+
+export function clearScratchDir(): void {
+  studioActions.setScratchDir('');
+}
+
 export function clearFile(): void {
   // A live job has to be dealt with before the queue it belongs to can be
   // thrown away, so route through the same confirmation the X button uses.

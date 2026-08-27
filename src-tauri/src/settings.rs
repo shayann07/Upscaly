@@ -31,6 +31,16 @@ pub struct AppSettings {
     /// addition to the app's own models directory. `None` when unset.
     #[serde(default)]
     pub custom_models_dir: Option<String>,
+    /// Where per-job staging goes, overriding the platform cache directory.
+    /// `None` uses the default under `%LOCALAPPDATA%`.
+    ///
+    /// A 4x video job holds every upscaled PNG frame until reassembly --
+    /// tens of GB, and ~83 GB for a couple of thousand 1080p frames. That
+    /// lands on the system drive, which is routinely the smallest volume on
+    /// a laptop, so jobs get refused for space while a data drive sits
+    /// empty. See `app_paths::app_cache_dir`.
+    #[serde(default)]
+    pub scratch_dir: Option<String>,
     /// Trades ~10-20% throughput for thermal headroom on long video runs:
     /// a cooldown pause between engine batches and one tile step below the
     /// governor's choice. For machines whose GPU resets under hours of
@@ -52,6 +62,7 @@ impl Default for AppSettings {
             default_preset: crate::engine::preset::QualityPreset::Balanced,
             default_output_format: crate::engine::output_format::OutputFormat::Png,
             custom_models_dir: None,
+            scratch_dir: None,
             gentle_mode: false,
             output_directory: None,
             sound_muted: false,

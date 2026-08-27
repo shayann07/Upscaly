@@ -8,6 +8,7 @@ import { HistoryEntry } from '../../lib/types';
 import {
   useActiveNavTab,
   useCustomModelsDir,
+  useScratchDir,
   useGentleMode,
   useCustomOutputPath,
   useDownloadingModels,
@@ -29,6 +30,8 @@ import {
   downloadModel,
   loadHistoryItem,
   selectCustomModelsDir,
+  selectScratchDir,
+  clearScratchDir,
   selectOutputDirectory,
 } from '../../store/studioCommands';
 
@@ -36,6 +39,7 @@ const closeNav = () => studioActions.setActiveNavTab(null);
 const handleDownloadModel = (id: string) => void downloadModel(id);
 const handleSelectOutputDir = () => void selectOutputDirectory();
 const handleSelectModelsDir = () => void selectCustomModelsDir();
+const handleSelectScratchDir = () => void selectScratchDir();
 const handleClearModelsDir = () => void clearCustomModelsDir();
 
 function SettingsDrawerContent() {
@@ -46,6 +50,7 @@ function SettingsDrawerContent() {
   const preset = usePreset();
   const outputFormat = useOutputFormat();
   const customModelsDir = useCustomModelsDir();
+  const scratchDir = useScratchDir();
   const gentleMode = useGentleMode();
   const customOutputPath = useCustomOutputPath();
   const isProcessing = useIsProcessing();
@@ -57,6 +62,15 @@ function SettingsDrawerContent() {
       onClear: handleClearModelsDir,
     }),
     [customModelsDir]
+  );
+
+  const scratch = useMemo(
+    () => ({
+      dir: scratchDir,
+      onSelect: handleSelectScratchDir,
+      onClear: clearScratchDir,
+    }),
+    [scratchDir]
   );
 
   const handleAutoTune = useCallback((recTile: number, vramText: string) => {
@@ -102,6 +116,7 @@ function SettingsDrawerContent() {
         );
       }}
       customModels={customModels}
+      scratch={scratch}
       gentle={{
         on: gentleMode,
         onToggle: (on) => {

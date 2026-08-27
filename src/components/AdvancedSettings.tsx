@@ -4,15 +4,20 @@ import { TileSizeSection } from './settings/TileSizeSection';
 import { PresetSection } from './settings/PresetSection';
 import { OutputFormatSection } from './settings/OutputFormatSection';
 import { CustomModelsSection } from './settings/CustomModelsSection';
+import { ScratchDirSection } from './settings/ScratchDirSection';
 import { GentleModeSection } from './settings/GentleModeSection';
 import { useVramProfile } from '../hooks/useVramProfile';
 import { OutputFormat, QualityPreset } from '../lib/types';
 
-export interface CustomModelsConfig {
+/** A folder path plus the two actions that change it. */
+export interface FolderPickerConfig {
   dir: string;
   onSelect: () => void;
   onClear: () => void;
 }
+
+/** Kept as the name existing call sites already use; identical shape. */
+export type CustomModelsConfig = FolderPickerConfig;
 
 export interface GentleModeConfig {
   on: boolean;
@@ -24,6 +29,13 @@ const NO_GENTLE_MODE: GentleModeConfig = { on: false, onToggle: () => {} };
 
 /** Module scope so the default keeps a stable identity across renders. */
 const NO_CUSTOM_MODELS: CustomModelsConfig = {
+  dir: '',
+  onSelect: () => {},
+  onClear: () => {},
+};
+
+/** Same, for the staging folder. */
+const NO_SCRATCH_DIR: FolderPickerConfig = {
   dir: '',
   onSelect: () => {},
   onClear: () => {},
@@ -70,6 +82,8 @@ export interface AdvancedSettingsProps {
    */
   customModels?: CustomModelsConfig;
   /** Grouped for the same complexity-budget reason as customModels. */
+  scratch?: FolderPickerConfig;
+  /** Grouped for the same complexity-budget reason as customModels. */
   gentle?: GentleModeConfig;
   customOutputPath?: string;
   onSetOutputDir?: (dir: string) => void;
@@ -92,6 +106,7 @@ export function AdvancedSettings({
   outputFormat = 'png',
   onSelectOutputFormat = () => {},
   customModels = NO_CUSTOM_MODELS,
+  scratch = NO_SCRATCH_DIR,
   gentle = NO_GENTLE_MODE,
   customOutputPath = '',
   onSetOutputDir,
@@ -177,6 +192,12 @@ export function AdvancedSettings({
           customModelsDir={customModels.dir}
           onSelectFolder={customModels.onSelect}
           onClearFolder={customModels.onClear}
+        />
+
+        <ScratchDirSection
+          scratchDir={scratch.dir}
+          onSelectFolder={scratch.onSelect}
+          onClearFolder={scratch.onClear}
         />
 
         <OutputFormatSection
