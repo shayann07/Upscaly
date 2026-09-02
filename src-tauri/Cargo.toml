@@ -1,6 +1,6 @@
 [package]
 name = "upscaly"
-version = "1.0.7"
+version = "1.0.8"
 description = "Local image and video upscaling on Vulkan, powered by Real-ESRGAN"
 authors = ["shayann07"]
 license = "MIT"

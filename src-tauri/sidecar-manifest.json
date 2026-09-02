@@ -1,5 +1,5 @@
 {
-  "$comment": "Pinned sources for the third-party executables Upscaly runs but does not compile. Every archive_sha256 and entry sha256 was verified against the actual downloaded bytes -- see scripts/fetch-sidecars.mjs, which is the only consumer that should read this file. Re-pinning realesrgan-ncnn-vulkan means bumping archive_url to a newer Real-ESRGAN-ncnn-vulkan release tag; re-pinning ffmpeg means picking a newer BtbN autobuild-YYYY-MM-DD-HH-MM release tag (never the floating 'latest' alias, which repoints to a new build on every BtbN run and cannot be hash-pinned).",
+  "$comment": "Pinned sources for the third-party executables Upscaly runs but does not compile. Every archive_sha256 and entry sha256 was verified against the actual downloaded bytes -- see scripts/fetch-sidecars.mjs, which is the only consumer that should read this file. Re-pinning realesrgan-ncnn-vulkan means bumping archive_url to a newer Real-ESRGAN-ncnn-vulkan release tag: xinntao/Real-ESRGAN-ncnn-vulkan publishes ordinary numbered GitHub releases, which GitHub keeps indefinitely, so a dated pin here is stable. ffmpeg is deliberately NOT listed here -- BtbN/FFmpeg-Builds prunes its dated 'autobuild-*' release tags on a rolling window (roughly the last couple of weeks), so any URL+hash pinned in this file eventually 404s no matter how carefully it was chosen; that is exactly what broke video upscaling for users on 1.0.7. src-tauri/resources/provision-ffmpeg.ps1 resolves ffmpeg's current build and hash dynamically instead, against BtbN's permanent 'latest' release tag and its checksums.sha256 -- see that script for the one place ffmpeg's source now lives.",
   "windows": {
     "realesrgan-ncnn-vulkan": {
       "archive_url": "https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan/releases/download/v0.2.0/realesrgan-ncnn-vulkan-v0.2.0-windows.zip",
@@ -14,23 +14,6 @@
           "path_in_archive": "realesrgan-ncnn-vulkan-v0.2.0-windows/vcomp140.dll",
           "dest": "vcomp140.dll",
           "sha256": "8f72ef2e483465444b2059fc6744d6cb22cd8d8a27f6fa56befd2a42dcd0f78b"
-        }
-      ]
-    },
-    "ffmpeg": {
-      "$comment": "GPL build (BtbN win64-gpl-8.1, ffmpeg n8.1.2) rather than LGPL: Upscaly falls back to the bundled libx264 software encoder when no hardware encoder (nvenc/qsv/amf/mediafoundation) is available, so every video job can still complete. Upscaly fetches this at install time rather than bundling it, so the app never redistributes GPL-licensed binaries itself -- see docs/THIRD_PARTY_NOTICES.md.",
-      "archive_url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-16-13-00/ffmpeg-n8.1.2-44-g7c533d0f86-win64-gpl-8.1.zip",
-      "archive_sha256": "d2425b12dc746a2b044148c6100440d4065876ac4ed6e3eb13a68437b7719796",
-      "entries": [
-        {
-          "path_in_archive": "ffmpeg-n8.1.2-44-g7c533d0f86-win64-gpl-8.1/bin/ffmpeg.exe",
-          "dest": "ffmpeg-x86_64-pc-windows-msvc.exe",
-          "sha256": "361c161fa536922d32badacad5f32fbd8561f945bd6e0bf4cb1f1017deb03541"
-        },
-        {
-          "path_in_archive": "ffmpeg-n8.1.2-44-g7c533d0f86-win64-gpl-8.1/bin/ffprobe.exe",
-          "dest": "ffprobe-x86_64-pc-windows-msvc.exe",
-          "sha256": "9fe11967029cff5562e7b0c2e74987690bea1b8b877fcadd6c9939a334fc9fb3"
         }
       ]
     }

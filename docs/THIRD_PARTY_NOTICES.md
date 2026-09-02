@@ -8,14 +8,14 @@ Upscaly Studio itself is MIT-licensed (see [`LICENSE`](../LICENSE)). The compone
 
 ## 1. FFmpeg & FFprobe (GPL v3)
 
-- **Source / Provider**: [FFmpeg Project](https://ffmpeg.org/), via [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) — the exact release and SHA-256 hashes are pinned in [`src-tauri/sidecar-manifest.json`](../src-tauri/sidecar-manifest.json)
+- **Source / Provider**: [FFmpeg Project](https://ffmpeg.org/), via [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) — resolved at install/fetch time against BtbN's current release and verified against their own published SHA-256 checksum (see [`src-tauri/resources/provision-ffmpeg.ps1`](../src-tauri/resources/provision-ffmpeg.ps1)), rather than a version pinned in this repository
 - **Architecture**: Windows x86_64 (x64)
 - **License**: **GNU General Public License (GPL) v3**, from a build configured `--enable-gpl --enable-version3`
 - **Includes GPL components**: `libx264`, `libx265`, `libxvid` and others
 
 ### Not bundled — downloaded from upstream
 
-**Upscaly Studio does not redistribute FFmpeg.** Neither the repository nor the installer contains these binaries. The installer downloads them from the pinned BtbN release during installation, and the app can fetch them later if that did not happen, so the copy on your machine comes directly from the upstream project and is governed solely by its own license.
+**Upscaly Studio does not redistribute FFmpeg.** Neither the repository nor the installer contains these binaries. The installer downloads them from BtbN's current release during installation, and the app can fetch them later if that did not happen, so the copy on your machine comes directly from the upstream project and is governed solely by its own license.
 
 ### Why the GPL build
 
@@ -23,7 +23,7 @@ Upscaly Studio encodes with hardware encoders first (`h264_nvenc`, `h264_qsv`, `
 
 ### Source access
 
-FFmpeg source for the pinned build is available from the FFmpeg project at https://ffmpeg.org/download.html and from the build's own repository at https://github.com/BtbN/FFmpeg-Builds.
+FFmpeg source for whichever build is currently fetched is available from the FFmpeg project at https://ffmpeg.org/download.html and from the build's own repository at https://github.com/BtbN/FFmpeg-Builds.
 
 > **If you redistribute FFmpeg yourself** — for example by mirroring these binaries or shipping a build that bundles them — GPL v3 obligations apply to you, including making the corresponding source available. Fetching them at install time, as Upscaly Studio does, is not redistribution.
 
