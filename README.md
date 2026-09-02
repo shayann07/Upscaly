@@ -272,7 +272,7 @@ Executables are **not** committed (`*.exe` is gitignored — ffmpeg alone is wel
 npm run fetch:sidecars
 ```
 
-This downloads `realesrgan-ncnn-vulkan`, `ffmpeg` and `ffprobe` into `src-tauri/binaries/` from the pinned, SHA-256-verified sources in [`src-tauri/sidecar-manifest.json`](src-tauri/sidecar-manifest.json), and skips anything already present. Re-run with `--force` to refetch even what's already there.
+This downloads `realesrgan-ncnn-vulkan`, `ffmpeg` and `ffprobe` into `src-tauri/binaries/`, and skips anything already present. Re-run with `--force` to refetch even what's already there. `realesrgan-ncnn-vulkan` comes from the pinned, SHA-256-verified source in [`src-tauri/sidecar-manifest.json`](src-tauri/sidecar-manifest.json); `ffmpeg`/`ffprobe` are resolved dynamically instead, against BtbN's current release and its own published checksum (see [`src-tauri/resources/provision-ffmpeg.ps1`](src-tauri/resources/provision-ffmpeg.ps1)) rather than a dated tag pinned here, since BtbN prunes old release tags on a rolling window and any dated pin eventually 404s.
 
 > **Only the engine is bundled into releases.** `ffmpeg`/`ffprobe` are ~290 MB together and GPL-licensed, so the installer downloads them from upstream during installation (see `src-tauri/installer-hooks.nsh`) rather than shipping them — which keeps the installer at ~5 MB and means Upscaly Studio never redistributes GPL binaries itself. If that download fails, installation still succeeds: image upscaling never needs ffmpeg, and the app fetches it when a video job is first started.
 

@@ -5,18 +5,24 @@
 // and .gitignore's `*.exe`. Replaces the old manual "download these three
 // files by hand" README table with something CI and local setup both run.
 //
-// Sources and hashes are pinned in src-tauri/sidecar-manifest.json, the
-// single source of truth this script and the install-time fetcher (added
-// in a later phase) both read.
+// realesrgan-ncnn-vulkan's source and hashes are pinned in
+// src-tauri/sidecar-manifest.json. ffmpeg is not: this script defers to
+// src-tauri/resources/provision-ffmpeg.ps1, the same script the installer
+// and the app's own on-demand retry run, so there is exactly one place
+// that resolves ffmpeg's current build and verifies it -- see that
+// script's own comment for why it resolves dynamically instead of
+// reading a pin from the manifest.
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const binariesDir = path.join(root, 'src-tauri', 'binaries');
-const manifestPath = path.join(root, 'src-tauri', 'sidecar-manifest.json');
+const tauriDir = path.join(root, 'src-tauri');
+const binariesDir = path.join(tauriDir, 'binaries');
+const manifestPath = path.join(tauriDir, 'sidecar-manifest.json');
+const provisionFfmpegScript = path.join(tauriDir, 'resources', 'provision-ffmpeg.ps1');
 const force = process.argv.includes('--force');
 const requestedPackages = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
 
@@ -104,6 +110,53 @@ async function processPackage(name, pkg) {
   }
 }
 
+// ffmpeg's own dest filenames, kept in sync with provision-ffmpeg.ps1 by
+// hand since the manifest no longer lists them.
+const ffmpegEntries = [
+  { dest: 'ffmpeg-x86_64-pc-windows-msvc.exe' },
+  { dest: 'ffprobe-x86_64-pc-windows-msvc.exe' },
+];
+
+function fetchFfmpeg() {
+  const missing = ffmpegEntries.filter((e) => !existsSync(path.join(binariesDir, e.dest)));
+  if (!force && missing.length === 0) {
+    console.log(`[skip] ffmpeg -- all ${ffmpegEntries.length} file(s) already present`);
+    return;
+  }
+  if (force) {
+    // provision-ffmpeg.ps1 only fetches when a destination file is
+    // missing -- there is no hash to re-check a "latest" build against,
+    // so --force has to clear the way itself rather than pass a flag
+    // the script does not have.
+    for (const entry of ffmpegEntries) {
+      const p = path.join(binariesDir, entry.dest);
+      if (existsSync(p)) unlinkSync(p);
+    }
+  }
+
+  console.log('[fetch] ffmpeg <- resolved dynamically by provision-ffmpeg.ps1 (see that script)');
+  execFileSync('powershell.exe', [
+    '-NoProfile',
+    '-NonInteractive',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    provisionFfmpegScript,
+    '-InstallDir',
+    tauriDir,
+  ], { stdio: 'inherit' });
+
+  const stillMissing = ffmpegEntries.filter((e) => !existsSync(path.join(binariesDir, e.dest)));
+  if (stillMissing.length > 0) {
+    throw new Error(
+      `provision-ffmpeg.ps1 finished but did not produce: ${stillMissing.map((e) => e.dest).join(', ')}`
+    );
+  }
+  for (const entry of ffmpegEntries) {
+    console.log(`  -> ${entry.dest} (verified)`);
+  }
+}
+
 let failed = false;
 for (const [name, pkg] of Object.entries(manifest)) {
   if (requestedPackages.length > 0 && !requestedPackages.includes(name)) {
@@ -113,6 +166,14 @@ for (const [name, pkg] of Object.entries(manifest)) {
     await processPackage(name, pkg);
   } catch (err) {
     console.error(`[FAIL] ${name}: ${err.message}`);
+    failed = true;
+  }
+}
+if (requestedPackages.length === 0 || requestedPackages.includes('ffmpeg')) {
+  try {
+    fetchFfmpeg();
+  } catch (err) {
+    console.error(`[FAIL] ffmpeg: ${err.message}`);
     failed = true;
   }
 }
