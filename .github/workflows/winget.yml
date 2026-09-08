@@ -10,7 +10,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # winget-releaser hard-fails if Wexpa.UpscalyStudio has no version in
+  # winget-pkgs yet (true until our first submission clears moderator
+  # review), turning every release into a red X for no actionable reason.
+  # Check the same condition ourselves first and skip instead of failing.
+  check-published:
+    runs-on: ubuntu-latest
+    outputs:
+      exists: ${{ steps.check.outputs.exists }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Authorization: token ${GH_TOKEN}" \
+            https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/w/Wexpa/UpscalyStudio)
+          if [ "$status" = "200" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Wexpa.UpscalyStudio isn't in winget-pkgs yet (first submission still pending moderator review) -- skipping this release until it merges."
+          fi
+
   winget:
+    needs: check-published
+    if: needs.check-published.outputs.exists == 'true'
     runs-on: windows-latest
     steps:
       - name: Publish release to WinGet
