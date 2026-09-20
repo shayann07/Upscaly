@@ -39,6 +39,106 @@ $ProgressPreference = 'SilentlyContinue'  # Invoke-WebRequest is ~10x faster wit
 
 function Write-Step($message) { Write-Output "[upscaly] $message" }
 
+<#
+.SYNOPSIS
+Downloads a URL to a file, reporting progress on stdout as it goes.
+
+.DESCRIPTION
+Replaces Invoke-WebRequest for the archive fetch. Invoke-WebRequest cannot
+report incremental progress to a non-interactive host -- its progress stream
+is suppressed there, and it returns nothing until the whole body has
+arrived -- which left a ~290MB download looking frozen for several minutes
+with no way for the app to say otherwise.
+
+Progress is written as "[upscaly:progress] <done> <total>" lines that the
+Rust caller parses and forwards to the UI. Lines are emitted at most every
+4MB so a slow link does not flood the pipe. Total is -1 when the server
+sends no Content-Length, which the caller renders as an indeterminate state
+rather than a bogus percentage.
+#>
+function Invoke-DownloadWithProgress {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$OutFile
+    )
+
+    $request = [System.Net.HttpWebRequest]::Create($Uri)
+    $request.UserAgent = 'upscaly-provisioner'
+    $request.Timeout = 120000
+    $request.ReadWriteTimeout = 120000
+    # BtbN's release URL redirects to a CDN; following it is the point.
+    $request.AllowAutoRedirect = $true
+
+    $response = $request.GetResponse()
+    try {
+        $total = $response.ContentLength
+        $responseStream = $response.GetResponseStream()
+        $output = [System.IO.File]::Create($OutFile)
+        try {
+            $buffer = New-Object byte[] (1MB)
+            $done = 0L
+            $lastReported = 0L
+            while ($true) {
+                $read = $responseStream.Read($buffer, 0, $buffer.Length)
+                if ($read -le 0) { break }
+                $output.Write($buffer, 0, $read)
+                $done += $read
+                if (($done - $lastReported) -ge 4MB) {
+                    Write-Output "[upscaly:progress] $done $total"
+                    $lastReported = $done
+                }
+            }
+            Write-Output "[upscaly:progress] $done $total"
+        }
+        finally {
+            $output.Dispose()
+            $responseStream.Dispose()
+        }
+    }
+    finally {
+        $response.Dispose()
+    }
+}
+
+<#
+.SYNOPSIS
+Puts a staged binary at its final path, tolerating a copy that is already there.
+
+.DESCRIPTION
+Move-Item -Force deletes the destination and then moves onto it, which is not
+atomic: two provisioning runs racing on the same destination can interleave so
+that the second one's move lands after the first has recreated the file, and it
+fails with "Cannot create a file when that file already exists". That happened
+in the field and surfaced to the user as a red "ffmpeg download failed" toast
+while the download had in fact succeeded and video was upscaling fine.
+
+The caller now serialises provisioning so the race should not arise, but this
+stays as the second line of defence: a destination that already exists and is
+non-empty means some other run won, which is a success, not a failure.
+#>
+function Install-Binary {
+    param(
+        [Parameter(Mandatory = $true)][string]$Staged,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Move-Item -LiteralPath $Staged -Destination $Destination -Force
+            return
+        }
+        catch {
+            $existing = Get-Item -LiteralPath $Destination -ErrorAction SilentlyContinue
+            if ($existing -and $existing.Length -gt 0) {
+                Write-Step "Destination already provisioned by a concurrent run; keeping it"
+                return
+            }
+            if ($attempt -eq 3) { throw }
+            Start-Sleep -Milliseconds (200 * $attempt)
+        }
+    }
+}
+
 # Only the major series is pinned in source. Everything else -- exact
 # patch build, archive hash, filename, download URL -- is resolved fresh
 # every run against BtbN's own currently-published "latest" release and
@@ -116,7 +216,7 @@ try {
     try {
         $archive = Join-Path $work 'ffmpeg.zip'
         Write-Step "Downloading ffmpeg from $($ffmpeg.Url)"
-        Invoke-WebRequest -Uri $ffmpeg.Url -OutFile $archive -UseBasicParsing -TimeoutSec 900
+        Invoke-DownloadWithProgress -Uri $ffmpeg.Url -OutFile $archive
 
         $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($actual -ne $ffmpeg.Sha256) {
@@ -152,9 +252,9 @@ try {
         # Moved only after both files have been extracted, so a failure
         # partway through cannot leave one of the two in place and make a
         # broken install look complete.
-        Move-Item -LiteralPath $stagedFfmpeg -Destination $destFfmpeg -Force
+        Install-Binary -Staged $stagedFfmpeg -Destination $destFfmpeg
         Write-Step 'Installed ffmpeg-x86_64-pc-windows-msvc.exe'
-        Move-Item -LiteralPath $stagedFfprobe -Destination $destFfprobe -Force
+        Install-Binary -Staged $stagedFfprobe -Destination $destFfprobe
         Write-Step 'Installed ffprobe-x86_64-pc-windows-msvc.exe'
 
         Write-Step 'ffmpeg provisioned successfully'
