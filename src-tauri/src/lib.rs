@@ -173,9 +173,19 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init());
+
+    // Compiled out of Microsoft Store builds: an MSIX installs into a
+    // read-only directory and Store policy requires updates to arrive
+    // through the Store. See Cargo.toml [features] and build-msix.ps1.
+    #[cfg(feature = "self-update")]
+    {
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
+    }
+
+    let builder = builder
         .invoke_handler(tauri::generate_handler![
             commands::gpu::list_gpus,
             commands::gpu::get_vram_profile,

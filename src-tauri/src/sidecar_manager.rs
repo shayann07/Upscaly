@@ -95,7 +95,26 @@ pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBu
         }
     }
 
-    // 2. Try exe path relative
+    // 2. Where provision_ffmpeg() downloads to. Probed before the
+    //    exe-relative locations because under MSIX the install directory is
+    //    read-only, so this is the only place a provisioned ffmpeg can
+    //    exist. Harmless for NSIS installs, where nothing is written here
+    //    and every probe below still applies.
+    {
+        let downloaded_dir = crate::app_paths::app_local_data_dir(app).join("binaries");
+
+        let triple_named = downloaded_dir.join(&filename);
+        if triple_named.exists() {
+            return Ok(triple_named);
+        }
+
+        let plain_named = downloaded_dir.join(plain_binary_name(binary_name));
+        if plain_named.exists() {
+            return Ok(plain_named);
+        }
+    }
+
+    // 3. Try exe path relative
     if let Ok(mut exe_path) = std::env::current_exe() {
         exe_path.pop(); // remove executable name
 

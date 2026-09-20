@@ -12,11 +12,14 @@ pub async fn provision_ffmpeg(app: AppHandle) -> Result<(), String> {
         .path()
         .resolve("resources/provision-ffmpeg.ps1", BaseDirectory::Resource)
         .map_err(|e| e.to_string())?;
-    let install_dir = std::env::current_exe()
-        .map_err(|e| e.to_string())?
-        .parent()
-        .ok_or_else(|| "no exe dir".to_string())?
-        .to_path_buf();
+    // Not the exe directory. Under MSIX the app is installed into
+    // %ProgramFiles%\WindowsApps, which is read-only even for the
+    // installing user, so provisioning next to the exe fails outright and
+    // takes every video feature down with it. %LOCALAPPDATA% is writable
+    // under both packaging formats, and resolve_sidecar_path() probes it
+    // ahead of the exe-relative locations the NSIS installer still uses.
+    let install_dir = crate::app_paths::app_local_data_dir(&app);
+    std::fs::create_dir_all(&install_dir).map_err(|e| e.to_string())?;
     let mut cmd = tokio::process::Command::new("powershell.exe");
     cmd.args([
         "-NoProfile",

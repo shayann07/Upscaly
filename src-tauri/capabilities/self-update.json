@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "self-update",
+  "description": "Self-updater. Omitted from Microsoft Store builds, which must update through the Store.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "updater:default",
+    "process:default"
+  ]
+}

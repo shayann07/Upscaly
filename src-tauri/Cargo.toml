@@ -22,12 +22,14 @@ required-features = ["desktop"]
 tauri-build = { version = "2", features = [] }
 
 [features]
-default = ["desktop"]
-desktop = [
-    "dep:tauri-plugin-updater",
-    "dep:tauri-plugin-process",
-    "dep:tauri-plugin-dialog",
-]
+# "self-update" is split out of "desktop" so Microsoft Store builds can drop
+# it: an MSIX installs into a read-only directory and Store policy requires
+# updates to ship through the Store, so the updater must not be compiled in.
+# Store build: --no-default-features --features desktop (see build-msix.ps1,
+# which also moves capabilities/self-update.json aside).
+default = ["desktop", "self-update"]
+desktop = ["dep:tauri-plugin-dialog"]
+self-update = ["dep:tauri-plugin-updater", "dep:tauri-plugin-process"]
 mobile = []
 
 [dependencies]
