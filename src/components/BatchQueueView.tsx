@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, memo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, memo } from 'react';
 import { QueueItem } from '../store/queueItem';
 import { BatchQueueHeader } from './batch/BatchQueueHeader';
 import { BatchQueueRow } from './batch/BatchQueueRow';
@@ -114,21 +114,24 @@ function BatchQueueViewImpl(props: BatchQueueViewProps) {
 
   const handleDragEnd = useCallback(() => setDragFrom(null), []);
 
-  if (items.length === 0) {
-    return null;
-  }
-
   const open = isHovered;
   const EASE = 'var(--ease-spring)';
 
-  const { doneCount, batchPct } = computeBatchStats(items);
-  const { curW, curH, outW, outH, estMb } = computeEstimateData(
-    items,
-    selectedId,
-    currentIndex,
-    currentFileDims,
-    selectedScale
+  // Both walk the whole queue, and `items` is a fresh array on every
+  // progress tick, so without this they re-ran for all of them -- including
+  // the ticks that only moved a percentage this panel does not display
+  // while collapsed.
+  const { doneCount, batchPct } = useMemo(() => computeBatchStats(items), [items]);
+  const { curW, curH, outW, outH, estMb } = useMemo(
+    () => computeEstimateData(items, selectedId, currentIndex, currentFileDims, selectedScale),
+    [items, selectedId, currentIndex, currentFileDims, selectedScale]
   );
+
+  // After the hooks above: an early return before them would change the
+  // hook order between renders.
+  if (items.length === 0) {
+    return null;
+  }
 
   return (
     <div
@@ -143,7 +146,15 @@ function BatchQueueViewImpl(props: BatchQueueViewProps) {
         background: open ? 'rgba(13,12,11,.96)' : 'transparent',
         boxShadow: open ? '0 16px 40px rgba(0,0,0,.62)' : 'none',
         overflow: open ? 'hidden' : 'visible',
-        transition: `width .28s ${EASE}, background .28s ease, border-color .28s ease, box-shadow .28s ease`,
+        // width gets the monotonic curve: the spring used elsewhere
+        // overshoots past 264px and snaps back, and because width is a
+        // layout property every frame of that costs a reflow of the whole
+        // queue subtree -- which lands on top of the re-render each
+        // progress tick already causes. Read as a stutter while upscaling.
+        transition: `width .28s var(--ease-layout), background .28s ease, border-color .28s ease, box-shadow .28s ease`,
+        // Confines that reflow to this panel, which is absolutely
+        // positioned and so owes the rest of the layout nothing anyway.
+        contain: 'layout paint',
       }}
     >
       <BatchQueueHeader
