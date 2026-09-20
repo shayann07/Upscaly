@@ -4,6 +4,11 @@ on:
   release:
     types: [released]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish, e.g. v1.0.8. Blank uses the latest release.'
+        required: false
+        type: string
 
 concurrency:
   group: winget-${{ github.ref }}
@@ -34,8 +39,40 @@ jobs:
             echo "::notice::Wexpa.UpscalyStudio isn't in winget-pkgs yet (first submission still pending moderator review) -- skipping this release until it merges."
           fi
 
+  # A release event carries the tag in its payload; a manual dispatch does
+  # not -- github.event.release is null there, so anything reading
+  # github.event.release.tag_name resolves to an empty string and silently
+  # builds a nonsense manifest path. Resolve the tag once here and let both
+  # downstream jobs read it, so the two triggers behave identically.
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${EVENT_TAG:-${INPUT_TAG:-}}"
+          if [ -z "$tag" ]; then
+            tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+            echo "::notice::No tag supplied; using the latest release, ${tag}."
+          fi
+          # Fail loudly rather than opening a winget PR that points at
+          # installers which do not exist.
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release ${tag} does not exist in ${GITHUB_REPOSITORY}."
+            exit 1
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
   winget:
-    needs: check-published
+    needs: [check-published, resolve]
     if: needs.check-published.outputs.exists == 'true'
     runs-on: windows-latest
     steps:
@@ -43,6 +80,8 @@ jobs:
         uses: vedantmgoyal9/winget-releaser@v2
         with:
           identifier: Wexpa.UpscalyStudio
+          version: ${{ needs.resolve.outputs.version }}
+          release-tag: ${{ needs.resolve.outputs.tag }}
           installers-regex: 'Upscaly-Studio_.*_x64-setup\.exe$'
           token: ${{ secrets.WINGET_TOKEN }}
 
@@ -64,17 +103,18 @@ jobs:
   # release-notes-url) and v2 is its latest release, so editing after the
   # fact is the only lever available.
   strip-display-version:
-    needs: winget
+    needs: [winget, resolve]
     runs-on: ubuntu-latest
     steps:
       - name: Remove redundant DisplayVersion from the generated manifest
         env:
           GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
-          VERSION: ${{ github.event.release.tag_name }}
+          # Already stripped of any leading "v" by the resolve job.
+          VERSION: ${{ needs.resolve.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-          version="${VERSION#v}"
+          version="${VERSION}"
           path="manifests/w/Wexpa/UpscalyStudio/${version}/Wexpa.UpscalyStudio.installer.yaml"
 
           # The PR is opened asynchronously by the job above, and the branch
