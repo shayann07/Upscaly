@@ -75,7 +75,7 @@ fn fatal_dialog(message: &str) {
     unsafe {
         use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR};
         let msg: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
-        let title: Vec<u16> = "Upscaly Studio"
+        let title: Vec<u16> = "Upscaly"
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect();
@@ -155,7 +155,7 @@ pub fn run() {
 
     std::panic::set_hook(Box::new(|info| {
         fatal_dialog(&format!(
-            "Upscaly Studio crashed during startup:\n\n{info}\n\nPlease report this."
+            "Upscaly crashed during startup:\n\n{info}\n\nPlease report this."
         ));
     }));
 
@@ -229,7 +229,7 @@ pub fn run() {
         Ok(app) => app,
         Err(e) => {
             fatal_dialog(&format!(
-                "Upscaly Studio failed to start:\n\n{e}\n\nThis usually means the Microsoft Edge \
+                "Upscaly failed to start:\n\n{e}\n\nThis usually means the Microsoft Edge \
                  WebView2 Runtime is missing or damaged. Reinstalling the app repairs it."
             ));
             std::process::exit(1);

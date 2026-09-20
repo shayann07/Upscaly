@@ -205,12 +205,12 @@ describe('downloadAndInstallUpdate', () => {
 
 describe('loadAppIdentity', () => {
   it('updates store appName and appVersion when valid metadata is returned', async () => {
-    mockGetName.mockResolvedValue('Upscaly Studio');
+    mockGetName.mockResolvedValue('Upscaly');
     mockGetVersion.mockResolvedValue('1.0.1');
 
     await loadAppIdentity();
 
-    expect(state().appName).toBe('Upscaly Studio');
+    expect(state().appName).toBe('Upscaly');
     expect(state().appVersion).toBe('1.0.1');
   });
 
@@ -222,7 +222,7 @@ describe('loadAppIdentity', () => {
 
     await loadAppIdentity();
 
-    expect(state().appName).toBe('Upscaly Studio');
+    expect(state().appName).toBe('Upscaly');
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('[updater] getName() returned non-string or empty name:'),
       ''
@@ -236,7 +236,7 @@ describe('loadAppIdentity', () => {
 
     await loadAppIdentity();
 
-    expect(state().appName).toBe('Upscaly Studio');
+    expect(state().appName).toBe('Upscaly');
     expect(state().appVersion).toBe('');
   });
 });

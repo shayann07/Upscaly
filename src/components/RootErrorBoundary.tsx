@@ -37,12 +37,12 @@ export class RootErrorBoundary extends Component<{ children: ReactNode }, { erro
           data-tauri-drag-region
           style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 36 }}
         />
-        <div>Upscaly Studio hit an unrecoverable error.</div>
+        <div>Upscaly hit an unrecoverable error.</div>
         <pre style={{ maxWidth: '80vw', overflow: 'auto', fontSize: 11, color: '#6B655E' }}>
           {String(this.state.error?.message ?? this.state.error)}
         </pre>
         <button onClick={() => void invoke('close_window').catch(() => {})}>
-          Close Upscaly Studio
+          Close Upscaly
         </button>
       </div>
     );

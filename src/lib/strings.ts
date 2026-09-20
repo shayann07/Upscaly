@@ -1,14 +1,14 @@
 /**
- * Centralized user-facing strings for Upscaly Studio.
+ * Centralized user-facing strings for Upscaly.
  *
  * All user-facing copy is externalized here to prepare for localization and
  * maintain single-source-of-truth text across platforms.
  */
 export const STRINGS = {
   // App
-  APP_TITLE: 'Upscaly Studio',
+  APP_TITLE: 'Upscaly',
   APP_DESCRIPTION:
-    'Local image and video upscaling on Vulkan. Your media never leaves the machine — the only network requests Upscaly Studio makes are for model weights you choose to download and its own update check.',
+    'Local image and video upscaling on Vulkan. Your media never leaves the machine — the only network requests Upscaly makes are for model weights you choose to download and its own update check.',
 
   // DropZone
   DROP_IDLE: 'Drop media to upscale',

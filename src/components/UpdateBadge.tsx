@@ -35,7 +35,7 @@ export function UpdateBadge({ version, notes, phase, progress, onInstall }: Upda
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        title={`Upscaly Studio ${version} is available`}
+        title={`Upscaly ${version} is available`}
         className="pointer-events-auto flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--border-default)] bg-[var(--accent-bg)] font-['Martian_Mono',monospace] text-[9px] tracking-[0.06em] text-[var(--text-secondary)] cursor-pointer transition-all duration-200 hover:scale-[1.05] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]"
       >
         <span className="w-[5px] h-[5px] rounded-full bg-[var(--accent)]" aria-hidden="true" />
@@ -86,7 +86,7 @@ export function UpdateBadge({ version, notes, phase, progress, onInstall }: Upda
                     id="update-title"
                     className="font-['Archivo',sans-serif] text-[13px] font-semibold text-[var(--text-primary)] mb-1.5"
                   >
-                    Upscaly Studio {version}
+                    Upscaly {version}
                   </h3>
 
                   {notes ? (
@@ -141,7 +141,7 @@ export function UpdateBadge({ version, notes, phase, progress, onInstall }: Upda
                   mid-job.
                 */}
                   <p className="font-['Archivo',sans-serif] text-[10.5px] leading-[1.45] text-[var(--text-dim)] mt-2.5 text-right">
-                    Upscaly Studio will close and reopen. Finish any running job first.
+                    Upscaly will close and reopen. Finish any running job first.
                   </p>
                 </div>
               </motion.div>

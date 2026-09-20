@@ -180,7 +180,7 @@ function createInitialState(): StudioState {
     settingsLoaded: false,
 
     cpuOnly: false,
-    appName: 'Upscaly Studio',
+    appName: 'Upscaly',
     appVersion: '',
     availableUpdate: null,
     updatePhase: 'idle',

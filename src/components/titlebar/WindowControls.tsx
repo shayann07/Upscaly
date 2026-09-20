@@ -71,7 +71,7 @@ export function WindowControls() {
         </div>
         <div className="w-px h-[15px] bg-[var(--border-default)]" />
         <span className="font-bold text-[12.5px] tracking-[-0.01em]">
-          {appName || 'Upscaly Studio'}
+          {appName || 'Upscaly'}
         </span>
         {/*
           Read from Tauri's app metadata rather than written here. The

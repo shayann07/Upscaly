@@ -1,8 +1,8 @@
-; Installer hooks for Upscaly Studio.
+; Installer hooks for Upscaly.
 ;
 ; ffmpeg and ffprobe are ~290MB together and GPL-licensed. Bundling them
 ; would put a copyleft payload inside an MIT-licensed installer and triple
-; its size, so the installer fetches them from upstream instead. Upscaly Studio
+; its size, so the installer fetches them from upstream instead. Upscaly
 ; therefore never redistributes GPL binaries itself.
 ;
 ; All of the work is in resources\provision-ffmpeg.ps1 rather than inline
@@ -12,12 +12,21 @@
 ; without building an installer.
 
 !macro NSIS_HOOK_PREINSTALL
-  ; v0.1.0 shipped as productName "Upscaly" with publisher "shayann07",
-  ; so this build's own registry keys cannot see it. Uninstall it here:
-  ; leaving it produces two apps in Add/Remove Programs, two shortcuts,
-  ; and an old install that offers this very update forever.
+  ; v0.1.0 shipped as productName "Upscaly" with publisher "shayann07".
+  ; Leaving it installed produces two apps in Add/Remove Programs, two
+  ; shortcuts, and an old install that offers this very update forever.
+  ;
+  ; The publisher check is load-bearing, not defensive. Tauri derives
+  ; UNINSTKEY as ...\Uninstall\${PRODUCTNAME}, and 1.0.9 renamed productName
+  ; back to "Upscaly" -- so this key is now also *this* build's own key.
+  ; Without the guard, every future update would find the key it just wrote,
+  ; run a plain (non-/UPDATE) silent uninstall of the very install being
+  ; upgraded, and take the ~290MB of downloaded ffmpeg with it. 0.1.0 is
+  ; distinguishable only by its publisher, which was never "Wexpa".
+  ReadRegStr $8 SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\Upscaly" "Publisher"
   ReadRegStr $0 SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\Upscaly" "UninstallString"
   ${If} $0 != ""
+  ${AndIf} $8 == "shayann07"
     ReadRegStr $1 SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\Upscaly" "InstallLocation"
     ; Strip surrounding quotes the installer writes around the path.
     StrCpy $2 $1 1
@@ -35,6 +44,51 @@
     DeleteRegKey SHCTX "Software\shayann07\Upscaly"
     Delete "$SMPROGRAMS\Upscaly.lnk"
   ${EndIf}
+
+  ; 1.0.0-1.0.8 shipped as productName "Upscaly Studio". 1.0.9 renames back to
+  ; "Upscaly" to match the Microsoft Store listing, which moves $INSTDIR, the
+  ; uninstall key and the Start Menu shortcut again. Without this the 1.0.8
+  ; install stays on disk, stays in Add/Remove Programs, and keeps offering
+  ; this same update forever -- exactly what happened on the 0.1.0 -> 1.0.1
+  ; bump, which stranded 297MB.
+  ;
+  ; Settings, history and model weights are keyed on the Tauri identifier
+  ; (com.wexpa.upscaly), not on productName, so the rename does not touch them
+  ; and they need no migration.
+  ReadRegStr $4 SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\Upscaly Studio" "UninstallString"
+  ${If} $4 != ""
+    ReadRegStr $5 SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\Upscaly Studio" "InstallLocation"
+    StrCpy $6 $5 1
+    ${If} $6 == '"'
+      StrLen $7 $5
+      IntOp $7 $7 - 2
+      StrCpy $5 $5 $7 1
+    ${EndIf}
+
+    ; Rescue ffmpeg before the old install goes. It is ~290MB fetched from
+    ; upstream, and the old uninstaller deletes it on a non-update run.
+    ;
+    ; It moves to the identifier-keyed directory rather than the new $INSTDIR
+    ; because resolve_sidecar_path() probes there first, and that location is
+    ; shared with the Microsoft Store build, which cannot write next to its own
+    ; executable at all. Landing it there once means neither build ever has to
+    ; download it again.
+    StrCmp $5 "" skip_ffmpeg_rescue 0
+    IfFileExists "$5\binaries\ffmpeg-x86_64-pc-windows-msvc.exe" 0 skip_ffmpeg_rescue
+    IfFileExists "$LOCALAPPDATA\com.wexpa.upscaly\binaries\ffmpeg-x86_64-pc-windows-msvc.exe" skip_ffmpeg_rescue 0
+      DetailPrint "Preserving downloaded video components"
+      CreateDirectory "$LOCALAPPDATA\com.wexpa.upscaly\binaries"
+      Rename "$5\binaries\ffmpeg-x86_64-pc-windows-msvc.exe" "$LOCALAPPDATA\com.wexpa.upscaly\binaries\ffmpeg-x86_64-pc-windows-msvc.exe"
+      Rename "$5\binaries\ffprobe-x86_64-pc-windows-msvc.exe" "$LOCALAPPDATA\com.wexpa.upscaly\binaries\ffprobe-x86_64-pc-windows-msvc.exe"
+    skip_ffmpeg_rescue:
+
+    DetailPrint "Removing previous Upscaly Studio install"
+    ExecWait '$4 /S _?=$5'
+    Delete "$4"
+    RMDir "$5"
+    DeleteRegKey SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\Upscaly Studio"
+    Delete "$SMPROGRAMS\Upscaly Studio.lnk"
+  ${EndIf}
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
@@ -51,7 +105,7 @@
   ${If} $0 == 0
     DetailPrint "Video components installed."
   ${Else}
-    DetailPrint "Video components could not be downloaded; Upscaly Studio will fetch them on first video job."
+    DetailPrint "Video components could not be downloaded; Upscaly will fetch them on first video job."
   ${EndIf}
 !macroend
 
