@@ -86,14 +86,21 @@ jobs:
           VERSION: ${{ needs.gate.outputs.version }}
         run: |
           set -euo pipefail
-          # NSIS names the artifact after productName, which contains a space.
-          # GitHub rewrites asset filenames on upload, so publish under a
-          # deterministic space-free name and point latest.json at exactly that.
+          # GitHub rewrites anything outside [A-Za-z0-9._-] in an uploaded
+          # asset filename, and latest.json is written from the local basename,
+          # so a mismatch here is a permanent updater 404 (it was exactly that
+          # at 1.0.1, when productName still contained a space). productName is
+          # "Upscaly" as of 1.0.9 and NSIS already emits an acceptable name, so
+          # this normally renames nothing -- it stays because the cost of being
+          # wrong is silent and unbounded, and a future productName change must
+          # not be able to reintroduce the bug.
           bundle="src-tauri/target/release/bundle/nsis"
           orig=$(ls "$bundle"/*-setup.exe)
-          asset="$bundle/Upscaly-Studio_${VERSION}_x64-setup.exe"
-          mv "$orig" "$asset"
-          mv "$orig.sig" "$asset.sig"
+          asset="$bundle/Upscaly_${VERSION}_x64-setup.exe"
+          if [ "$orig" != "$asset" ]; then
+            mv "$orig" "$asset"
+            mv "$orig.sig" "$asset.sig"
+          fi
           case "$(basename "$asset")" in (*' '*) echo "::error::asset name contains a space"; exit 1;; esac
           sig=$(cat "$asset.sig")
           # Subject line only. `%B | head -20` cut long commit bodies at an
@@ -124,7 +131,7 @@ jobs:
           set -euo pipefail
           bundle="src-tauri/target/release/bundle/nsis"
           gh release create "v${VERSION}" \
-            --title "Upscaly Studio v${VERSION}" \
+            --title "Upscaly v${VERSION}" \
             --generate-notes \
             "$bundle"/*-setup.exe \
             "$bundle"/*-setup.exe.sig \

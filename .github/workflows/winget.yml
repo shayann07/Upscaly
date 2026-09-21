@@ -82,7 +82,7 @@ jobs:
           identifier: Wexpa.UpscalyStudio
           version: ${{ needs.resolve.outputs.version }}
           release-tag: ${{ needs.resolve.outputs.tag }}
-          installers-regex: 'Upscaly-Studio_.*_x64-setup\.exe$'
+          installers-regex: 'Upscaly_.*_x64-setup\.exe$'
           token: ${{ secrets.WINGET_TOKEN }}
 
   # winget-releaser generates the manifest with komac, which copies
