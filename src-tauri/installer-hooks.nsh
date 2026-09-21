@@ -38,8 +38,10 @@
     DetailPrint "Removing previous Upscaly 0.1.0 install"
     ; /UPDATE preserves nothing we need -- run a plain silent uninstall.
     ExecWait '$0 /S _?=$1'
-    Delete "$0"
-    RMDir "$1"
+    ; Give Windows a moment to release the uninstaller image.
+    Sleep 1200
+    Delete /REBOOTOK "$0"
+    RMDir /REBOOTOK "$1"
     DeleteRegKey SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\Upscaly"
     DeleteRegKey SHCTX "Software\shayann07\Upscaly"
     Delete "$SMPROGRAMS\Upscaly.lnk"
@@ -56,14 +58,42 @@
   ; (com.wexpa.upscaly), not on productName, so the rename does not touch them
   ; and they need no migration.
   ReadRegStr $4 SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\Upscaly Studio" "UninstallString"
+  ReadRegStr $5 SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\Upscaly Studio" "InstallLocation"
+
+  ; Strip the quotes the installer writes around InstallLocation. NSIS joins
+  ; and compares paths literally, so a quoted value corrupts every path built
+  ; from it.
+  StrCpy $6 $5 1
+  ${If} $6 == '"'
+    StrLen $7 $5
+    IntOp $7 $7 - 2
+    StrCpy $5 $5 $7 1
+  ${EndIf}
+
+  ; Fall back to the filesystem when the registry says nothing.
+  ;
+  ; A 1.0.8 install can exist on disk with no uninstall key at all: the
+  ; generated uninstaller skips MULTIUSER_UNINIT on installMode "currentUser",
+  ; so a silent `uninstall.exe /S` left $INSTDIR empty, every
+  ; `Delete "$INSTDIR\..."` resolved to a bare relative path and did nothing,
+  ; while the registry cleanup -- which uses fixed key paths -- succeeded. The
+  ; app deregistered itself and stayed on disk. That is the same fault
+  ; NSIS_HOOK_PREUNINSTALL below exists to repair, and it was observed on a
+  ; real machine: no key in any hive, but uninstall.exe, the Start Menu
+  ; shortcut and 310MB still present.
+  ;
+  ; Keying the migration only on the registry would leave exactly those
+  ; machines orphaned forever, which is the outcome this whole block exists to
+  ; prevent. The default path is the only place a currentUser install can be.
+  ${If} $4 == ""
+    IfFileExists "$LOCALAPPDATA\Upscaly Studio\uninstall.exe" 0 no_orphan_install
+      DetailPrint "Found a 1.0.8 install with no registry entry; migrating it anyway"
+      StrCpy $5 "$LOCALAPPDATA\Upscaly Studio"
+      StrCpy $4 "$5\uninstall.exe"
+    no_orphan_install:
+  ${EndIf}
+
   ${If} $4 != ""
-    ReadRegStr $5 SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\Upscaly Studio" "InstallLocation"
-    StrCpy $6 $5 1
-    ${If} $6 == '"'
-      StrLen $7 $5
-      IntOp $7 $7 - 2
-      StrCpy $5 $5 $7 1
-    ${EndIf}
 
     ; Rescue ffmpeg before the old install goes. It is ~290MB fetched from
     ; upstream, and the old uninstaller deletes it on a non-update run.
@@ -84,8 +114,10 @@
 
     DetailPrint "Removing previous Upscaly Studio install"
     ExecWait '$4 /S _?=$5'
-    Delete "$4"
-    RMDir "$5"
+    ; Give Windows a moment to release the uninstaller image.
+    Sleep 1200
+    Delete /REBOOTOK "$4"
+    RMDir /REBOOTOK "$5"
     DeleteRegKey SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\Upscaly Studio"
     Delete "$SMPROGRAMS\Upscaly Studio.lnk"
   ${EndIf}
@@ -99,7 +131,11 @@
   ; image upscaling never touches ffmpeg, and the app re-offers the
   ; download when a video job is actually started. Aborting here would
   ; leave a user with no app at all over an optional component.
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\provision-ffmpeg.ps1" -InstallDir "$INSTDIR"'
+  ; -InstallDir is the identifier-keyed directory, not $INSTDIR: it is what
+  ; resolve_sidecar_path() probes first and what the Microsoft Store build
+  ; reads, so one copy serves every install. The *script* still comes from
+  ; $INSTDIR, where this installer just put it.
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\provision-ffmpeg.ps1" -InstallDir "$LOCALAPPDATA\com.wexpa.upscaly"'
   Pop $0
 
   ${If} $0 == 0
@@ -154,11 +190,26 @@
   ; work when the files are already correct, so leaving them in place makes
   ; an update download nothing at all.
   ${If} $UpdateMode <> 1
-  ${AndIf} $INSTDIR != ""
-    Delete "$INSTDIR\binaries\ffmpeg-x86_64-pc-windows-msvc.exe"
-    Delete "$INSTDIR\binaries\ffprobe-x86_64-pc-windows-msvc.exe"
+    ; The identifier-keyed directory, matching where POSTINSTALL now puts
+    ; these and where the app looks first. $INSTDIR\binaries was the old
+    ; location and nothing writes there any more, but a machine upgraded
+    ; from <= 1.0.8 can still have a copy, so both are cleared.
+    ;
+    ; Caveat worth knowing: this directory is deliberately shared with the
+    ; Microsoft Store build, which cannot write beside its own executable.
+    ; Uninstalling this build while the Store build is also installed costs
+    ; that one its ffmpeg, and it re-downloads on the next video job. That
+    ; is self-healing; leaving 310MB stranded on every uninstall is not.
+    Delete "$LOCALAPPDATA\com.wexpa.upscaly\binaries\ffmpeg-x86_64-pc-windows-msvc.exe"
+    Delete "$LOCALAPPDATA\com.wexpa.upscaly\binaries\ffprobe-x86_64-pc-windows-msvc.exe"
     ; Non-recursive on purpose: this removes the directory only once it is
     ; empty, so anything a user put there themselves is never destroyed.
-    RMDir "$INSTDIR\binaries"
+    RMDir "$LOCALAPPDATA\com.wexpa.upscaly\binaries"
+
+    ${If} $INSTDIR != ""
+      Delete "$INSTDIR\binaries\ffmpeg-x86_64-pc-windows-msvc.exe"
+      Delete "$INSTDIR\binaries\ffprobe-x86_64-pc-windows-msvc.exe"
+      RMDir "$INSTDIR\binaries"
+    ${EndIf}
   ${EndIf}
 !macroend
