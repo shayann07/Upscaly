@@ -21,11 +21,12 @@ pub struct GpuDevice {
 }
 
 /// Bumped whenever a `devices` list cached by an older build can no longer be
-/// trusted. Version 1 is the first to derive `GpuDevice.id` from the engine's
-/// own enumeration; anything written before it holds `ash` indices that can
-/// name a different card, so those caches must be discarded outright rather
-/// than left to age out over 24 hours.
-const GPU_CACHE_SCHEMA_VERSION: u32 = 1;
+/// trusted. Version 1 was the first to derive `GpuDevice.id` from the engine's
+/// own enumeration. Version 2 stops *persisting* that id as authoritative:
+/// v1 caches hold an id that was correct when written and can silently have
+/// stopped being correct since, so they must be discarded outright rather than
+/// left to age out over 24 hours.
+const GPU_CACHE_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GpuCacheEnvelope {
@@ -95,7 +96,26 @@ pub fn resolve_sidecar_path(app: &AppHandle, binary_name: &str) -> Result<PathBu
         }
     }
 
-    // 2. Try exe path relative
+    // 2. Where provision_ffmpeg() downloads to. Probed before the
+    //    exe-relative locations because under MSIX the install directory is
+    //    read-only, so this is the only place a provisioned ffmpeg can
+    //    exist. Harmless for NSIS installs, where nothing is written here
+    //    and every probe below still applies.
+    {
+        let downloaded_dir = crate::app_paths::app_local_data_dir(app).join("binaries");
+
+        let triple_named = downloaded_dir.join(&filename);
+        if triple_named.exists() {
+            return Ok(triple_named);
+        }
+
+        let plain_named = downloaded_dir.join(plain_binary_name(binary_name));
+        if plain_named.exists() {
+            return Ok(plain_named);
+        }
+    }
+
+    // 3. Try exe path relative
     if let Ok(mut exe_path) = std::env::current_exe() {
         exe_path.pop(); // remove executable name
 
@@ -274,24 +294,41 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
         .and_then(|p| crate::model_manager::calculate_sha256(p).ok())
         .unwrap_or_default();
 
-    // 1. Try reading disk cache if under 24 hours old (86,400s) and non-empty
-    if cache_path.exists() {
-        if let Ok(content) = std::fs::read_to_string(&cache_path) {
-            if let Ok(cache) = serde_json::from_str::<GpuCacheEnvelope>(&content) {
+    // 1. Read the disk cache for METADATA ONLY.
+    //
+    // `GpuDevice.id` is deliberately not taken from here, and the cache is
+    // never returned directly. The id is an index into the engine's own
+    // Vulkan enumeration, and that order is not stable over the life of a
+    // cache entry: an entry written at 04:01 on the reference laptop held
+    // `[1 NVIDIA][0 Intel]`, and by midday the same engine binary enumerated
+    // `[0 NVIDIA][1 Intel]`. The entry was still inside its 24-hour window,
+    // so it was served as valid and every job ran on the card the user had
+    // not selected -- the discrete GPU named in the UI while the integrated
+    // one did the work, which on a 320x180 input failed outright with
+    // "the GPU ran out of memory".
+    //
+    // What the cache is genuinely good for is the metadata the engine banner
+    // never prints and that does not change between launches: true VRAM heap
+    // sizes, compute queue counts and fp16 capability. Those are keyed by
+    // name below, and the id always comes from a fresh engine probe.
+    let cached_metadata: Vec<GpuDevice> = if cache_path.exists() {
+        std::fs::read_to_string(&cache_path)
+            .ok()
+            .and_then(|content| serde_json::from_str::<GpuCacheEnvelope>(&content).ok())
+            .filter(|cache| {
                 let age = now_secs.saturating_sub(cache.timestamp);
                 let hash_matches =
                     cache.sidecar_hash.is_empty() || cache.sidecar_hash == current_hash;
-                let schema_matches = cache.schema_version == GPU_CACHE_SCHEMA_VERSION;
-
-                if schema_matches && age < 86400 && hash_matches && !cache.devices.is_empty() {
-                    if let Ok(mut guard) = IN_MEMORY_GPU_CACHE.lock() {
-                        *guard = Some(cache.devices.clone());
-                    }
-                    return Ok(cache.devices);
-                }
-            }
-        }
-    }
+                cache.schema_version == GPU_CACHE_SCHEMA_VERSION
+                    && age < 86400
+                    && hash_matches
+                    && !cache.devices.is_empty()
+            })
+            .map(|cache| cache.devices)
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
 
     // 2. Perform raw discovery.
     //
@@ -315,14 +352,32 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
     // thing native-first was introduced to avoid -- but a crashy probe is
     // recoverable (the parser deliberately reads the device banner however the
     // child ends) and a wrong device id is not.
-    let native = probe_gpus_vulkan_native().unwrap_or_default();
+    // The cached metadata spares the ash probe when it is usable; ash is
+    // still needed on a cold cache, and is the only source on the very first
+    // run after install.
+    let metadata = if cached_metadata.is_empty() {
+        probe_gpus_vulkan_native().unwrap_or_default()
+    } else {
+        cached_metadata
+    };
+
     let gpus = match probe_gpus_raw(app) {
-        Ok(engine) if !engine.is_empty() => merge_engine_ids_with_native_metadata(engine, &native),
+        Ok(engine) if !engine.is_empty() => {
+            merge_engine_ids_with_native_metadata(engine, &metadata)
+        }
         _ => {
+            // Deliberately empty rather than falling back to the ash
+            // enumeration. `id` is an index into the *engine's* device order,
+            // and ash's order is a different list that happens to contain the
+            // same names; handing ash indices to `-g` is how every job ended
+            // up on the iGPU while the UI named the discrete card. An empty
+            // list is not a silent failure -- resolveGpu() reports
+            // "none-available" and the app drops to its CPU path with a
+            // notification, which is slow but correct and says so.
             tracing::warn!(
-                "engine GPU probe unavailable; falling back to native enumeration, whose                  indices may not agree with the engine's own"
+                "engine GPU probe unavailable; reporting no devices rather than                  guessing indices from a different enumeration"
             );
-            native
+            Vec::new()
         }
     };
 
@@ -347,6 +402,17 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
         *guard = Some(now_secs);
     }
 
+    // Permanent, not debug scaffolding: when a job lands on the wrong card
+    // there is nothing else on disk that says which index meant which GPU at
+    // the time, and that is precisely what went wrong before.
+    tracing::info!(
+        devices = %gpus
+            .iter()
+            .map(|g| format!("{}={}", g.id, g.name))
+            .collect::<Vec<_>>()
+            .join(", "),
+        "resolved GPU device ids from the engine's own enumeration"
+    );
     Ok(gpus)
 }
 
@@ -1065,6 +1131,68 @@ mod tests {
 
         // Discrete still sorts first for display.
         assert!(merged[0].name.contains("NVIDIA"));
+    }
+
+    /// The incident this guards against, with its real numbers.
+    ///
+    /// A cache entry written at 04:01 held `[1 NVIDIA][0 Intel]`. By midday
+    /// the same engine binary enumerated `[0 NVIDIA][1 Intel]`. The entry was
+    /// still inside its 24-hour window, so it was served as valid, and
+    /// selecting the RTX 3050 sent `-g 1` -- the Intel iGPU -- which failed a
+    /// 320x180 job outright with "the GPU ran out of memory" while the UI went
+    /// on naming the discrete card.
+    ///
+    /// Metadata may come from that stale entry; `id` may not.
+    #[test]
+    fn test_stale_cached_ids_never_override_the_engines_own() {
+        // What the engine says *now*.
+        let engine = vec![
+            device(
+                0,
+                "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+                "Discrete GPU",
+                0,
+                16,
+            ),
+            device(1, "Intel(R) UHD Graphics", "Integrated Graphics", 0, 2),
+        ];
+        // What the cache still holds from hours ago: same cards, ids reversed.
+        let stale_cache = vec![
+            device(
+                1,
+                "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+                "NVIDIA (Discrete GPU)",
+                6001,
+                24,
+            ),
+            device(
+                0,
+                "Intel(R) UHD Graphics",
+                "Intel (Integrated GPU)",
+                16198,
+                1,
+            ),
+        ];
+
+        let merged = merge_engine_ids_with_native_metadata(engine, &stale_cache);
+
+        let nvidia = merged.iter().find(|g| g.name.contains("NVIDIA")).unwrap();
+        let intel = merged.iter().find(|g| g.name.contains("Intel")).unwrap();
+
+        // The id is the engine's, not the cache's.
+        assert_eq!(
+            nvidia.id, 0,
+            "NVIDIA must take the engine's id, not the cached 1"
+        );
+        assert_eq!(
+            intel.id, 1,
+            "Intel must take the engine's id, not the cached 0"
+        );
+
+        // The metadata the engine banner never prints still comes from the cache.
+        assert_eq!(nvidia.vram_mb, 6001);
+        assert_eq!(nvidia.compute_queue_count, 24);
+        assert_eq!(intel.vram_mb, 16198);
     }
 
     #[test]

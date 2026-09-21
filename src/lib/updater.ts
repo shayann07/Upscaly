@@ -90,7 +90,7 @@ export async function checkForUpdates(manual = false): Promise<void> {
         studioActions.notify(
           'success',
           'Up to date',
-          `Upscaly Studio ${studioStore.getState().appVersion} is the latest version.`
+          `Upscaly ${studioStore.getState().appVersion} is the latest version.`
         );
       }
     }

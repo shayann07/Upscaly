@@ -1,5 +1,10 @@
 # Upscaly Studio — Production Readiness Plan
 
+> **Historical.** This records the state of the project at 1.0.1 on 2026-08-19,
+> including decisions later reversed. The product was renamed from "Upscaly Studio"
+> to "Upscaly" in 1.0.9 to match the Microsoft Store listing; names below are left
+> as they were written.
+
 **Date:** 2026-08-19 · **Version under review:** 1.0.1 (uncommitted, branch `main`) · **Target:** first public release via CI
 
 This document is self-contained: an implementing agent needs no other context. Every item states why it matters, the exact files, the change (with code), and how to verify it. Work top to bottom; P0 items are release-breaking.

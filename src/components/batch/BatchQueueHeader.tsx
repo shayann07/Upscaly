@@ -25,7 +25,9 @@ export function BatchQueueHeader({
           gap: 7,
           padding: `0 ${open ? 12 : 0}px`,
           borderBottom: `1px solid ${open ? 'var(--border-default)' : 'transparent'}`,
-          transition: `all .28s ${EASE}`,
+          // Not `all`: that sweeps up height and padding too, which are
+          // layout properties, and ran them on an overshooting curve.
+          transition: `height .28s var(--ease-layout), padding .28s var(--ease-layout), border-color .28s ${EASE}`,
         }}
       >
         <span

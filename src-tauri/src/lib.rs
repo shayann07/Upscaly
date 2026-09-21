@@ -75,10 +75,7 @@ fn fatal_dialog(message: &str) {
     unsafe {
         use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR};
         let msg: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
-        let title: Vec<u16> = "Upscaly Studio"
-            .encode_utf16()
-            .chain(std::iter::once(0))
-            .collect();
+        let title: Vec<u16> = "Upscaly".encode_utf16().chain(std::iter::once(0)).collect();
         MessageBoxW(0, msg.as_ptr(), title.as_ptr(), MB_ICONERROR);
     }
     #[cfg(not(windows))]
@@ -155,7 +152,7 @@ pub fn run() {
 
     std::panic::set_hook(Box::new(|info| {
         fatal_dialog(&format!(
-            "Upscaly Studio crashed during startup:\n\n{info}\n\nPlease report this."
+            "Upscaly crashed during startup:\n\n{info}\n\nPlease report this."
         ));
     }));
 
@@ -173,9 +170,19 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init());
+
+    // Compiled out of Microsoft Store builds: an MSIX installs into a
+    // read-only directory and Store policy requires updates to arrive
+    // through the Store. See Cargo.toml [features] and build-msix.ps1.
+    #[cfg(feature = "self-update")]
+    {
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
+    }
+
+    let builder = builder
         .invoke_handler(tauri::generate_handler![
             commands::gpu::list_gpus,
             commands::gpu::get_vram_profile,
@@ -219,7 +226,7 @@ pub fn run() {
         Ok(app) => app,
         Err(e) => {
             fatal_dialog(&format!(
-                "Upscaly Studio failed to start:\n\n{e}\n\nThis usually means the Microsoft Edge \
+                "Upscaly failed to start:\n\n{e}\n\nThis usually means the Microsoft Edge \
                  WebView2 Runtime is missing or damaged. Reinstalling the app repairs it."
             ));
             std::process::exit(1);

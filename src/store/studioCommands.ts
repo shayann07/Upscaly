@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { formatIpcError } from '../lib/appError';
@@ -339,6 +340,52 @@ export async function startUpscale(): Promise<void> {
   await submitPending();
 }
 
+/** Key for the in-place ffmpeg provisioning toast. */
+const FFMPEG_TOAST = 'ffmpeg-provision';
+
+interface FfmpegProgressPayload {
+  downloaded: number;
+  total: number;
+  percentage: number;
+  step: string;
+}
+
+function formatMb(bytes: number): string {
+  return `${Math.round(bytes / 1_000_000)} MB`;
+}
+
+/**
+ * Runs the ffmpeg fetch with a toast that updates as it goes.
+ *
+ * Shared by the two callers -- the video queue provisioning on demand and the
+ * manual button -- so they report identically and, more importantly, so the
+ * backend's serialisation is the only thing deciding whether a second request
+ * downloads anything. The static "Downloading ffmpeg (~290 MB)..." toast this
+ * replaces never changed for the several minutes the download took, which read
+ * as a hang.
+ */
+async function runFfmpegProvisioning(): Promise<void> {
+  studioActions.upsertToast(FFMPEG_TOAST, 'warning', 'Downloading ffmpeg', 'Starting...');
+
+  const unlisten = await listen<FfmpegProgressPayload>('ffmpeg-progress', ({ payload }) => {
+    // total is 0 when the server sent no Content-Length; report bytes so far
+    // rather than a percentage that would be a guess.
+    const detail =
+      payload.total > 0
+        ? `${Math.floor(payload.percentage)}% of ${formatMb(payload.total)}`
+        : formatMb(payload.downloaded);
+    studioActions.upsertToast(FFMPEG_TOAST, 'warning', 'Downloading ffmpeg', detail);
+  });
+
+  try {
+    await invoke('provision_ffmpeg');
+    studioActions.dismissToastKey(FFMPEG_TOAST);
+    studioActions.notify('success', 'Video components ready', 'ffmpeg is installed.');
+  } finally {
+    unlisten();
+  }
+}
+
 /**
  * Sends every runnable item to the backend.
  *
@@ -356,15 +403,10 @@ async function submitPending(): Promise<void> {
   if (pending.some((item) => item.isVideo)) {
     const ffmpegOk = await invoke<boolean>('ffmpeg_available').catch(() => true);
     if (!ffmpegOk) {
-      studioActions.notify(
-        'warning',
-        'Video components missing',
-        'Downloading ffmpeg (~290 MB)...'
-      );
       try {
-        await invoke('provision_ffmpeg');
-        studioActions.notify('success', 'Video components ready', 'ffmpeg is installed.');
+        await runFfmpegProvisioning();
       } catch (provisionErr) {
+        studioActions.dismissToastKey(FFMPEG_TOAST);
         studioActions.notify(
           'error',
           'ffmpeg download failed',
@@ -684,11 +726,10 @@ export async function showInExplorer(path: string): Promise<void> {
 }
 
 export async function provisionFfmpeg(): Promise<void> {
-  studioActions.notify('info', 'Downloading Video Components', 'Fetching ffmpeg (~290 MB)...');
   try {
-    await invoke('provision_ffmpeg');
-    studioActions.notify('success', 'Video Components Ready', 'ffmpeg installed successfully.');
+    await runFfmpegProvisioning();
   } catch (err) {
+    studioActions.dismissToastKey(FFMPEG_TOAST);
     studioActions.notify('error', 'Download Failed', formatIpcError(err));
   }
 }

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Microsoft Store packaging manifest for Upscaly.
+
+  Identity/Name, Identity/Publisher and Properties/PublisherDisplayName are
+  assigned by Partner Center (Product management > Product Identity) and must
+  match byte-for-byte or the upload is rejected. Do not edit them by hand;
+  scripts/build-msix.ps1 substitutes them from msix/identity.json.
+
+  VERSION_PLACEHOLDER is filled from tauri.conf.json. The Store requires a
+  four-part version whose revision (last) field is 0, because that field is reserved
+  for Store-side rebuilds, and a non-zero value is rejected on upload.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="IDENTITY_NAME_PLACEHOLDER"
+    Publisher="PUBLISHER_PLACEHOLDER"
+    Version="VERSION_PLACEHOLDER"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>DISPLAY_NAME_PLACEHOLDER</DisplayName>
+    <PublisherDisplayName>PUBLISHER_DISPLAY_NAME_PLACEHOLDER</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <!--
+      1809 is the floor for MSIX desktop packages carrying a full-trust Win32
+      app. The app itself needs WebView2, which is an inbox component from
+      Windows 11 on and an Evergreen redistributable before that; it is not
+      expressible as a package dependency, so it is disclosed in the Store
+      listing instead (policy 10.2.4).
+    -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="UpscalyStudio" Executable="upscaly.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="DISPLAY_NAME_PLACEHOLDER"
+        Description="Upscale images and video locally on your own GPU with Real-ESRGAN. No account, no uploads, no metering."
+        BackgroundColor="#110F0E"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+          Square71x71Logo="Assets\Square71x71Logo.png"
+          Square310x310Logo="Assets\Square310x310Logo.png"
+          Wide310x150Logo="Assets\Wide310x150Logo.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!--
+      The app is a packaged Win32 binary that spawns sidecar processes
+      (realesrgan-ncnn-vulkan, ffmpeg) and talks to the GPU through Vulkan,
+      none of which the sandboxed capability set covers. runFullTrust is the
+      capability that permits it, and is standard for Desktop Bridge apps.
+      internetClient covers the model-weight and ffmpeg downloads.
+    -->
+    <rescap:Capability Name="runFullTrust" />
+    <Capability Name="internetClient" />
+  </Capabilities>
+</Package>

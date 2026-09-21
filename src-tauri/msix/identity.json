@@ -1,0 +1,8 @@
+{
+  "_comment": "From Partner Center > Product management > Product Identity. These must match byte-for-byte or Partner Center rejects the upload. Store ID 9NFFHP49BVDT, PFN Wexpa.UpscalyAIPhotoEnhancer_mcvh0zqce6qm8.",
+  "identityName": "Wexpa.UpscalyAIPhotoEnhancer",
+  "publisher": "CN=77095676-1BEA-408F-8616-D3AA7AC484BA",
+  "publisherDisplayName": "Wexpa",
+  "_displayNameComment": "Must exactly match a name reserved under Product management > Manage app names.",
+  "displayName": "Upscaly: AI Photo Enhancer"
+}

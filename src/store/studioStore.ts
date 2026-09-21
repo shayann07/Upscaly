@@ -19,6 +19,12 @@ export interface Toast {
   id: string;
   type: ToastKind;
   message: string;
+  /**
+   * Stable caller-supplied key for a toast that updates in place, such as a
+   * download reporting progress. Absent on ordinary one-shot toasts, which
+   * are identified only by `id`.
+   */
+  key?: string;
 }
 
 /** How long a toast stays on screen before it removes itself (4s for non-error notifications). */
@@ -174,7 +180,7 @@ function createInitialState(): StudioState {
     settingsLoaded: false,
 
     cpuOnly: false,
-    appName: 'Upscaly Studio',
+    appName: 'Upscaly',
     appVersion: '',
     availableUpdate: null,
     updatePhase: 'idle',
@@ -549,6 +555,43 @@ export const studioActions = {
     if (type !== 'error') {
       setTimeout(() => studioActions.dismissToast(id), TOAST_LIFETIME_MS);
     }
+  },
+
+  /**
+   * Shows or replaces the toast carrying `key`, so a long operation can
+   * report progress without stacking a new toast per update.
+   *
+   * Deliberately not routed through notify(): that dedupes on message text,
+   * which is exactly what changes on every progress tick, so each update
+   * would have appended a fresh toast. These also do not auto-dismiss --
+   * the caller owns the lifetime and clears it with dismissToastKey() when
+   * the operation ends.
+   */
+  upsertToast(key: string, type: ToastKind, title: string, message: string) {
+    const text = message ? `${title}: ${message}` : title;
+    setState((prev) => {
+      const existing = prev.toasts.find((t) => t.key === key);
+      if (existing) {
+        return {
+          ...prev,
+          toasts: prev.toasts.map((t) => (t.key === key ? { ...t, type, message: text } : t)),
+        };
+      }
+      toastSeq += 1;
+      return {
+        ...prev,
+        toasts: [...prev.toasts, { id: `toast-${toastSeq}`, type, message: text, key }].slice(
+          -MAX_VISIBLE_TOASTS
+        ),
+      };
+    });
+  },
+
+  dismissToastKey(key: string) {
+    setState((prev) => {
+      const toasts = prev.toasts.filter((t) => t.key !== key);
+      return toasts.length === prev.toasts.length ? prev : { ...prev, toasts };
+    });
   },
 
   dismissToast(id: string) {
