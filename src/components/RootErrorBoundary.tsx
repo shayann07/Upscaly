@@ -41,9 +41,7 @@ export class RootErrorBoundary extends Component<{ children: ReactNode }, { erro
         <pre style={{ maxWidth: '80vw', overflow: 'auto', fontSize: 11, color: '#6B655E' }}>
           {String(this.state.error?.message ?? this.state.error)}
         </pre>
-        <button onClick={() => void invoke('close_window').catch(() => {})}>
-          Close Upscaly
-        </button>
+        <button onClick={() => void invoke('close_window').catch(() => {})}>Close Upscaly</button>
       </div>
     );
   }
