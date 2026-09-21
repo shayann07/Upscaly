@@ -75,10 +75,7 @@ fn fatal_dialog(message: &str) {
     unsafe {
         use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR};
         let msg: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
-        let title: Vec<u16> = "Upscaly"
-            .encode_utf16()
-            .chain(std::iter::once(0))
-            .collect();
+        let title: Vec<u16> = "Upscaly".encode_utf16().chain(std::iter::once(0)).collect();
         MessageBoxW(0, msg.as_ptr(), title.as_ptr(), MB_ICONERROR);
     }
     #[cfg(not(windows))]

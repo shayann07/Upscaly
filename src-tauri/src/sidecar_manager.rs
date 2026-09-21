@@ -362,7 +362,9 @@ pub fn get_gpu_list(app: &AppHandle) -> Result<Vec<GpuDevice>, AppError> {
     };
 
     let gpus = match probe_gpus_raw(app) {
-        Ok(engine) if !engine.is_empty() => merge_engine_ids_with_native_metadata(engine, &metadata),
+        Ok(engine) if !engine.is_empty() => {
+            merge_engine_ids_with_native_metadata(engine, &metadata)
+        }
         _ => {
             // Deliberately empty rather than falling back to the ash
             // enumeration. `id` is an index into the *engine's* device order,
@@ -1145,13 +1147,31 @@ mod tests {
     fn test_stale_cached_ids_never_override_the_engines_own() {
         // What the engine says *now*.
         let engine = vec![
-            device(0, "NVIDIA GeForce RTX 3050 6GB Laptop GPU", "Discrete GPU", 0, 16),
+            device(
+                0,
+                "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+                "Discrete GPU",
+                0,
+                16,
+            ),
             device(1, "Intel(R) UHD Graphics", "Integrated Graphics", 0, 2),
         ];
         // What the cache still holds from hours ago: same cards, ids reversed.
         let stale_cache = vec![
-            device(1, "NVIDIA GeForce RTX 3050 6GB Laptop GPU", "NVIDIA (Discrete GPU)", 6001, 24),
-            device(0, "Intel(R) UHD Graphics", "Intel (Integrated GPU)", 16198, 1),
+            device(
+                1,
+                "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+                "NVIDIA (Discrete GPU)",
+                6001,
+                24,
+            ),
+            device(
+                0,
+                "Intel(R) UHD Graphics",
+                "Intel (Integrated GPU)",
+                16198,
+                1,
+            ),
         ];
 
         let merged = merge_engine_ids_with_native_metadata(engine, &stale_cache);
@@ -1160,8 +1180,14 @@ mod tests {
         let intel = merged.iter().find(|g| g.name.contains("Intel")).unwrap();
 
         // The id is the engine's, not the cache's.
-        assert_eq!(nvidia.id, 0, "NVIDIA must take the engine's id, not the cached 1");
-        assert_eq!(intel.id, 1, "Intel must take the engine's id, not the cached 0");
+        assert_eq!(
+            nvidia.id, 0,
+            "NVIDIA must take the engine's id, not the cached 1"
+        );
+        assert_eq!(
+            intel.id, 1,
+            "Intel must take the engine's id, not the cached 0"
+        );
 
         // The metadata the engine banner never prints still comes from the cache.
         assert_eq!(nvidia.vram_mb, 6001);

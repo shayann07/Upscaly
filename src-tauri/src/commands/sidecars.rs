@@ -49,6 +49,10 @@ fn parse_progress(line: &str) -> Option<(u64, i64)> {
 /// Exists because the installer deliberately tolerates a failed fetch
 /// (offline install), and the app promises to re-offer the download when
 /// a video job needs it.
+// Progress percentage precision loss from the u64 byte counts is
+// inconsequential at a ~290MB download (nowhere near f64's 52-bit mantissa
+// limit) and is only ever displayed rounded to a whole percent.
+#[allow(clippy::cast_precision_loss)]
 #[tauri::command]
 pub async fn provision_ffmpeg(app: AppHandle) -> Result<(), String> {
     let lock = PROVISION_LOCK.get_or_init(|| Mutex::new(()));
@@ -121,7 +125,7 @@ pub async fn provision_ffmpeg(app: AppHandle) -> Result<(), String> {
     let mut lines = BufReader::new(stdout).lines();
     while let Ok(Some(line)) = lines.next_line().await {
         if let Some((downloaded, total)) = parse_progress(&line) {
-            let total_u = total.max(0) as u64;
+            let total_u = u64::try_from(total).unwrap_or(0);
             let percentage = if total_u > 0 {
                 (downloaded as f64 / total_u as f64) * 100.0
             } else {
